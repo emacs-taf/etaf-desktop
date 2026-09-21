@@ -492,6 +492,37 @@ other applications continue restoring."
                       (etaf-desktop--app-store desktop)))
             (etaf-desktop--placeholder desktop instance
                                         (etaf-desktop--instance-error instance))))))
+    ;; Low-level windows opened without an application manifest remain usable
+    ;; session members.  Their caller-owned View cannot be serialized, so
+    ;; restore a visible title placeholder and the saved geometry.
+    (let ((owned (cl-loop for instance in saved-instances
+                          append (plist-get instance :windows))))
+      (dolist (saved-window (plist-get saved-desktop :windows))
+        (let ((id (plist-get saved-window :id)))
+          (unless (member id owned)
+            (ignore-errors
+              (etaf-desktop-open-window
+               desktop id
+               :title (plist-get saved-window :title)
+               :view (etaf-view
+                      (text (expr (or (plist-get saved-window :title)
+                                      (format "%s" id)))))
+               :x (or (plist-get saved-window :x) 0)
+               :y (or (plist-get saved-window :y) 0)
+               :width (or (plist-get saved-window :width) 400)
+               :height (or (plist-get saved-window :height) 12)
+               :min-width (or (plist-get saved-window :min-width) 160)
+               :min-height (or (plist-get saved-window :min-height) 3)
+               :max-width (plist-get saved-window :max-width)
+               :max-height (plist-get saved-window :max-height)
+               :workspace (plist-get saved-window :workspace)
+               :visible (if (plist-member saved-window :visible)
+                            (plist-get saved-window :visible) t)
+               :movable (if (plist-member saved-window :movable)
+                            (plist-get saved-window :movable) t)
+               :resizable (if (plist-member saved-window :resizable)
+                              (plist-get saved-window :resizable) t))
+              (etaf-desktop--restore-window-state desktop id saved-window))))))
     (etaf-desktop-switch-workspace desktop (or (plist-get saved-desktop :active-workspace)
                                                (car (plist-get saved-desktop :workspaces))))
     (etaf-desktop-state desktop)))
