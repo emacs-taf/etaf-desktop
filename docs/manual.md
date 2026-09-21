@@ -19,12 +19,13 @@ size limits, workspace, visibility, minimized/maximized mode and z-index.
 ```
 
 `etaf-desktop-move-window` and `etaf-desktop-resize-window` are the single
-state update paths used by UI gesture callbacks. Resize is clamped to each
-window's minimum and optional maximum. The built-in shell exposes a bottom-right
-resize handle; applications that need edge-specific policy can compose the
-public ETAF UI shell directly. Dragging is implemented by the presentation
-component's Ebox gesture and calls these operations; the desktop package does
-not run a second event loop.
+state update paths used by ETAF's controlled geometry Behaviors. Resize is
+clamped to each window's minimum and optional maximum, and Ebox pixel deltas
+are converted to desktop text-row units before application state is changed.
+The built-in shell exposes right and bottom resize handles; applications that
+need edge-specific policy can compose the public ETAF UI shell directly.
+The desktop package does not run a second event loop or keep a second geometry
+store.
 
 `etaf-desktop-maximize-window` saves the normal rectangle and fills the desktop
 canvas. `etaf-desktop-restore-window` returns that rectangle. Minimized windows
