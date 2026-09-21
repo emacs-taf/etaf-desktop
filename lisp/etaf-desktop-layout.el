@@ -15,6 +15,9 @@
   (make-hash-table :test #'eq :weakness 'key)
   "Weak map from desktop controllers to their layout policy state.")
 
+(defvar etaf-desktop--layout-refreshing nil
+  "Non-nil while a layout refresh is publishing its calculated state.")
+
 (cl-defstruct (etaf-desktop--layout-workspace
                (:constructor etaf-desktop--layout-workspace-create))
   mode tree floating)
@@ -248,6 +251,22 @@ workspace is synchronized.  Return DESKTOP."
             (push id floating)))
         (setf (etaf-desktop--layout-workspace-floating policy)
               (delete-dups floating))))
+    desktop))
+
+(defun etaf-desktop-layout-refresh (desktop &optional workspace)
+  "Synchronize and, when needed, apply DESKTOP's WORKSPACE layout.
+
+This is the safe integration hook for desktop mutations: it applies `tiling'
+and `monocle' modes in one guarded publication, while floating mode only
+updates membership.  The guard prevents a caller that refreshes from a
+publication callback from recursively publishing forever.  Return DESKTOP."
+  (let ((desktop (etaf-desktop--controller desktop)))
+    (unless etaf-desktop--layout-refreshing
+      (let ((etaf-desktop--layout-refreshing t))
+        (etaf-desktop-layout-sync desktop workspace)
+        (let ((mode (etaf-desktop-layout-mode desktop workspace)))
+          (when (memq mode '(tiling monocle))
+            (etaf-desktop-layout-apply desktop workspace)))))
     desktop))
 
 (defun etaf-desktop-layout-mode (desktop &optional workspace)
