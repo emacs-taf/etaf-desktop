@@ -126,6 +126,27 @@
       (etaf-desktop-close desktop))
     (should (= 1 (plist-get (etaf-desktop-window-state desktop 'notes) :y)))))
 
+(ert-deftest etaf-desktop-native-drag-keeps-behavior-origin-across-rerenders ()
+  "A controlled title drag keeps its origin through multiple publications."
+  (let ((desktop (etaf-desktop-create :name " *desktop-drag-origin*")))
+    (unwind-protect
+        (progn
+          (etaf-desktop-open-window desktop 'notes :x 0 :y 0)
+          (let ((buffer (etaf-desktop-mount desktop)))
+            (let ((runtime (etaf-runtime-for-buffer buffer)))
+              (etaf-dispatch-event runtime 'etaf-desktop-chrome-notes
+                                   'drag '(:phase start :delta (0 . 0)) t)
+              (etaf-dispatch-event runtime 'etaf-desktop-chrome-notes
+                                   'drag '(:phase move :delta (3 . 2)) t)
+              (etaf-dispatch-event runtime 'etaf-desktop-chrome-notes
+                                   'drag '(:phase move :delta (7 . 4)) t)
+              (etaf-dispatch-event runtime 'etaf-desktop-chrome-notes
+                                   'drag '(:phase end :delta (10 . 6)) t)))
+            (let ((state (etaf-desktop-window-state desktop 'notes)))
+              (should (= 10 (plist-get state :x)))
+              (should (= 6 (plist-get state :y))))))
+      (etaf-desktop-close desktop)))
+
 (ert-deftest etaf-desktop-application-registry-and-lifecycle ()
   "A manifest launches an isolated instance and owns lifecycle callbacks."
   (let* ((app 'etaf-desktop-test-registry)
