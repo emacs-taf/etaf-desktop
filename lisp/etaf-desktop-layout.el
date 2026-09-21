@@ -221,8 +221,15 @@ from their tree and floating set.  When WORKSPACE is non-nil, only that
 workspace is synchronized.  Return DESKTOP."
   (let* ((desktop (etaf-desktop--controller desktop))
          (state (etaf-desktop--state desktop))
+         (layout (etaf-desktop--layout-state-for desktop))
          (targets (or (and workspace (list workspace))
                       (etaf-desktop--state-workspaces state))))
+    (when workspace (etaf-desktop--assert-workspace state workspace))
+    (setf (etaf-desktop--layout-state-workspaces layout)
+          (cl-remove-if-not
+           (lambda (entry)
+             (member (car entry) (etaf-desktop--state-workspaces state)))
+           (etaf-desktop--layout-state-workspaces layout)))
     (dolist (name targets)
       (let* ((policy (etaf-desktop--layout-ensure-workspace desktop name))
              (known (etaf-desktop--layout-workspace-ids state name))
