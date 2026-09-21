@@ -50,6 +50,23 @@
     (should (member 'two (etaf-desktop--test-leaves
                           (etaf-desktop-layout-tree desktop))))))
 
+(ert-deftest etaf-desktop-layout-horizontal-split-and-minimums ()
+  "Horizontal splits allocate width and respect each leaf's minimum width."
+  (let ((desktop (etaf-desktop-create :canvas-width 100 :canvas-height 12)))
+    (etaf-desktop-open-window desktop 'left :width 30 :height 4
+                              :min-width 30 :min-height 2)
+    (etaf-desktop-open-window desktop 'right :width 20 :height 4
+                              :min-width 20 :min-height 2)
+    (etaf-desktop-layout-split desktop 'left 'right 'horizontal 0.8)
+    (let ((left (etaf-desktop-window-state desktop 'left))
+          (right (etaf-desktop-window-state desktop 'right)))
+      (should (= 80 (plist-get left :width)))
+      (should (= 20 (plist-get right :width)))
+      (should (= 80 (plist-get right :x))))
+    (etaf-desktop-layout-resize-split desktop nil 0.2)
+    (let ((left (etaf-desktop-window-state desktop 'left)))
+      (should (= 30 (plist-get left :width))))))
+
 (ert-deftest etaf-desktop-layout-monocle-and-close-sync ()
   "Monocle fills the canvas and closing a leaf removes it from the tree."
   (let ((desktop (etaf-desktop-create :canvas-width 90 :canvas-height 18)))
