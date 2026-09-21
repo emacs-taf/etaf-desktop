@@ -365,7 +365,7 @@ The tree uses `(:leaf WINDOW-ID)' and
   "Build a master/stack tree from visible IDS in z-order.
 
 The first ID gets 60 percent of the width.  Remaining IDs form a vertical
-stack whose ratios make each leaf the same height." 
+stack whose ratios make each leaf the same height."
   (when ids
     (let ((master (etaf-desktop--layout-leaf (car ids)))
           (stack (cdr ids)))
