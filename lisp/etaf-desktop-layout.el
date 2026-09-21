@@ -32,7 +32,7 @@
 
 (defun etaf-desktop--layout-valid-mode-p (mode)
   "Return non-nil when MODE is a supported layout mode."
-  (memq mode '(floating tiling monocle)))
+  (memq mode '(floating tiling master-stack monocle)))
 
 (defun etaf-desktop--layout-valid-orientation-p (orientation)
   "Return non-nil when ORIENTATION splits a tree in two dimensions.
@@ -273,7 +273,7 @@ publication callback from recursively publishing forever.  Return DESKTOP."
       (let ((etaf-desktop--layout-refreshing t))
         (etaf-desktop-layout-sync desktop workspace)
         (let ((mode (etaf-desktop-layout-mode desktop workspace)))
-          (when (memq mode '(tiling monocle))
+          (when (memq mode '(tiling master-stack monocle))
             (etaf-desktop--layout-tile-pending desktop workspace)
             (etaf-desktop-layout-apply desktop workspace)))))
     desktop))
@@ -285,25 +285,35 @@ publication callback from recursively publishing forever.  Return DESKTOP."
                         (etaf-desktop--state-active-workspace state)))
          (policy (etaf-desktop--layout-ensure-workspace desktop workspace))
          (tree (etaf-desktop--layout-workspace-tree policy))
-         (pending (etaf-desktop--layout-workspace-pending policy)))
-    (dolist (id pending)
-      (when (and (etaf-desktop--window-for state id)
-                 (not (member id (etaf-desktop--layout-tree-leaves tree))))
-        (setq tree (if tree
-                       (etaf-desktop--layout-split-node
-                        'vertical 0.5 tree (etaf-desktop--layout-leaf id))
-                     (etaf-desktop--layout-leaf id))))
-      (setf (etaf-desktop--layout-workspace-floating policy)
-            (delete id (etaf-desktop--layout-workspace-floating policy))))
-    (setf (etaf-desktop--layout-workspace-tree policy) tree
-          (etaf-desktop--layout-workspace-pending policy) nil)
-    tree))
+         (pending (etaf-desktop--layout-workspace-pending policy))
+         (mode (etaf-desktop--layout-workspace-mode policy)))
+    (if (eq mode 'master-stack)
+        (let* ((ids (append (etaf-desktop--layout-tree-leaves tree) pending))
+               (visible (etaf-desktop--layout-all-visible-ids state workspace)))
+          (setq ids (cl-remove-if-not (lambda (id) (member id visible)) ids))
+          (setf tree (etaf-desktop--layout-master-tree (delete-dups ids))
+                (etaf-desktop--layout-workspace-tree policy) tree
+                (etaf-desktop--layout-workspace-floating policy) nil
+                (etaf-desktop--layout-workspace-pending policy) nil)
+          tree)
+      (dolist (id pending)
+        (when (and (etaf-desktop--window-for state id)
+                   (not (member id (etaf-desktop--layout-tree-leaves tree))))
+          (setq tree (if tree
+                         (etaf-desktop--layout-split-node
+                          'vertical 0.5 tree (etaf-desktop--layout-leaf id))
+                       (etaf-desktop--layout-leaf id))))
+        (setf (etaf-desktop--layout-workspace-floating policy)
+              (delete id (etaf-desktop--layout-workspace-floating policy))))
+      (setf (etaf-desktop--layout-workspace-tree policy) tree
+            (etaf-desktop--layout-workspace-pending policy) nil)
+      tree)))
 
 (defun etaf-desktop-layout-mode (desktop &optional workspace)
   "Return DESKTOP's layout mode for WORKSPACE.
 
-WORKSPACE defaults to the active workspace.  Modes are `floating', `tiling'
-and `monocle'."
+WORKSPACE defaults to the active workspace.  Modes are `floating', `tiling',
+`master-stack' and `monocle'."
   (let* ((desktop (etaf-desktop--controller desktop))
          (state (etaf-desktop--state desktop))
          (workspace (or workspace (etaf-desktop--state-active-workspace state))))
@@ -350,6 +360,27 @@ The tree uses `(:leaf WINDOW-ID)' and
            (lambda (first second)
              (< (etaf-desktop--window-z-index first)
                 (etaf-desktop--window-z-index second))))))
+
+(defun etaf-desktop--layout-master-tree (ids)
+  "Build a master/stack tree from visible IDS in z-order.
+
+The first ID gets 60 percent of the width.  Remaining IDs form a vertical
+stack whose ratios make each leaf the same height." 
+  (when ids
+    (let ((master (etaf-desktop--layout-leaf (car ids)))
+          (stack (cdr ids)))
+      (if (null stack)
+          master
+        (cl-labels
+            ((stack-tree (values)
+               (if (null (cdr values))
+                   (etaf-desktop--layout-leaf (car values))
+                 (etaf-desktop--layout-split-node
+                  'vertical (/ 1.0 (float (length values)))
+                  (etaf-desktop--layout-leaf (car values))
+                  (stack-tree (cdr values))))))
+          (etaf-desktop--layout-split-node
+           'horizontal 0.6 master (stack-tree stack)))))))
 
 (defun etaf-desktop--layout-window (state id)
   "Return ID's internal window from STATE or signal an error."
@@ -454,8 +485,8 @@ retaining the tree for instant return to tiling."
     (let* ((policy (etaf-desktop--layout-ensure-workspace desktop workspace))
            (mode (etaf-desktop--layout-workspace-mode policy))
            (tree (etaf-desktop--layout-workspace-tree policy))
-           (canvas-width (etaf-desktop--controller-canvas-width desktop))
-           (canvas-height (etaf-desktop--controller-canvas-height desktop))
+           (canvas-width (etaf-desktop--canvas-width-value desktop))
+           (canvas-height (etaf-desktop--canvas-height-value desktop))
            (active (etaf-desktop--state-active-window state))
            (rectangles
             (cond
@@ -492,9 +523,11 @@ retaining the tree for instant return to tiling."
 (defun etaf-desktop-set-layout-mode (desktop mode &optional workspace)
   "Set DESKTOP's WORKSPACE layout MODE and apply it.
 
-MODE must be `floating', `tiling' or `monocle'.  Switching to tiling makes all
-visible non-minimized windows leaves in insertion order.  Switching to
-floating preserves the tree and current rectangles for a later return."
+MODE must be `floating', `tiling', `master-stack' or `monocle'.  Switching to
+tiling makes all visible non-minimized windows leaves in insertion order;
+`master-stack' gives the first window a wide master region and stacks the rest
+vertically.  Switching to floating preserves the tree and current rectangles
+for a later return."
   (unless (etaf-desktop--layout-valid-mode-p mode)
     (etaf-desktop--fail "Unknown desktop layout mode: %S" mode))
   (let* ((desktop (etaf-desktop--controller desktop))
@@ -506,14 +539,17 @@ floating preserves the tree and current rectangles for a later return."
            (tree (etaf-desktop--layout-workspace-tree policy))
            (ids (etaf-desktop--layout-all-visible-ids state workspace))
            (leaves (etaf-desktop--layout-tree-leaves tree)))
-      (when (memq mode '(tiling monocle))
+      (when (memq mode '(tiling master-stack monocle))
         (dolist (id ids)
           (unless (member id leaves)
             (setq tree (if tree
                            (etaf-desktop--layout-split-node
                             'vertical 0.5 tree (etaf-desktop--layout-leaf id))
                          (etaf-desktop--layout-leaf id)))))
-        (setf (etaf-desktop--layout-workspace-tree policy) tree
+        (setf (etaf-desktop--layout-workspace-tree policy)
+              (if (eq mode 'master-stack)
+                  (etaf-desktop--layout-master-tree ids)
+                tree)
               (etaf-desktop--layout-workspace-floating policy) nil
               (etaf-desktop--layout-workspace-pending policy) nil))
       (setf (etaf-desktop--layout-workspace-mode policy) mode)

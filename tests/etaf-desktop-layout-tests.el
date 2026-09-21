@@ -87,6 +87,28 @@
     (should-not (member 'one (etaf-desktop--test-leaves
                               (etaf-desktop-layout-tree desktop))))))
 
+(ert-deftest etaf-desktop-layout-master-stack-reflows-new-windows ()
+  "Master-stack gives the first window a master region and reflows new leaves."
+  (let ((desktop (etaf-desktop-create :canvas-width 100 :canvas-height 20)))
+    (dolist (id '(master stack-one stack-two))
+      (etaf-desktop-open-window desktop id :width 20 :height 4
+                                :min-width 5 :min-height 2))
+    (etaf-desktop-set-layout-mode desktop 'master-stack)
+    (etaf-desktop-open-window desktop 'stack-three :width 20 :height 4
+                              :min-width 5 :min-height 2)
+    (let ((master (etaf-desktop-window-state desktop 'master))
+          (stack-one (etaf-desktop-window-state desktop 'stack-one))
+          (stack-two (etaf-desktop-window-state desktop 'stack-two))
+          (stack-three (etaf-desktop-window-state desktop 'stack-three)))
+      (should (= 60 (plist-get master :width)))
+      (should (= 0 (plist-get master :x)))
+      (dolist (window (list stack-one stack-two stack-three))
+        (should (= 60 (plist-get window :x)))
+        (should (= 40 (plist-get window :width))))
+      (should (= 20 (+ (plist-get stack-one :height)
+                       (plist-get stack-two :height)
+                       (plist-get stack-three :height)))))))
+
 (defun etaf-desktop--test-leaves (tree)
   "Return public tree leaves for the layout assertions."
   (cond
