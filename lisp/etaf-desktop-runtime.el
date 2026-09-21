@@ -225,6 +225,7 @@
            :max-height (and (etaf-desktop--window-max-height window)
                             (list 'lh (etaf-desktop--window-max-height window)))
            :resizable (etaf-desktop--window-resizable window)
+           :resize-edges '(right bottom)
            :on-move move :on-resize resize
            :on-minimize (lambda () (etaf-desktop-minimize-window desktop id))
            :on-maximize (lambda () (etaf-desktop-maximize-window desktop id))
