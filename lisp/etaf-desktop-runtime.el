@@ -331,8 +331,7 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
            :on-minimize (lambda () (etaf-desktop-minimize-window desktop id))
            :on-maximize (lambda () (etaf-desktop-maximize-window desktop id))
            :on-restore (lambda () (etaf-desktop-restore-window desktop id))
-           :on-close (lambda () (etaf-desktop-close-window desktop id))
-           :on-focus (lambda () (etaf-desktop-focus-window desktop id)))
+           :on-close (lambda () (etaf-desktop-close-window desktop id)))
      (list body))))
 
 (defun etaf-desktop--taskbar-node (desktop state)

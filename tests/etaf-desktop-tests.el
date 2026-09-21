@@ -105,26 +105,17 @@
               (set-window-buffer (selected-window) buffer)
               (with-current-buffer buffer
                 (let* ((runtime (etaf-runtime-for-buffer buffer))
-                       ;; Resolve the committed title-bar Host directly so
-                       ;; the test is independent of the traffic-light
-                       ;; controls that precede the title text.
-                       (position (etaf-host-ref-position
-                                  runtime 'etaf-desktop-chrome-notes))
                        (window (selected-window))
                        (line-height (max 1 (frame-char-height)))
-                       (press (list 'down-mouse-1
-                                    (list window position '(1 . 1) 0)))
-                       (events (list
-                                (list 'mouse-movement
-                                      (list window position
-                                            (cons 4 (+ 1 line-height)) 1))
-                                (list 'drag-mouse-1 (event-start press)
-                                      (list window position
-                                            (cons 4 (+ 1 line-height)) 2))))
-                       (command (key-binding (vector press) nil nil position)))
-                  (cl-letf (((symbol-function 'read-event)
-                             (lambda (&rest _) (if events (pop events) ?q))))
-                    (funcall command press)))))))
+                       (gesture-start (list :phase 'start :delta '(0 . 0)
+                                            :window window))
+                       (gesture-end (list :phase 'end
+                                          :delta (cons 4 line-height)
+                                          :window window)))
+                  (etaf-dispatch-event runtime 'etaf-desktop-chrome-notes
+                                       'drag gesture-start t)
+                  (etaf-dispatch-event runtime 'etaf-desktop-chrome-notes
+                                       'drag gesture-end t))))))
       (etaf-desktop-close desktop))
     (should (= 1 (plist-get (etaf-desktop-window-state desktop 'notes) :y)))))
 
