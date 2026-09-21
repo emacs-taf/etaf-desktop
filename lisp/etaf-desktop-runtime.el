@@ -42,31 +42,6 @@
   "Return DESKTOP's current state."
   (etaf-value (etaf-desktop--controller-state-ref desktop)))
 
-(defvar etaf-desktop--geometry-behaviors
-  (make-hash-table :test #'eq :weakness 'key)
-  "Weak map from desktop controllers to stable gesture Behavior tables.
-The cache holds only transient Behavior origins; committed geometry remains in
-the desktop state and is read afresh by each gesture start.")
-
-(defun etaf-desktop--geometry-behavior (desktop key factory)
-  "Return the stable Behavior for DESKTOP and KEY, creating it with FACTORY."
-  (let ((table (or (gethash desktop etaf-desktop--geometry-behaviors)
-                   (puthash desktop (make-hash-table :test #'equal)
-                            etaf-desktop--geometry-behaviors))))
-    (or (gethash key table)
-        (puthash key (funcall factory) table))))
-
-(defun etaf-desktop--clear-geometry-behaviors (desktop &optional id)
-  "Clear cached gesture Behaviors for DESKTOP, optionally only window ID."
-  (let ((table (gethash desktop etaf-desktop--geometry-behaviors)))
-    (when table
-      (if id
-          (let (keys)
-            (maphash (lambda (key _value)
-                       (when (equal (car key) id) (push key keys))) table)
-            (dolist (key keys) (remhash key table)))
-        (remhash desktop etaf-desktop--geometry-behaviors)))))
-
 (defun etaf-desktop--canvas-window (desktop)
   "Return the live Emacs window displaying DESKTOP, when available."
   (or (and (buffer-live-p (etaf-desktop--controller-buffer desktop))
@@ -230,47 +205,59 @@ at this boundary."
           (round (/ (float (or (cdr delta) 0)) (or line-height 1))))))
 
 (defun etaf-desktop--move-behavior (desktop id)
-  "Return a controlled move Behavior for WINDOW ID."
-  (etaf-desktop--geometry-behavior
-   desktop (list id 'move)
-   (lambda ()
-     (etaf-draggable-controlled
-      (lambda ()
-        (let ((state (etaf-desktop-window-state desktop id)))
-          (list :x (plist-get state :x) :y (plist-get state :y))))
-      (lambda (next)
-        (etaf-desktop-move-window desktop id
-                                   (plist-get next :x)
-                                   (plist-get next :y)))
-      :axis 'both :delta #'etaf-desktop--delta
-      :on-start (lambda (_gesture)
-                  (etaf-desktop-focus-window desktop id))))))
-
-(defun etaf-desktop--resize-behavior (desktop id edge)
-  "Return a controlled resize Behavior for WINDOW ID on EDGE."
-  (etaf-desktop--geometry-behavior
-   desktop (list id edge)
+  "Construct a controlled move Behavior for window ID in DESKTOP."
+  (etaf-draggable-controlled
    (lambda ()
      (let ((state (etaf-desktop-window-state desktop id)))
-       (etaf-resizable-controlled
-        (lambda ()
-          (let ((current (etaf-desktop-window-state desktop id)))
-            (list :x (plist-get current :x)
-                  :y (plist-get current :y)
-                  :width (plist-get current :width)
-                  :height (plist-get current :height))))
-        (lambda (next)
-          (etaf-desktop-resize-window desktop id
-                                       (plist-get next :width)
-                                       (plist-get next :height)))
-        :edges edge :delta #'etaf-desktop--delta
-        :min-width (plist-get state :min-width)
-        :max-width (plist-get state :max-width)
-        :min-height (plist-get state :min-height)
-        :max-height (plist-get state :max-height))))))
+       (list :x (plist-get state :x) :y (plist-get state :y))))
+   (lambda (next)
+     (etaf-desktop-move-window desktop id
+                              (plist-get next :x)
+                              (plist-get next :y)))
+   :axis 'both :delta #'etaf-desktop--delta
+   :on-start (lambda (_gesture)
+               (etaf-desktop-focus-window desktop id))))
+
+(defun etaf-desktop--resize-behavior (desktop id edge)
+  "Construct a controlled resize Behavior for window ID on EDGE."
+  (let ((state (etaf-desktop-window-state desktop id)))
+    (etaf-resizable-controlled
+     (lambda ()
+       (let ((current (etaf-desktop-window-state desktop id)))
+         (list :x (plist-get current :x)
+               :y (plist-get current :y)
+               :width (plist-get current :width)
+               :height (plist-get current :height))))
+     (lambda (next)
+       (etaf-desktop-resize-window desktop id
+                                  (plist-get next :width)
+                                  (plist-get next :height)))
+     :edges edge :delta #'etaf-desktop--delta
+     :min-width (plist-get state :min-width)
+     :max-width (plist-get state :max-width)
+     :min-height (plist-get state :min-height)
+     :max-height (plist-get state :max-height))))
+
+(etaf-define-component etaf-desktop--window-surface (&key desktop id)
+  "Own one window's gesture Behaviors for its retained Component lifetime."
+  :bindings ((move (etaf-desktop--move-behavior desktop id))
+             (resize-right (etaf-desktop--resize-behavior desktop id 'right))
+             (resize-bottom (etaf-desktop--resize-behavior desktop id 'bottom)))
+  :render
+  (when-let* ((window (etaf-desktop--window-for
+                      (etaf-desktop--state desktop) id)))
+    (etaf-desktop--window-shell desktop window move resize-right resize-bottom)))
 
 (defun etaf-desktop--window-node (desktop window)
-  "Build the retained ETAF UI Window for WINDOW in DESKTOP."
+  "Return the keyed retained Component for WINDOW in DESKTOP."
+  (etaf-node 'etaf-desktop--window-surface
+             (list :key (etaf-desktop--window-id window)
+                   :desktop desktop :id (etaf-desktop--window-id window))
+             nil))
+
+(defun etaf-desktop--window-shell (desktop window move resize-right resize-bottom)
+  "Build WINDOW's ETAF UI shell with its retained geometry Behaviors.
+MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
   (let* ((id (etaf-desktop--window-id window))
          (title (or (etaf-desktop--window-title window) (format "%s" id)))
          (body (or (etaf-desktop--window-view window)
@@ -278,12 +265,9 @@ at this boundary."
          (mode (cond ((etaf-desktop--window-minimized window) 'minimized)
                      ((etaf-desktop--window-maximized window) 'maximized)
                      (t 'normal)))
-         (move (and (etaf-desktop--window-movable window)
-                    (etaf-desktop--move-behavior desktop id)))
-         (resize-right (and (etaf-desktop--window-resizable window)
-                            (etaf-desktop--resize-behavior desktop id 'right)))
-         (resize-bottom (and (etaf-desktop--window-resizable window)
-                             (etaf-desktop--resize-behavior desktop id 'bottom))))
+         (move (and (etaf-desktop--window-movable window) move))
+         (resize-right (and (etaf-desktop--window-resizable window) resize-right))
+         (resize-bottom (and (etaf-desktop--window-resizable window) resize-bottom)))
     (etaf-node
      'etaf-window
      (list :key id :id (format "%s" id) :ref (etaf-desktop--window-ref id)
@@ -659,7 +643,6 @@ WORKSPACE defaults to the active workspace."
                 (when (equal id (etaf-desktop--state-active-window state))
                   (setf (etaf-desktop--state-active-window state) nil))
                 t))))))
-    (when result (etaf-desktop--clear-geometry-behaviors desktop id))
     result))
 
 (defun etaf-desktop-focus-window (desktop id)
@@ -865,7 +848,6 @@ Closing is idempotent and releases the Runtime's event and reactive resources."
     (when (buffer-live-p buffer) (kill-buffer buffer))
     (setf (etaf-desktop--controller-runtime desktop) nil
           (etaf-desktop--controller-buffer desktop) nil)
-    (etaf-desktop--clear-geometry-behaviors desktop)
     nil))
 
 (defun etaf-desktop-open (&optional desktop buffer-or-name)
