@@ -451,12 +451,16 @@ other applications continue restoring."
       (let* ((id (plist-get saved :id))
              (app-id (plist-get saved :app-id))
              (data (plist-get saved :data))
-             (app (gethash app-id etaf-desktop--apps)))
+             (app (gethash app-id etaf-desktop--apps))
+             (saved-window-states (plist-get saved :window-states))
+             (saved-workspace (plist-get (cdr (car saved-window-states))
+                                         :workspace)))
         (if app
             (progn
               (etaf-desktop-launch desktop app-id :instance-id id
                                    :options (plist-get saved :options)
-                                   :restore-data data)
+                                   :restore-data data
+                                   :workspace saved-workspace)
               (etaf-desktop-set-instance-state desktop id (plist-get saved :state))
               (dolist (pair (plist-get saved :window-states))
                 (etaf-desktop--restore-window-state desktop (car pair)
