@@ -17,13 +17,9 @@
                (:constructor etaf-desktop--state-create))
   windows workspaces active-workspace active-window next-z)
 
-(cl-defstruct (etaf-desktop--drag
-               (:constructor etaf-desktop--drag-create))
-  id kind x y width height)
-
 (cl-defstruct (etaf-desktop--controller
                (:constructor etaf-desktop--controller-create))
-  name canvas-width canvas-height state-ref sessions buffer runtime)
+  name canvas-width canvas-height state-ref buffer runtime)
 
 (defun etaf-desktop--fail (format-string &rest arguments)
   "Signal `etaf-desktop-error' with FORMAT-STRING and ARGUMENTS."
@@ -170,38 +166,34 @@ at this boundary."
     (cons (round (or (car delta) 0))
           (round (/ (float (or (cdr delta) 0)) (or line-height 1))))))
 
-(defun etaf-desktop--drag-callback (desktop id kind)
-  "Return a gesture callback for DESKTOP window ID and KIND."
-  (lambda (gesture)
-    (let ((phase (plist-get gesture :phase))
-          (sessions (etaf-desktop--controller-sessions desktop)))
-      (cond
-       ((eq phase 'start)
-        (when-let* ((window (etaf-desktop--window-for
-                            (etaf-desktop--state desktop) id)))
-          (etaf-desktop-focus-window desktop id)
-          (puthash id
-                   (etaf-desktop--drag-create
-                    :id id :kind kind
-                    :x (etaf-desktop--window-x window)
-                    :y (etaf-desktop--window-y window)
-                    :width (etaf-desktop--window-width window)
-                    :height (etaf-desktop--window-height window))
-                   sessions)))
-       ((memq phase '(move end))
-        (when-let* ((session (gethash id sessions)))
-          (let* ((delta (etaf-desktop--delta gesture))
-                 (dx (car delta)) (dy (cdr delta)))
-            (if (eq kind 'move)
-                (etaf-desktop-move-window
-                 desktop id (+ (etaf-desktop--drag-x session) dx)
-                 (+ (etaf-desktop--drag-y session) dy))
-              (etaf-desktop-resize-window
-               desktop id
-               (+ (etaf-desktop--drag-width session) dx)
-               (+ (etaf-desktop--drag-height session) dy)))
-            (when (eq phase 'end) (remhash id sessions)))))
-       ((eq phase 'cancel) (remhash id sessions))))))
+(defun etaf-desktop--move-behavior (desktop id window)
+  "Return a controlled move Behavior for WINDOW ID."
+  (etaf-draggable-controlled
+   (lambda () (list :x (etaf-desktop--window-x window)
+                    :y (etaf-desktop--window-y window)))
+   (lambda (next)
+     (etaf-desktop-move-window desktop id
+                                (plist-get next :x)
+                                (plist-get next :y)))
+   :axis 'both :delta #'etaf-desktop--delta))
+
+(defun etaf-desktop--resize-behavior (desktop id window edge)
+  "Return a controlled resize Behavior for WINDOW ID on EDGE."
+  (etaf-resizable-controlled
+   (lambda ()
+     (list :x (etaf-desktop--window-x window)
+           :y (etaf-desktop--window-y window)
+           :width (etaf-desktop--window-width window)
+           :height (etaf-desktop--window-height window)))
+   (lambda (next)
+     (etaf-desktop-resize-window desktop id
+                                  (plist-get next :width)
+                                  (plist-get next :height)))
+   :edges edge :delta #'etaf-desktop--delta
+   :min-width (etaf-desktop--window-min-width window)
+   :max-width (etaf-desktop--window-max-width window)
+   :min-height (etaf-desktop--window-min-height window)
+   :max-height (etaf-desktop--window-max-height window)))
 
 (defun etaf-desktop--window-node (desktop window)
   "Build the retained ETAF UI Window for WINDOW in DESKTOP."
@@ -213,11 +205,11 @@ at this boundary."
                      ((etaf-desktop--window-maximized window) 'maximized)
                      (t 'normal)))
          (move (and (etaf-desktop--window-movable window)
-                    (etaf-desktop--drag-callback desktop id 'move)))
-         (resize (and (etaf-desktop--window-resizable window)
-                      (lambda (_edge gesture)
-                        (funcall (etaf-desktop--drag-callback desktop id 'resize)
-                                 gesture)))))
+                    (etaf-desktop--move-behavior desktop id window)))
+         (resize-right (and (etaf-desktop--window-resizable window)
+                            (etaf-desktop--resize-behavior desktop id window 'right)))
+         (resize-bottom (and (etaf-desktop--window-resizable window)
+                             (etaf-desktop--resize-behavior desktop id window 'bottom))))
     (etaf-node
      'etaf-window
      (list :key id :id (format "%s" id) :ref (etaf-desktop--window-ref id)
@@ -236,7 +228,10 @@ at this boundary."
                             (list 'lh (etaf-desktop--window-max-height window)))
            :resizable (etaf-desktop--window-resizable window)
            :resize-edges '(right bottom)
-           :on-move move :on-resize resize
+           :move-use move
+           :resize-use (delq nil
+                             (list (and resize-right (cons 'right resize-right))
+                                   (and resize-bottom (cons 'bottom resize-bottom))))
            :on-minimize (lambda () (etaf-desktop-minimize-window desktop id))
            :on-maximize (lambda () (etaf-desktop-maximize-window desktop id))
            :on-restore (lambda () (etaf-desktop-restore-window desktop id))
@@ -334,7 +329,7 @@ owns its reactive state and does not mount a buffer until `etaf-desktop-mount'."
   (let ((controller
          (etaf-desktop--controller-create
           :name name :canvas-width canvas-width :canvas-height canvas-height
-          :state-ref nil :sessions (make-hash-table :test #'equal))))
+          :state-ref nil)))
     (setf (etaf-desktop--controller-state-ref controller)
           (etaf-ref
            (etaf-desktop--state-create
@@ -427,7 +422,6 @@ WORKSPACE defaults to the active workspace."
                (delq window (etaf-desktop--state-windows state)))
          (when (equal id (etaf-desktop--state-active-window state))
            (setf (etaf-desktop--state-active-window state) nil))
-         (remhash id (etaf-desktop--controller-sessions desktop))
          t)))))
 
 (defun etaf-desktop-focus-window (desktop id)
@@ -461,6 +455,7 @@ WORKSPACE defaults to the active workspace."
              (etaf-desktop--window-y window) y
              (etaf-desktop--window-normal-geometry window)
              (list x y (etaf-desktop--window-width window) (etaf-desktop--window-height window)))
+       (etaf-desktop--raise state window)
        (etaf-desktop--window-plist window)))))
 
 (defun etaf-desktop-resize-window (desktop id width height)
@@ -487,6 +482,7 @@ WORKSPACE defaults to the active workspace."
              (etaf-desktop--window-normal-geometry window)
              (list (etaf-desktop--window-x window) (etaf-desktop--window-y window)
                    width height))
+       (etaf-desktop--raise state window)
        (etaf-desktop--window-plist window)))))
 
 (defun etaf-desktop-maximize-window (desktop id)

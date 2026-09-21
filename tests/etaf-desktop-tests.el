@@ -111,10 +111,10 @@
                        (events (list
                                 (list 'mouse-movement
                                       (list window position
-                                            (cons 1 (+ 1 line-height)) 1))
+                                            (cons 4 (+ 1 line-height)) 1))
                                 (list 'drag-mouse-1 (event-start press)
                                       (list window position
-                                            (cons 1 (+ 1 line-height)) 2))))
+                                            (cons 4 (+ 1 line-height)) 2))))
                        (command (key-binding (vector press) nil nil position)))
                   (cl-letf (((symbol-function 'read-event)
                              (lambda (&rest _) (if events (pop events) ?q))))
