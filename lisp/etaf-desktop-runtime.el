@@ -65,7 +65,10 @@
   (or (etaf-desktop--controller-canvas-height desktop)
       (let ((window (etaf-desktop--canvas-window desktop)))
         (if (window-live-p window)
-            (max 8 (- (window-body-height window) 4))
+            ;; One row is reserved for the workspace bar and one for the
+            ;; taskbar.  The mounted desktop hides buffer chrome, so no extra
+            ;; padding row is needed at the bottom.
+            (max 8 (- (window-body-height window) 2))
           24))))
 
 (defun etaf-desktop--copy-window (window)
@@ -326,15 +329,22 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
 
 (defun etaf-desktop--workspace-node (desktop state)
   "Build workspace controls for STATE using the reusable ETAF UI component."
-  (etaf-node 'etaf-workspace-bar
-             (list :workspaces (etaf-desktop--state-workspaces state)
-                   :active (etaf-desktop--state-active-workspace state)
-                   :brand "ETAF Desktop"
-                   :status "File   Edit   View   Window   Help"
-                   :on-select
-                   (lambda (workspace)
-                     (etaf-desktop-switch-workspace desktop workspace)))
-             nil))
+  (let* ((active-id (etaf-desktop--state-active-window state))
+         (active (and active-id
+                      (etaf-desktop--window-for state active-id))))
+    (etaf-node 'etaf-workspace-bar
+               (list :workspaces (etaf-desktop--state-workspaces state)
+                     :active (etaf-desktop--state-active-workspace state)
+                     ;; The right side is reserved for the focused
+                     ;; application's name; the shell itself is intentionally
+                     ;; not repeated as a product title or fake menu.
+                     :status (and active
+                                  (or (etaf-desktop--window-title active)
+                                      (format "%s" active-id)))
+                     :on-select
+                     (lambda (workspace)
+                       (etaf-desktop-switch-workspace desktop workspace)))
+               nil)))
 
 (defun etaf-desktop--splitter-ratio-change
     (desktop workspace path orientation ratio gesture)
@@ -470,7 +480,7 @@ to the desktop layout policy; windows remain the runtime's positioned shells."
     (etaf-node
      'column
      (list :width (list 'px (etaf-desktop--canvas-width-value desktop))
-           :height (list 'lh (+ (etaf-desktop--canvas-height-value desktop) 4))
+           :height (list 'lh (+ (etaf-desktop--canvas-height-value desktop) 2))
            :background-color "#CFD8DC" :color "#17202A")
      (list
       (etaf-desktop--workspace-node desktop state)
