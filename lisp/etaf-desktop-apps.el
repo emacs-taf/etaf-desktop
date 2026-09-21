@@ -168,6 +168,15 @@ When WORKSPACE is non-nil it fills a missing spec workspace."
              (gethash id (etaf-desktop--app-store-instances store))))
     id))
 
+(defun etaf-desktop--deactivate-other-instances (store active-id)
+  "Mark active instances other than ACTIVE-ID as inactive in STORE."
+  (maphash
+   (lambda (id instance)
+     (when (and (not (equal id active-id))
+                (eq (etaf-desktop--instance-status instance) 'active))
+       (setf (etaf-desktop--instance-status instance) 'inactive)))
+   (etaf-desktop--app-store-instances store)))
+
 (defun etaf-desktop--restore-window-state (desktop id state)
   "Apply saved window STATE to window ID in DESKTOP when it exists."
   (when (and (listp state)
@@ -272,6 +281,8 @@ RESTORE forces that callback even when its saved value is nil."
                              (list :title (etaf-desktop--app-title app)
                                    :workspace workspace))))
                  (ids (etaf-desktop--open-instance-windows desktop instance result app workspace)))
+            (etaf-desktop--deactivate-other-instances store
+                                                       (etaf-desktop--instance-id instance))
             (setf (etaf-desktop--instance-state instance)
                   (if (plist-member result :state)
                       (plist-get result :state)
@@ -314,6 +325,8 @@ RESTORE forces that callback even when its saved value is nil."
         (if window
             (progn
               (etaf-desktop-focus-window desktop window)
+              (etaf-desktop--deactivate-other-instances
+               (etaf-desktop--app-store desktop) id)
               (setf (etaf-desktop--instance-status instance) 'active)
               (etaf-desktop--instance-plist instance))
           (setf (etaf-desktop--instance-status instance) 'suspended)
