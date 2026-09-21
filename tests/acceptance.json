@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "load_path": [".", "tests", "../etaf", "../etaf-ui", "../ebox", "../ecss"],
+  "support": [],
+  "cases": [
+    {"name": "etaf-desktop-window-lifecycle-and-state-isolation", "file": "tests/etaf-desktop-tests.el", "purpose": "Window operations preserve identity, raise order and immutable public snapshots."},
+    {"name": "etaf-desktop-geometry-limits-maximize-minimize-restore", "file": "tests/etaf-desktop-tests.el", "purpose": "Size limits and maximize/minimize/restore preserve a normal rectangle."},
+    {"name": "etaf-desktop-workspace-policy", "file": "tests/etaf-desktop-tests.el", "purpose": "Workspace selection and removal preserve window ownership and reject invalid changes."},
+    {"name": "etaf-desktop-mounted-window-and-taskbar", "file": "tests/etaf-desktop-tests.el", "purpose": "A mounted window disappears on minimize and returns through application restore."}
+  ]
+}
