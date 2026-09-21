@@ -834,6 +834,12 @@ be mounted once; callers use `etaf-desktop-close' to release the Runtime."
                                    (etaf-desktop--controller-name desktop))
                                (etaf-desktop-view desktop)))
            (runtime (etaf-runtime-for-buffer buffer)))
+      ;; The mounted desktop owns the complete Emacs window body.  Hiding the
+      ;; buffer mode line avoids an extra application-looking row below the
+      ;; taskbar; status and app actions are projected by the desktop shell.
+      (with-current-buffer buffer
+        (setq-local mode-line-format nil)
+        (setq-local header-line-format nil))
       (setf (etaf-desktop--controller-buffer desktop) buffer
             (etaf-desktop--controller-runtime desktop) runtime)
       buffer)))

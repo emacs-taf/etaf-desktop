@@ -81,6 +81,8 @@
           (let ((buffer (etaf-desktop-mount desktop)))
             (should (buffer-live-p buffer))
             (with-current-buffer buffer
+              (should-not mode-line-format)
+              (should-not header-line-format)
               (should (string-match-p "Notes" (buffer-string))))
             (etaf-desktop-minimize-window desktop 'notes)
             (with-current-buffer buffer
