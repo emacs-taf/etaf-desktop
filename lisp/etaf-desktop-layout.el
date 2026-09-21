@@ -20,7 +20,7 @@
 
 (cl-defstruct (etaf-desktop--layout-workspace
                (:constructor etaf-desktop--layout-workspace-create))
-  mode tree floating)
+  mode tree floating pending)
 
 (cl-defstruct (etaf-desktop--layout-state
                (:constructor etaf-desktop--layout-state-create))
@@ -114,7 +114,7 @@ top/bottom regions."
         (etaf-desktop--layout-put-workspace
          layout workspace
          (etaf-desktop--layout-workspace-create
-          :mode 'floating :tree nil :floating nil)))))
+          :mode 'floating :tree nil :floating nil :pending nil)))))
 
 (defun etaf-desktop--layout-tree-leaves (tree)
   "Return leaf IDs in TREE from left/top to right/bottom."
@@ -238,7 +238,8 @@ workspace is synchronized.  Return DESKTOP."
              (known (etaf-desktop--layout-workspace-ids state name))
              (tree-ids (etaf-desktop--layout-tree-leaves
                         (etaf-desktop--layout-workspace-tree policy)))
-             (floating (etaf-desktop--layout-workspace-floating policy)))
+             (floating (etaf-desktop--layout-workspace-floating policy))
+             (pending (etaf-desktop--layout-workspace-pending policy)))
         (setf (etaf-desktop--layout-workspace-tree policy)
               (etaf-desktop--layout-clean-tree
                (etaf-desktop--layout-workspace-tree policy) known))
@@ -246,11 +247,15 @@ workspace is synchronized.  Return DESKTOP."
               (etaf-desktop--layout-tree-leaves
                (etaf-desktop--layout-workspace-tree policy)))
         (setf floating (cl-remove-if-not (lambda (id) (member id known)) floating))
+        (setq pending (cl-remove-if-not (lambda (id) (member id known)) pending))
         (dolist (id known)
           (unless (or (member id tree-ids) (member id floating))
-            (push id floating)))
+            (push id floating)
+            (push id pending)))
         (setf (etaf-desktop--layout-workspace-floating policy)
-              (delete-dups floating))))
+              (delete-dups floating)
+              (etaf-desktop--layout-workspace-pending policy)
+              (delete-dups pending))))
     desktop))
 
 (defun etaf-desktop-layout-refresh (desktop &optional workspace)
@@ -260,14 +265,39 @@ This is the safe integration hook for desktop mutations: it applies `tiling'
 and `monocle' modes in one guarded publication, while floating mode only
 updates membership.  The guard prevents a caller that refreshes from a
 publication callback from recursively publishing forever.  Return DESKTOP."
-  (let ((desktop (etaf-desktop--controller desktop)))
+  (let* ((desktop (etaf-desktop--controller desktop))
+         (workspace (or workspace
+                        (etaf-desktop--state-active-workspace
+                         (etaf-desktop--state desktop)))))
     (unless etaf-desktop--layout-refreshing
       (let ((etaf-desktop--layout-refreshing t))
         (etaf-desktop-layout-sync desktop workspace)
         (let ((mode (etaf-desktop-layout-mode desktop workspace)))
           (when (memq mode '(tiling monocle))
+            (etaf-desktop--layout-tile-pending desktop workspace)
             (etaf-desktop-layout-apply desktop workspace)))))
     desktop))
+
+(defun etaf-desktop--layout-tile-pending (desktop workspace)
+  "Move newly opened pending windows into WORKSPACE's active tree."
+  (let* ((state (etaf-desktop--state desktop))
+         (workspace (or workspace
+                        (etaf-desktop--state-active-workspace state)))
+         (policy (etaf-desktop--layout-ensure-workspace desktop workspace))
+         (tree (etaf-desktop--layout-workspace-tree policy))
+         (pending (etaf-desktop--layout-workspace-pending policy)))
+    (dolist (id pending)
+      (when (and (etaf-desktop--window-for state id)
+                 (not (member id (etaf-desktop--layout-tree-leaves tree))))
+        (setq tree (if tree
+                       (etaf-desktop--layout-split-node
+                        'vertical 0.5 tree (etaf-desktop--layout-leaf id))
+                     (etaf-desktop--layout-leaf id))))
+      (setf (etaf-desktop--layout-workspace-floating policy)
+            (delete id (etaf-desktop--layout-workspace-floating policy))))
+    (setf (etaf-desktop--layout-workspace-tree policy) tree
+          (etaf-desktop--layout-workspace-pending policy) nil)
+    tree))
 
 (defun etaf-desktop-layout-mode (desktop &optional workspace)
   "Return DESKTOP's layout mode for WORKSPACE.
@@ -484,7 +514,8 @@ floating preserves the tree and current rectangles for a later return."
                             'vertical 0.5 tree (etaf-desktop--layout-leaf id))
                          (etaf-desktop--layout-leaf id)))))
         (setf (etaf-desktop--layout-workspace-tree policy) tree
-              (etaf-desktop--layout-workspace-floating policy) nil))
+              (etaf-desktop--layout-workspace-floating policy) nil
+              (etaf-desktop--layout-workspace-pending policy) nil))
       (setf (etaf-desktop--layout-workspace-mode policy) mode)
       (etaf-desktop-layout-apply desktop workspace)
       mode)))
@@ -511,7 +542,9 @@ place and the new leaf is appended with a balanced vertical split."
                    'vertical 0.5 tree (etaf-desktop--layout-leaf id))
                 (etaf-desktop--layout-leaf id))
               (etaf-desktop--layout-workspace-floating policy)
-              (delete id (etaf-desktop--layout-workspace-floating policy))))
+              (delete id (etaf-desktop--layout-workspace-floating policy))
+              (etaf-desktop--layout-workspace-pending policy)
+              (delete id (etaf-desktop--layout-workspace-pending policy))))
       (setf (etaf-desktop--layout-workspace-mode policy) 'tiling)
       (etaf-desktop-layout-apply desktop workspace)
       (etaf-desktop-layout-tree desktop workspace))))
@@ -531,7 +564,9 @@ place and the new leaf is appended with a balanced vertical split."
             (etaf-desktop--layout-delete-id
              (etaf-desktop--layout-workspace-tree policy) id)
             (etaf-desktop--layout-workspace-floating policy)
-            (cons id (delete id (etaf-desktop--layout-workspace-floating policy))))
+            (cons id (delete id (etaf-desktop--layout-workspace-floating policy)))
+            (etaf-desktop--layout-workspace-pending policy)
+            (delete id (etaf-desktop--layout-workspace-pending policy)))
       (etaf-desktop-layout-apply desktop workspace)
       (etaf-desktop-layout-tree desktop workspace))))
 
@@ -578,7 +613,10 @@ an open window in the same workspace."
             (etaf-desktop--layout-workspace-mode policy) 'tiling
             (etaf-desktop--layout-workspace-floating policy)
             (delete target (delete new-id
-                                    (etaf-desktop--layout-workspace-floating policy))))
+                                    (etaf-desktop--layout-workspace-floating policy)))
+            (etaf-desktop--layout-workspace-pending policy)
+            (delete target (delete new-id
+                                   (etaf-desktop--layout-workspace-pending policy))))
       (etaf-desktop-layout-apply desktop workspace)
       (etaf-desktop-layout-tree desktop workspace))))
 
@@ -638,7 +676,9 @@ window itself should call `etaf-desktop-close-window'."
             (etaf-desktop--layout-delete-id
              (etaf-desktop--layout-workspace-tree policy) id)
             (etaf-desktop--layout-workspace-floating policy)
-            (delete id (etaf-desktop--layout-workspace-floating policy)))
+            (delete id (etaf-desktop--layout-workspace-floating policy))
+            (etaf-desktop--layout-workspace-pending policy)
+            (delete id (etaf-desktop--layout-workspace-pending policy)))
       (etaf-desktop-layout-apply desktop workspace)
       desktop)))
 
