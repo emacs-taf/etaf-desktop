@@ -61,8 +61,10 @@ the desktop state and is read afresh by each gesture start.")
   (let ((table (gethash desktop etaf-desktop--geometry-behaviors)))
     (when table
       (if id
-          (maphash (lambda (key _value)
-                     (when (equal (car key) id) (remhash key table))) table)
+          (let (keys)
+            (maphash (lambda (key _value)
+                       (when (equal (car key) id) (push key keys))) table)
+            (dolist (key keys) (remhash key table)))
         (remhash desktop etaf-desktop--geometry-behaviors)))))
 
 (defun etaf-desktop--canvas-window (desktop)
