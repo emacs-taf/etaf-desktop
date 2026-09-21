@@ -156,9 +156,19 @@
   (intern (format "etaf-desktop-window-%s" id)))
 
 (defun etaf-desktop--delta (gesture)
-  "Return integer X and Y displacement from GESTURE."
-  (let ((delta (plist-get gesture :delta)))
-    (cons (or (car delta) 0) (or (cdr delta) 0))))
+  "Return desktop-unit X and Y displacement from GESTURE.
+
+Ebox reports both pointer coordinates and DELTA in text-area pixels.  Desktop
+state uses pixels horizontally and text rows vertically, so normalize the
+vertical component against the originating window's actual frame line height
+at this boundary."
+  (let* ((delta (plist-get gesture :delta))
+         (window (plist-get gesture :window))
+         (line-height
+          (when (window-live-p window)
+            (max 1 (frame-char-height (window-frame window))))))
+    (cons (round (or (car delta) 0))
+          (round (/ (float (or (cdr delta) 0)) (or line-height 1))))))
 
 (defun etaf-desktop--drag-callback (desktop id kind)
   "Return a gesture callback for DESKTOP window ID and KIND."
@@ -284,9 +294,10 @@
          (windows
           (sort (cl-remove-if-not
                  (lambda (window)
-                   (and (equal (etaf-desktop--window-workspace window) workspace)
-                        (etaf-desktop--window-visible window)
-                        (not (etaf-desktop--window-minimized window))))
+                   ;; Keep minimized windows in the retained Component tree so
+                   ;; their child state survives; `etaf-window' projects the
+                   ;; controlled hidden/minimized presentation.
+                   (equal (etaf-desktop--window-workspace window) workspace))
                  (copy-sequence (etaf-desktop--state-windows state)))
                 (lambda (a b) (< (etaf-desktop--window-z-index a)
                                  (etaf-desktop--window-z-index b))))))

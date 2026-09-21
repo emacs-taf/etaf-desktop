@@ -1,6 +1,7 @@
 ;;; etaf-desktop-tests.el --- Public desktop application scenarios -*- lexical-binding: t; -*-
 
 (require 'ert)
+(require 'cl-lib)
 (require 'etaf-desktop)
 (require 'etaf)
 
@@ -89,6 +90,37 @@
               (should (string-match-p "desktop" (buffer-string))))))
       (etaf-desktop-close desktop))
     (etaf-desktop-close desktop)))
+
+(ert-deftest etaf-desktop-native-title-drag-converts-pixels-to-rows ()
+  "A native title gesture changes desktop Y by text rows, not raw pixels."
+  (let ((desktop (etaf-desktop-create :name " *desktop-drag-test*")))
+    (unwind-protect
+        (progn
+          (etaf-desktop-open-window desktop 'notes :title "Notes")
+          (let ((buffer (etaf-desktop-mount desktop)))
+            (save-window-excursion
+              (set-window-buffer (selected-window) buffer)
+              (with-current-buffer buffer
+                (goto-char (point-min))
+                (search-forward "Notes")
+                (let* ((position (match-beginning 0))
+                       (window (selected-window))
+                       (line-height (max 1 (frame-char-height)))
+                       (press (list 'down-mouse-1
+                                    (list window position '(1 . 1) 0)))
+                       (events (list
+                                (list 'mouse-movement
+                                      (list window position
+                                            (cons 1 (+ 1 line-height)) 1))
+                                (list 'drag-mouse-1 (event-start press)
+                                      (list window position
+                                            (cons 1 (+ 1 line-height)) 2))))
+                       (command (key-binding (vector press) nil nil position)))
+                  (cl-letf (((symbol-function 'read-event)
+                             (lambda (&rest _) (if events (pop events) ?q))))
+                    (funcall command press)))))))
+      (etaf-desktop-close desktop))
+    (should (= 1 (plist-get (etaf-desktop-window-state desktop 'notes) :y)))))
 
 (provide 'etaf-desktop-tests)
 ;;; etaf-desktop-tests.el ends here
