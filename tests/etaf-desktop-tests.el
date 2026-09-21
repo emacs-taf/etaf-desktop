@@ -238,7 +238,10 @@
            desktop
            '(:version 1
              :desktop (:name "saved" :canvas-width 120 :canvas-height 20
-                       :active-workspace main :workspaces (main) :windows nil)
+                       :active-workspace main :workspaces (main)
+                       :windows ((:id "manual" :title "Manual" :x 5 :y 2
+                                  :width 200 :height 6 :min-width 160 :min-height 3
+                                  :visible t :movable t :resizable t)))
              :instances ((:id "missing-1" :app-id missing-app :status active
                            :options nil :state nil :data nil :windows nil
                            :window-states nil))))
@@ -246,7 +249,7 @@
             (should (eq 'error (plist-get instance :status)))
             (should (string-match-p "not registered"
                                     (plist-get instance :error)))
-            (should (= 1 (length (etaf-desktop-windows desktop))))))
+            (should (= 2 (length (etaf-desktop-windows desktop))))))
       (etaf-desktop-close desktop))))
 
 (provide 'etaf-desktop-tests)
