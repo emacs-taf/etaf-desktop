@@ -23,6 +23,11 @@ the displaying Emacs window's body and stretches to its visible width and
 height.  Pass explicit dimensions when a desktop is embedding a fixed-size
 surface or when tests need deterministic geometry.
 
+The mounted desktop hides that buffer's header and mode lines so its workspace
+bar, canvas and taskbar occupy the complete visible body.  Application status
+and actions belong in the desktop shell or in the active application's own
+surface.
+
 `etaf-desktop-move-window` and `etaf-desktop-resize-window` are the single
 state update paths used by ETAF's controlled geometry Behaviors. Resize is
 clamped to each window's minimum and optional maximum, and Ebox pixel deltas
