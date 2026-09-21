@@ -54,15 +54,15 @@
   "Horizontal splits allocate width and respect each leaf's minimum width."
   (let ((desktop (etaf-desktop-create :canvas-width 100 :canvas-height 12)))
     (etaf-desktop-open-window desktop 'left :width 30 :height 4
-                              :min-width 30 :min-height 2)
+                              :min-width 30 :min-height 2 :max-width 60)
     (etaf-desktop-open-window desktop 'right :width 20 :height 4
                               :min-width 20 :min-height 2)
     (etaf-desktop-layout-split desktop 'left 'right 'horizontal 0.8)
     (let ((left (etaf-desktop-window-state desktop 'left))
           (right (etaf-desktop-window-state desktop 'right)))
-      (should (= 80 (plist-get left :width)))
-      (should (= 20 (plist-get right :width)))
-      (should (= 80 (plist-get right :x))))
+      (should (= 60 (plist-get left :width)))
+      (should (= 40 (plist-get right :width)))
+      (should (= 60 (plist-get right :x))))
     (etaf-desktop-layout-resize-split desktop nil 0.2)
     (let ((left (etaf-desktop-window-state desktop 'left)))
       (should (= 30 (plist-get left :width))))))

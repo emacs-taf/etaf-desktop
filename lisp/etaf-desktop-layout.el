@@ -345,11 +345,32 @@ The tree uses `(:leaf WINDOW-ID)' and
           (max (etaf-desktop--layout-min-size state first axis)
                (etaf-desktop--layout-min-size state second axis)))))))
 
-(defun etaf-desktop--layout-split-pixel (total ratio first-min second-min)
-  "Return first integer split of TOTAL according to RATIO and minima."
+(defun etaf-desktop--layout-max-size (state node axis)
+  "Return maximum size for NODE along AXIS, or nil when unbounded."
+  (if (etaf-desktop--layout-leaf-p node)
+      (let ((window (etaf-desktop--layout-window state (nth 1 node))))
+        (if (eq axis 'width)
+            (etaf-desktop--window-max-width window)
+          (etaf-desktop--window-max-height window)))
+    (let* ((orientation (nth 1 node))
+           (first (etaf-desktop--layout-max-size state (nth 3 node) axis))
+           (second (etaf-desktop--layout-max-size state (nth 4 node) axis)))
+      (if (eq axis (if (eq orientation 'horizontal) 'width 'height))
+          (and first second (+ first second))
+        (cond
+         ((and first second) (max first second))
+         (first first)
+         (second second)
+         (t nil))))))
+
+(defun etaf-desktop--layout-split-pixel
+    (total ratio first-min second-min first-max second-max)
+  "Return first integer split of TOTAL according to RATIO and bounds."
   (let* ((ideal (round (* (float total) ratio)))
          (low (max 1 first-min))
          (high (min (1- total) (- total (max 1 second-min)))))
+    (setq low (max low (if second-max (- total second-max) 1)))
+    (setq high (min high (or first-max (1- total))))
     (if (> low high)
         (max 1 (min (1- total) ideal))
       (max low (min high ideal)))))
@@ -363,11 +384,13 @@ The tree uses `(:leaf WINDOW-ID)' and
            (first (nth 3 node))
            (second (nth 4 node)))
       (if (eq orientation 'horizontal)
-          (let* ((first-width
+           (let* ((first-width
                   (etaf-desktop--layout-split-pixel
                    width ratio
                    (etaf-desktop--layout-min-size state first 'width)
-                   (etaf-desktop--layout-min-size state second 'width))))
+                   (etaf-desktop--layout-min-size state second 'width)
+                   (etaf-desktop--layout-max-size state first 'width)
+                   (etaf-desktop--layout-max-size state second 'width))))
             (append
              (etaf-desktop--layout-rectangles
               state first x y first-width height)
@@ -377,7 +400,9 @@ The tree uses `(:leaf WINDOW-ID)' and
                 (etaf-desktop--layout-split-pixel
                  height ratio
                  (etaf-desktop--layout-min-size state first 'height)
-                 (etaf-desktop--layout-min-size state second 'height))))
+                 (etaf-desktop--layout-min-size state second 'height)
+                 (etaf-desktop--layout-max-size state first 'height)
+                 (etaf-desktop--layout-max-size state second 'height))))
           (append
            (etaf-desktop--layout-rectangles
             state first x y width first-height)
