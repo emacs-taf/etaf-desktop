@@ -32,7 +32,8 @@
 
 (defun etaf-desktop--validate-app-id (id)
   "Validate and return stable application ID ID."
-  (unless (or (symbolp id) (and (stringp id) (not (string-empty-p id))))
+  (unless (or (and (symbolp id) (not (null id)))
+              (and (stringp id) (not (string-empty-p id))))
     (etaf-desktop--fail "Application ID must be a symbol or nonempty string: %S" id))
   id)
 
@@ -243,11 +244,12 @@ When FORCE is nil, signal if any desktop still has a live instance of ID."
   (and (gethash id etaf-desktop--apps) t))
 
 (cl-defun etaf-desktop-launch
-    (desktop app-id &key instance-id options restore-data workspace)
+    (desktop app-id &key instance-id options restore-data restore workspace)
   "Launch APP-ID in DESKTOP and return its instance state plist.
 An application failure is isolated to an `error' instance and an error
 placeholder window; the desktop remains usable.  INSTANCE-ID is stable across
-session restore.  RESTORE-DATA is passed to the app's restore callback."
+session restore.  RESTORE-DATA is passed to the app's restore callback;
+RESTORE forces that callback even when its saved value is nil."
   (let* ((desktop (etaf-desktop--controller desktop))
          (app (etaf-desktop--app (etaf-desktop--validate-app-id app-id)))
          (store (etaf-desktop--app-store desktop))
@@ -262,7 +264,8 @@ session restore.  RESTORE-DATA is passed to the app's restore callback."
       (puthash id instance instances)
       (condition-case err
           (let* ((context (etaf-desktop--instance-context desktop instance))
-                 (result (if (and restore-data (etaf-desktop--app-restore app))
+                 (result (if (and (or restore restore-data)
+                                  (etaf-desktop--app-restore app))
                              (funcall (etaf-desktop--app-restore app) context restore-data)
                            (if (etaf-desktop--app-open app)
                                (funcall (etaf-desktop--app-open app) context)
@@ -460,6 +463,7 @@ other applications continue restoring."
               (etaf-desktop-launch desktop app-id :instance-id id
                                    :options (plist-get saved :options)
                                    :restore-data data
+                                   :restore t
                                    :workspace saved-workspace)
               (etaf-desktop-set-instance-state desktop id (plist-get saved :state))
               (dolist (pair (plist-get saved :window-states))
