@@ -121,6 +121,35 @@
             (should (eq 'notes (etaf-desktop-active-window desktop)))))
       (etaf-desktop-close desktop))))
 
+(ert-deftest etaf-desktop-nested-content-activation-raises-window ()
+  "Pressing an interactive descendant also focuses and raises its window."
+  (let ((desktop (etaf-desktop-create :name " *desktop-nested-focus*")))
+    (unwind-protect
+        (progn
+          (etaf-desktop-open-window
+           desktop 'notes :x 2 :y 2
+           :view (etaf-view
+                  (etaf-button :label "Open notes"
+                               :on-press (lambda () nil))))
+          (etaf-desktop-open-window
+           desktop 'files :x 30 :y 2
+           :view (etaf-view (text "Files body")))
+          (let* ((buffer (etaf-desktop-mount desktop))
+                 (runtime (etaf-runtime-for-buffer buffer))
+                 (button-ref
+                  (cl-loop for entry in (etaf-runtime-handler-entries runtime)
+                           for ref = (car entry)
+                           for props = (etaf-runtime-host-props-for runtime ref)
+                           when (and (assq 'press entry)
+                                     (equal (plist-get props :class)
+                                            "etaf-button enabled"))
+                           return ref)))
+            (should button-ref)
+            (should (eq 'files (etaf-desktop-active-window desktop)))
+            (etaf-dispatch-event runtime button-ref 'press)
+            (should (eq 'notes (etaf-desktop-active-window desktop)))))
+      (etaf-desktop-close desktop))))
+
 (ert-deftest etaf-desktop-native-title-drag-converts-pixels-to-rows ()
   "A native title gesture changes desktop Y by text rows, not raw pixels."
   (let ((desktop (etaf-desktop-create :name " *desktop-drag-test*")))

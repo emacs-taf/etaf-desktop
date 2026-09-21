@@ -8,6 +8,7 @@
     {"name": "etaf-desktop-workspace-policy", "file": "tests/etaf-desktop-tests.el", "purpose": "Workspace selection and removal preserve window ownership and reject invalid changes."},
     {"name": "etaf-desktop-mounted-window-and-taskbar", "file": "tests/etaf-desktop-tests.el", "purpose": "A mounted window remains in the retained application tree while its body is hidden and returns through taskbar restore."},
     {"name": "etaf-desktop-body-activation-raises-window", "file": "tests/etaf-desktop-tests.el", "purpose": "Pressing application content focuses and raises the corresponding desktop window."},
+    {"name": "etaf-desktop-nested-content-activation-raises-window", "file": "tests/etaf-desktop-tests.el", "purpose": "Pressing an interactive descendant bubbles to the window focus policy."},
     {"name": "etaf-desktop-native-title-drag-converts-pixels-to-rows", "file": "tests/etaf-desktop-tests.el", "purpose": "A native title drag converts text-area pixel motion into one logical desktop row."},
     {"name": "etaf-desktop-native-drag-keeps-behavior-origin-across-rerenders", "file": "tests/etaf-desktop-tests.el", "purpose": "A controlled title drag retains its origin while each motion publishes a new desktop generation."},
     {"name": "etaf-desktop-gesture-retains-origin-through-multiple-motions", "file": "tests/etaf-desktop-gesture-tests.el", "purpose": "A mounted title gesture retains its origin through multiple move publications."},
