@@ -481,7 +481,13 @@ other applications continue restoring."
               (etaf-desktop-set-instance-state desktop id (plist-get saved :state))
               (dolist (pair (plist-get saved :window-states))
                 (etaf-desktop--restore-window-state desktop (car pair)
-                                                    (cdr pair))))
+                                                    (cdr pair)))
+              (pcase (plist-get saved :status)
+                ('suspended (etaf-desktop-suspend-instance desktop id))
+                ('inactive
+                 (setf (etaf-desktop--instance-status
+                        (etaf-desktop--instance desktop id)) 'inactive))
+                ('closed (etaf-desktop-close-instance desktop id 'restore))))
           (let ((instance (etaf-desktop--instance-create
                            :id id :app-id app-id :status 'error
                            :options (plist-get saved :options) :windows nil
