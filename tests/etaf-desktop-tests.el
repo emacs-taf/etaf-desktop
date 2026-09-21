@@ -122,5 +122,132 @@
       (etaf-desktop-close desktop))
     (should (= 1 (plist-get (etaf-desktop-window-state desktop 'notes) :y)))))
 
+(ert-deftest etaf-desktop-application-registry-and-lifecycle ()
+  "A manifest launches an isolated instance and owns lifecycle callbacks."
+  (let* ((app 'etaf-desktop-test-registry)
+         (opened nil) (closed nil)
+         (desktop (etaf-desktop-create :name " *desktop-app-registry*")))
+    (unwind-protect
+        (progn
+          (etaf-desktop-register-app
+           app :title "Registry"
+           :capabilities '(multiple-instances resizable)
+           :open (lambda (context)
+                   (setq opened (plist-get context :instance-id))
+                   (list :state '(:counter 1)
+                         :windows (list (list :id 'main :title "Registry"
+                                              :view (etaf-view (text "Registry"))
+                                              :x 3 :y 2 :width 240 :height 8
+                                              :min-width 20))))
+           :close (lambda (context reason)
+                    (setq closed (list (plist-get context :instance-id) reason))))
+          (let* ((manifest (etaf-desktop-app app))
+                 (instance (etaf-desktop-launch desktop app :options '(:mode test)))
+                 (id (plist-get instance :id)))
+            (should (equal "Registry" (plist-get manifest :title)))
+            (should (equal '(multiple-instances resizable)
+                           (plist-get manifest :capabilities)))
+            (should (eq 'active (plist-get instance :status)))
+            (should (equal id opened))
+            (should (equal '(:counter 1)
+                           (progn (etaf-desktop-set-instance-state desktop id
+                                                                    '(:counter 1))
+                                  (plist-get (etaf-desktop-instance desktop id)
+                                             :state))))
+            ;; Lifecycle state remains observable while controls use public APIs.
+            (should (eq 'suspended
+                        (plist-get (etaf-desktop-suspend-instance desktop id)
+                                   :status)))
+            (should (eq 'active
+                        (plist-get (etaf-desktop-restore-instance desktop id)
+                                   :status)))
+            (should (eq 'closed
+                        (plist-get (etaf-desktop-close-instance desktop id 'quit)
+                                   :status)))
+            (should (equal (list id 'quit) closed))))
+      (etaf-desktop-unregister-app app t)
+      (etaf-desktop-close desktop))))
+
+(ert-deftest etaf-desktop-application-errors-are-isolated ()
+  "A failing application gets an error instance without breaking the desktop."
+  (let* ((app 'etaf-desktop-test-failing)
+         (desktop (etaf-desktop-create :name " *desktop-app-error*")))
+    (unwind-protect
+        (progn
+          (etaf-desktop-register-app
+           app :open (lambda (_context) (error "application boom")))
+          (let ((instance (etaf-desktop-launch desktop app)))
+            (should (eq 'error (plist-get instance :status)))
+            (should (string-match-p "application boom"
+                                    (plist-get instance :error)))
+            (should (equal 1 (length (etaf-desktop-windows desktop))))
+            (etaf-desktop-open-window desktop 'still-usable :title "Still usable")
+            (should (etaf-desktop-window-state desktop 'still-usable))))
+      (etaf-desktop-unregister-app app t)
+      (etaf-desktop-close desktop))))
+
+(ert-deftest etaf-desktop-session-roundtrip-restores-app-state ()
+  "Session state uses app callbacks and restores windows without View objects."
+  (let* ((app 'etaf-desktop-test-session)
+         (desktop (etaf-desktop-create :name " *desktop-session-a*"))
+         (restored (etaf-desktop-create :name " *desktop-session-b*"))
+         (restore-seen nil))
+    (unwind-protect
+        (progn
+          (etaf-desktop-register-app
+           app :title "Session"
+           :open (lambda (_context)
+                   (list :state '(:counter 7)
+                         :windows (list (list :id 'main :title "Session"
+                                              :view (etaf-view (text "Session"))
+                                              :x 11 :y 4 :width 200 :height 9))))
+           :serialize (lambda (context)
+                        (list :counter (plist-get (plist-get context :state)
+                                                  :counter)))
+           :restore (lambda (context data)
+                      (setq restore-seen data)
+                      (list :state '(:counter 8)
+                            :windows (list (list :id 'main :title "Session restored"
+                                                 :view (etaf-view (text "Restored")))))))
+          (let* ((instance (etaf-desktop-launch desktop app))
+                 (id (plist-get instance :id))
+                 (session (etaf-desktop-session-state desktop)))
+            (etaf-desktop-set-instance-state desktop id '(:counter 7))
+            (setq session (etaf-desktop-session-state desktop))
+            (etaf-desktop-restore-session restored session)
+            (should (equal '(:counter 7) restore-seen))
+            (should (equal '(active)
+                           (mapcar (lambda (item) (plist-get item :status))
+                                   (etaf-desktop-instances restored))))
+            (should (= 11 (plist-get
+                           (etaf-desktop-window-state restored
+                                                       (car (plist-get
+                                                             (car (etaf-desktop-instances restored))
+                                                             :windows)))
+                           :x)))))
+      (etaf-desktop-unregister-app app t)
+      (etaf-desktop-close desktop)
+      (etaf-desktop-close restored))))
+
+(ert-deftest etaf-desktop-session-unknown-app-isolated ()
+  "Restoring a session with an unavailable app creates an error placeholder."
+  (let ((desktop (etaf-desktop-create :name " *desktop-session-missing*")))
+    (unwind-protect
+        (progn
+          (etaf-desktop-restore-session
+           desktop
+           '(:version 1
+             :desktop (:name "saved" :canvas-width 120 :canvas-height 20
+                       :active-workspace main :workspaces (main) :windows nil)
+             :instances ((:id "missing-1" :app-id missing-app :status active
+                           :options nil :state nil :data nil :windows nil
+                           :window-states nil))))
+          (let ((instance (car (etaf-desktop-instances desktop))))
+            (should (eq 'error (plist-get instance :status)))
+            (should (string-match-p "not registered"
+                                    (plist-get instance :error)))
+            (should (= 1 (length (etaf-desktop-windows desktop))))))
+      (etaf-desktop-close desktop))))
+
 (provide 'etaf-desktop-tests)
 ;;; etaf-desktop-tests.el ends here

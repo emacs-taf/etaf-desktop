@@ -7,6 +7,13 @@
     {"name": "etaf-desktop-geometry-limits-maximize-minimize-restore", "file": "tests/etaf-desktop-tests.el", "purpose": "Size limits and maximize/minimize/restore preserve a normal rectangle."},
     {"name": "etaf-desktop-workspace-policy", "file": "tests/etaf-desktop-tests.el", "purpose": "Workspace selection and removal preserve window ownership and reject invalid changes."},
     {"name": "etaf-desktop-mounted-window-and-taskbar", "file": "tests/etaf-desktop-tests.el", "purpose": "A mounted window remains in the retained application tree while its body is hidden and returns through taskbar restore."},
-    {"name": "etaf-desktop-native-title-drag-converts-pixels-to-rows", "file": "tests/etaf-desktop-tests.el", "purpose": "A native title drag converts text-area pixel motion into one logical desktop row."}
+    {"name": "etaf-desktop-native-title-drag-converts-pixels-to-rows", "file": "tests/etaf-desktop-tests.el", "purpose": "A native title drag converts text-area pixel motion into one logical desktop row."},
+    {"name": "etaf-desktop-application-registry-and-lifecycle", "file": "tests/etaf-desktop-tests.el", "purpose": "An application manifest launches, suspends, restores and closes an isolated instance through public callbacks."},
+    {"name": "etaf-desktop-application-errors-are-isolated", "file": "tests/etaf-desktop-tests.el", "purpose": "A failing application becomes an error placeholder while other desktop windows remain usable."},
+    {"name": "etaf-desktop-session-roundtrip-restores-app-state", "file": "tests/etaf-desktop-tests.el", "purpose": "A serializable desktop session invokes application restore callbacks and reapplies saved window geometry."},
+    {"name": "etaf-desktop-session-unknown-app-isolated", "file": "tests/etaf-desktop-tests.el", "purpose": "A missing application during session restore becomes an error placeholder without aborting the desktop."},
+    {"name": "etaf-desktop-tiling-layout-and-split-resize", "file": "tests/etaf-desktop-layout-tests.el", "purpose": "Tiling assigns non-overlapping rectangles and applies an adjustable split ratio."},
+    {"name": "etaf-desktop-layout-floating-and-untile", "file": "tests/etaf-desktop-layout-tests.el", "purpose": "Untiling preserves a floating overlay and retile restores it to the tree."},
+    {"name": "etaf-desktop-layout-monocle-and-close-sync", "file": "tests/etaf-desktop-layout-tests.el", "purpose": "Monocle fills the canvas and closing a window removes its layout leaf."}
   ]
 }
