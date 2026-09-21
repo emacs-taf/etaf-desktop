@@ -14,6 +14,7 @@
     {"name": "etaf-desktop-session-unknown-app-isolated", "file": "tests/etaf-desktop-tests.el", "purpose": "A missing application during session restore becomes an error placeholder without aborting the desktop."},
     {"name": "etaf-desktop-tiling-layout-and-split-resize", "file": "tests/etaf-desktop-layout-tests.el", "purpose": "Tiling assigns non-overlapping rectangles and applies an adjustable split ratio."},
     {"name": "etaf-desktop-layout-floating-and-untile", "file": "tests/etaf-desktop-layout-tests.el", "purpose": "Untiling preserves a floating overlay and retile restores it to the tree."},
+    {"name": "etaf-desktop-layout-horizontal-split-and-minimums", "file": "tests/etaf-desktop-layout-tests.el", "purpose": "Horizontal tiling respects minimum widths and preserves the split ratio."},
     {"name": "etaf-desktop-layout-monocle-and-close-sync", "file": "tests/etaf-desktop-layout-tests.el", "purpose": "Monocle fills the canvas and closing a window removes its layout leaf."}
   ]
 }
