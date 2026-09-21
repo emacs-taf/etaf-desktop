@@ -12,6 +12,7 @@
     {"name": "etaf-desktop-gesture-retains-origin-through-multiple-motions", "file": "tests/etaf-desktop-gesture-tests.el", "purpose": "A mounted title gesture retains its origin through multiple move publications."},
     {"name": "etaf-desktop-gesture-repeated-sequences-reset-origin", "file": "tests/etaf-desktop-gesture-tests.el", "purpose": "Repeated gestures begin from committed geometry after garbage collection."},
     {"name": "etaf-desktop-gesture-close-and-reopen-releases-retained-component", "file": "tests/etaf-desktop-gesture-tests.el", "purpose": "Closing and reopening a window releases the old retained gesture component and starts cleanly."},
+    {"name": "etaf-desktop-gesture-resizes-all-edges-and-corners", "file": "tests/etaf-desktop-gesture-tests.el", "purpose": "Controlled resize Behaviors update position and size for all four edges and corner combinations."},
     {"name": "etaf-desktop-application-registry-and-lifecycle", "file": "tests/etaf-desktop-tests.el", "purpose": "An application manifest launches, suspends, restores and closes an isolated instance through public callbacks."},
     {"name": "etaf-desktop-application-errors-are-isolated", "file": "tests/etaf-desktop-tests.el", "purpose": "A failing application becomes an error placeholder while other desktop windows remain usable."},
     {"name": "etaf-desktop-session-roundtrip-restores-app-state", "file": "tests/etaf-desktop-tests.el", "purpose": "A serializable desktop session invokes application restore callbacks and reapplies saved window geometry."},

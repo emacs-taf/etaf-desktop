@@ -223,7 +223,13 @@ at this boundary."
 
 (defun etaf-desktop--resize-behavior (desktop id edge)
   "Construct a controlled resize Behavior for window ID on EDGE."
-  (let ((state (etaf-desktop-window-state desktop id)))
+  (let ((state (etaf-desktop-window-state desktop id))
+        (edges (pcase edge
+                 ('top-left '(left top))
+                 ('top-right '(right top))
+                 ('bottom-left '(left bottom))
+                 ('bottom-right '(right bottom))
+                 (_ (list edge)))))
     (etaf-resizable-controlled
      (lambda ()
        (let ((current (etaf-desktop-window-state desktop id)))
@@ -232,24 +238,35 @@ at this boundary."
                :width (plist-get current :width)
                :height (plist-get current :height))))
      (lambda (next)
-       (etaf-desktop-resize-window desktop id
-                                  (plist-get next :width)
-                                  (plist-get next :height)))
-     :edges edge :delta #'etaf-desktop--delta
+       (etaf-desktop--set-window-geometry
+        desktop id (plist-get next :x) (plist-get next :y)
+        (plist-get next :width) (plist-get next :height)))
+     :edges edges :delta #'etaf-desktop--delta
      :min-width (plist-get state :min-width)
      :max-width (plist-get state :max-width)
      :min-height (plist-get state :min-height)
-     :max-height (plist-get state :max-height))))
+     :max-height (plist-get state :max-height)
+     :on-start (lambda (_gesture)
+                 (etaf-desktop-focus-window desktop id)))))
 
 (etaf-define-component etaf-desktop--window-surface (&key desktop id)
   "Own one window's gesture Behaviors for its retained Component lifetime."
   :bindings ((move (etaf-desktop--move-behavior desktop id))
+             (resize-left (etaf-desktop--resize-behavior desktop id 'left))
              (resize-right (etaf-desktop--resize-behavior desktop id 'right))
-             (resize-bottom (etaf-desktop--resize-behavior desktop id 'bottom)))
+             (resize-top (etaf-desktop--resize-behavior desktop id 'top))
+             (resize-bottom (etaf-desktop--resize-behavior desktop id 'bottom))
+             (resize-top-left (etaf-desktop--resize-behavior desktop id 'top-left))
+             (resize-top-right (etaf-desktop--resize-behavior desktop id 'top-right))
+             (resize-bottom-left (etaf-desktop--resize-behavior desktop id 'bottom-left))
+             (resize-bottom-right (etaf-desktop--resize-behavior desktop id 'bottom-right)))
   :render
   (when-let* ((window (etaf-desktop--window-for
                       (etaf-desktop--state desktop) id)))
-    (etaf-desktop--window-shell desktop window move resize-right resize-bottom)))
+    (etaf-desktop--window-shell desktop window move
+                                 resize-left resize-right resize-top resize-bottom
+                                 resize-top-left resize-top-right
+                                 resize-bottom-left resize-bottom-right)))
 
 (defun etaf-desktop--window-node (desktop window)
   "Return the keyed retained Component for WINDOW in DESKTOP."
@@ -258,7 +275,9 @@ at this boundary."
                    :desktop desktop :id (etaf-desktop--window-id window))
              nil))
 
-(defun etaf-desktop--window-shell (desktop window move resize-right resize-bottom)
+(defun etaf-desktop--window-shell
+    (desktop window move resize-left resize-right resize-top resize-bottom
+             resize-top-left resize-top-right resize-bottom-left resize-bottom-right)
   "Build WINDOW's ETAF UI shell with its retained geometry Behaviors.
 MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
   (let* ((id (etaf-desktop--window-id window))
@@ -269,8 +288,14 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
                      ((etaf-desktop--window-maximized window) 'maximized)
                      (t 'normal)))
          (move (and (etaf-desktop--window-movable window) move))
+         (resize-left (and (etaf-desktop--window-resizable window) resize-left))
          (resize-right (and (etaf-desktop--window-resizable window) resize-right))
-         (resize-bottom (and (etaf-desktop--window-resizable window) resize-bottom)))
+         (resize-top (and (etaf-desktop--window-resizable window) resize-top))
+         (resize-bottom (and (etaf-desktop--window-resizable window) resize-bottom))
+         (resize-top-left (and (etaf-desktop--window-resizable window) resize-top-left))
+         (resize-top-right (and (etaf-desktop--window-resizable window) resize-top-right))
+         (resize-bottom-left (and (etaf-desktop--window-resizable window) resize-bottom-left))
+         (resize-bottom-right (and (etaf-desktop--window-resizable window) resize-bottom-right)))
     (etaf-node
      'etaf-window
      (list :key id :id (format "%s" id) :ref (etaf-desktop--window-ref id)
@@ -288,15 +313,26 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
            :max-height (and (etaf-desktop--window-max-height window)
                             (list 'lh (etaf-desktop--window-max-height window)))
            :resizable (etaf-desktop--window-resizable window)
-           :resize-edges '(right bottom)
+           :resize-edges '(top right bottom left top-left top-right bottom-right bottom-left)
+           :resize-refs
+           (mapcar (lambda (edge)
+                     (cons edge (intern (format "etaf-desktop-resize-%s-%s" id edge))))
+                   '(top right bottom left top-left top-right bottom-right bottom-left))
            :move-use move
            :resize-use (delq nil
-                             (list (and resize-right (cons 'right resize-right))
-                                   (and resize-bottom (cons 'bottom resize-bottom))))
+                             (list (and resize-left (cons 'left resize-left))
+                                   (and resize-right (cons 'right resize-right))
+                                   (and resize-top (cons 'top resize-top))
+                                   (and resize-bottom (cons 'bottom resize-bottom))
+                                   (and resize-top-left (cons 'top-left resize-top-left))
+                                   (and resize-top-right (cons 'top-right resize-top-right))
+                                   (and resize-bottom-left (cons 'bottom-left resize-bottom-left))
+                                   (and resize-bottom-right (cons 'bottom-right resize-bottom-right))))
            :on-minimize (lambda () (etaf-desktop-minimize-window desktop id))
            :on-maximize (lambda () (etaf-desktop-maximize-window desktop id))
            :on-restore (lambda () (etaf-desktop-restore-window desktop id))
-           :on-close (lambda () (etaf-desktop-close-window desktop id)))
+           :on-close (lambda () (etaf-desktop-close-window desktop id))
+           :on-focus (lambda () (etaf-desktop-focus-window desktop id)))
      (list body))))
 
 (defun etaf-desktop--taskbar-node (desktop state)
@@ -481,7 +517,7 @@ to the desktop layout policy; windows remain the runtime's positioned shells."
      'column
      (list :width (list 'px (etaf-desktop--canvas-width-value desktop))
            :height (list 'lh (+ (etaf-desktop--canvas-height-value desktop) 2))
-           :background-color "#CFD8DC" :color "#17202A")
+           :background-color "#CBD7E1" :color "#17202A")
      (list
       (etaf-desktop--workspace-node desktop state)
       (etaf-node
@@ -489,7 +525,8 @@ to the desktop layout policy; windows remain the runtime's positioned shells."
        (list :position 'relative
              :width (list 'px (etaf-desktop--canvas-width-value desktop))
              :height (list 'lh (etaf-desktop--canvas-height-value desktop))
-             :background-color "#ECEFF1")
+             :background-color "#EDF2F7"
+             :border '((px 1) solid "#D7E0E8"))
        (mapcar (lambda (window) (etaf-desktop--window-node desktop window)) windows))
        (when layout-tree
          (etaf-desktop--splitter-overlay desktop state layout-tree workspace))
@@ -686,6 +723,39 @@ WORKSPACE defaults to the active workspace."
              (etaf-desktop--window-y window) y
              (etaf-desktop--window-normal-geometry window)
              (list x y (etaf-desktop--window-width window) (etaf-desktop--window-height window)))
+       (etaf-desktop--raise state window)
+       (etaf-desktop--window-plist window)))))
+
+(defun etaf-desktop--set-window-geometry (desktop id x y width height)
+  "Commit one atomic geometry update for window ID.
+X, Y, WIDTH and HEIGHT are logical desktop units.  This internal path is used
+by combined edge and corner resize Behaviors so a left/top resize publishes
+its position and size together." 
+  (etaf-desktop--number x "x" 0)
+  (etaf-desktop--number y "y" 0)
+  (etaf-desktop--number width "width" 1)
+  (etaf-desktop--number height "height" 1)
+  (etaf-desktop--update
+   desktop
+   (lambda (state)
+     (let ((window (etaf-desktop--window-for state id)))
+       (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
+       (unless (etaf-desktop--window-resizable window)
+         (etaf-desktop--fail "Desktop window is not resizable: %S" id))
+       (when (etaf-desktop--window-maximized window)
+         (setf (etaf-desktop--window-maximized window) nil))
+       (setq width (etaf-desktop--clamp width
+                                        (etaf-desktop--window-min-width window)
+                                        (etaf-desktop--window-max-width window))
+             height (etaf-desktop--clamp height
+                                         (etaf-desktop--window-min-height window)
+                                         (etaf-desktop--window-max-height window)))
+       (setf (etaf-desktop--window-x window) x
+             (etaf-desktop--window-y window) y
+             (etaf-desktop--window-width window) width
+             (etaf-desktop--window-height window) height
+             (etaf-desktop--window-normal-geometry window)
+             (list x y width height))
        (etaf-desktop--raise state window)
        (etaf-desktop--window-plist window)))))
 

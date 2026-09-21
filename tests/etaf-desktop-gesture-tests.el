@@ -88,5 +88,46 @@
                                    (plist-get state :y)))))))
       (etaf-desktop-close desktop))))
 
+(ert-deftest etaf-desktop-gesture-resizes-all-edges-and-corners ()
+  "Each edge and corner publishes one controlled geometry update."
+  (let ((desktop (etaf-desktop-create :name " *desktop-gesture-edges*")))
+    (unwind-protect
+        (progn
+          (dolist (id '(left top top-left bottom-right))
+            (etaf-desktop-open-window desktop id :x 10 :y 4
+                                      :width 100 :height 12
+                                      :min-width 20 :min-height 3))
+          (let* ((buffer (etaf-desktop-mount desktop))
+                 (runtime (etaf-runtime-for-buffer buffer)))
+            (etaf-desktop-gesture-test--dispatch
+             runtime 'etaf-desktop-resize-left-left
+             '((:phase start :delta (0 . 0)) (:phase end :delta (10 . 0))))
+            (etaf-desktop-gesture-test--dispatch
+             runtime 'etaf-desktop-resize-top-top
+             '((:phase start :delta (0 . 0)) (:phase end :delta (0 . 2))))
+            (etaf-desktop-gesture-test--dispatch
+             runtime 'etaf-desktop-resize-top-left-top-left
+             '((:phase start :delta (0 . 0)) (:phase end :delta (5 . 1))))
+            (etaf-desktop-gesture-test--dispatch
+             runtime 'etaf-desktop-resize-bottom-right-bottom-right
+             '((:phase start :delta (0 . 0)) (:phase end :delta (5 . 2))))
+            (should (equal '(20 4 90 12)
+                           (let ((s (etaf-desktop-window-state desktop 'left)))
+                             (list (plist-get s :x) (plist-get s :y)
+                                   (plist-get s :width) (plist-get s :height)))))
+            (should (equal '(10 6 100 10)
+                           (let ((s (etaf-desktop-window-state desktop 'top)))
+                             (list (plist-get s :x) (plist-get s :y)
+                                   (plist-get s :width) (plist-get s :height)))))
+            (should (equal '(15 5 95 11)
+                           (let ((s (etaf-desktop-window-state desktop 'top-left)))
+                             (list (plist-get s :x) (plist-get s :y)
+                                   (plist-get s :width) (plist-get s :height)))))
+            (should (equal '(10 4 105 14)
+                           (let ((s (etaf-desktop-window-state desktop 'bottom-right)))
+                             (list (plist-get s :x) (plist-get s :y)
+                                   (plist-get s :width) (plist-get s :height)))))))
+      (etaf-desktop-close desktop))))
+
 (provide 'etaf-desktop-gesture-tests)
 ;;; etaf-desktop-gesture-tests.el ends here
