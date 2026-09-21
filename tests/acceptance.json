@@ -12,9 +12,11 @@
     {"name": "etaf-desktop-application-errors-are-isolated", "file": "tests/etaf-desktop-tests.el", "purpose": "A failing application becomes an error placeholder while other desktop windows remain usable."},
     {"name": "etaf-desktop-session-roundtrip-restores-app-state", "file": "tests/etaf-desktop-tests.el", "purpose": "A serializable desktop session invokes application restore callbacks and reapplies saved window geometry."},
     {"name": "etaf-desktop-session-unknown-app-isolated", "file": "tests/etaf-desktop-tests.el", "purpose": "A missing application during session restore becomes an error placeholder without aborting the desktop."},
+    {"name": "etaf-desktop-shell-controls-and-live-tiling-refresh", "file": "tests/etaf-desktop-tests.el", "purpose": "The mounted shell exposes launcher and switcher controls and applies tiling to a newly opened window."},
     {"name": "etaf-desktop-tiling-layout-and-split-resize", "file": "tests/etaf-desktop-layout-tests.el", "purpose": "Tiling assigns non-overlapping rectangles and applies an adjustable split ratio."},
     {"name": "etaf-desktop-layout-floating-and-untile", "file": "tests/etaf-desktop-layout-tests.el", "purpose": "Untiling preserves a floating overlay and retile restores it to the tree."},
     {"name": "etaf-desktop-layout-horizontal-split-and-minimums", "file": "tests/etaf-desktop-layout-tests.el", "purpose": "Horizontal tiling respects minimum widths and preserves the split ratio."},
-    {"name": "etaf-desktop-layout-monocle-and-close-sync", "file": "tests/etaf-desktop-layout-tests.el", "purpose": "Monocle fills the canvas and closing a window removes its layout leaf."}
+    {"name": "etaf-desktop-layout-monocle-and-close-sync", "file": "tests/etaf-desktop-layout-tests.el", "purpose": "Monocle fills the canvas and closing a window removes its layout leaf."},
+    {"name": "etaf-desktop-layout-master-stack-reflows-new-windows", "file": "tests/etaf-desktop-layout-tests.el", "purpose": "Master-stack gives the first window a master region and reflows newly opened stack windows."}
   ]
 }

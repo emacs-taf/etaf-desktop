@@ -17,11 +17,13 @@
 ;; publication provider; ETAF owns state and lifecycle; ETAF UI supplies the
 ;; controls used by the desktop surface.
 ;;
-;; Function: etaf-desktop-create (&key (name "*ETAF Desktop*") (canvas-width 120) (canvas-height 36) (workspaces '(main)))
+;; Function: etaf-desktop-create (&key (name "*ETAF Desktop*") canvas-width canvas-height (workspaces '(main)))
 ;;;###autoload (autoload 'etaf-desktop-create "etaf-desktop" nil nil)
 ;; Create an unmounted desktop controller.  WORKSPACES is a nonempty list of
-;; unique keys.  The controller owns a reactive state source and can be mounted
-;; with `etaf-desktop-mount'.
+;; unique keys.  When CANVAS-WIDTH or CANVAS-HEIGHT is nil, the mounted desktop
+;; derives its canvas from the displaying Emacs window and fills its visible
+;; body.  The controller owns a reactive state source and can be mounted with
+;; `etaf-desktop-mount'.
 ;;
 ;; Error: etaf-desktop-error
 ;; Invalid desktop operation, unknown window/workspace, or rejected geometry.
@@ -48,7 +50,7 @@
 ;;;###autoload (autoload 'etaf-desktop-active-workspace "etaf-desktop" nil nil)
 ;; Return the active workspace key.
 ;;
-;; Function: etaf-desktop-open-window (desktop id &key title view (x 0) (y 0) (width 40) (height 12) (min-width 12) (min-height 3) max-width max-height workspace (visible t) (movable t) (resizable t))
+;; Function: etaf-desktop-open-window (desktop id &key title view (x 0) (y 0) (width 400) (height 12) (min-width 160) (min-height 3) max-width max-height workspace (visible t) (movable t) (resizable t))
 ;;;###autoload (autoload 'etaf-desktop-open-window "etaf-desktop" nil nil)
 ;; Add a window to DESKTOP.  VIEW is caller-owned ETAF View content.  Geometry
 ;; is in logical desktop units; movable and resizable default to non-nil.  Raise
@@ -121,6 +123,163 @@
 ;; Create a default desktop when DESKTOP is nil, mount it, and return the
 ;; controller.  Interactive calls display the mounted buffer.
 
+;; Function: etaf-desktop-launcher-open-p (desktop)
+;;;###autoload (autoload 'etaf-desktop-launcher-open-p "etaf-desktop" nil nil)
+;; Return whether DESKTOP's controlled application launcher is visible.
+
+;; Function: etaf-desktop-toggle-launcher (desktop &optional open)
+;;;###autoload (autoload 'etaf-desktop-toggle-launcher "etaf-desktop" nil nil)
+;; Set or toggle the application launcher visibility and return the new value.
+
+;; Function: etaf-desktop-close-launcher (desktop)
+;;;###autoload (autoload 'etaf-desktop-close-launcher "etaf-desktop" nil nil)
+;; Close the application launcher.
+
+;; Function: etaf-desktop-switcher-open-p (desktop)
+;;;###autoload (autoload 'etaf-desktop-switcher-open-p "etaf-desktop" nil nil)
+;; Return whether DESKTOP's controlled window switcher is visible.
+
+;; Function: etaf-desktop-toggle-switcher (desktop &optional open)
+;;;###autoload (autoload 'etaf-desktop-toggle-switcher "etaf-desktop" nil nil)
+;; Set or toggle the window switcher visibility and return the new value.
+
+;; Function: etaf-desktop-close-switcher (desktop)
+;;;###autoload (autoload 'etaf-desktop-close-switcher "etaf-desktop" nil nil)
+;; Close the window switcher.
+;;
+;; Function: etaf-desktop-layout-sync (desktop &optional workspace)
+;;;###autoload (autoload 'etaf-desktop-layout-sync "etaf-desktop" nil nil)
+;; Synchronize the layout registry with open windows.  New windows are
+;; floating until tiled explicitly; closed windows are removed from trees.
+;; Call this after application-level window mutations when using a custom
+;; mutation path.
+;;
+;; Function: etaf-desktop-layout-refresh (desktop &optional workspace)
+;;;###autoload (autoload 'etaf-desktop-layout-refresh "etaf-desktop" nil nil)
+;; Synchronize membership and apply `tiling' or `monocle' policy in one guarded
+;; publication.  This is the integration hook for desktop mutation paths.
+;;
+;; Function: etaf-desktop-layout-mode (desktop &optional workspace)
+;;;###autoload (autoload 'etaf-desktop-layout-mode "etaf-desktop" nil nil)
+;; Return WORKSPACE's `floating', `tiling', `master-stack' or `monocle' policy mode.
+;; WORKSPACE defaults to the active workspace.
+;;
+;; Function: etaf-desktop-set-layout-mode (desktop mode &optional workspace)
+;;;###autoload (autoload 'etaf-desktop-set-layout-mode "etaf-desktop" nil nil)
+;; Set and apply a workspace layout mode.  Tiling fills the canvas using its
+;; layout tree; master-stack gives the first window a wide master region and
+;; stacks the rest; monocle fills it with every tree leaf and raises the active
+;; window; floating preserves each window's own rectangle.
+;;
+;; Function: etaf-desktop-layout-tree (desktop &optional workspace)
+;;;###autoload (autoload 'etaf-desktop-layout-tree "etaf-desktop" nil nil)
+;; Return a detached layout tree using `(:leaf ID)' and
+;; `(:split ORIENTATION RATIO FIRST SECOND)' nodes.
+;;
+;; Function: etaf-desktop-layout-floating-windows (desktop &optional workspace)
+;;;###autoload (autoload 'etaf-desktop-layout-floating-windows "etaf-desktop" nil nil)
+;; Return floating window IDs for WORKSPACE as a detached list.
+;;
+;; Function: etaf-desktop-layout-apply (desktop &optional workspace)
+;;;###autoload (autoload 'etaf-desktop-layout-apply "etaf-desktop" nil nil)
+;; Apply the current workspace layout and return the calculated rectangle list.
+;; Horizontal splits divide width (left/right); vertical splits divide height
+;; (top/bottom), and minimum dimensions are respected where possible.
+;;
+;; Function: etaf-desktop-layout-tile-window (desktop id &optional workspace)
+;;;###autoload (autoload 'etaf-desktop-layout-tile-window "etaf-desktop" nil nil)
+;; Add ID to the workspace tiling tree and apply it.  Existing rectangles are
+;; recomputed from the tree.
+;;
+;; Function: etaf-desktop-layout-untile-window (desktop id &optional workspace)
+;;;###autoload (autoload 'etaf-desktop-layout-untile-window "etaf-desktop" nil nil)
+;; Remove ID from the tiling tree and leave it as a floating window.
+;;
+;; Function: etaf-desktop-layout-split (desktop target new-id orientation ratio &optional workspace)
+;;;###autoload (autoload 'etaf-desktop-layout-split "etaf-desktop" nil nil)
+;; Insert NEW-ID beside TARGET using a horizontal or vertical split.  RATIO
+;; controls the existing TARGET side and must be strictly between zero and one.
+;; Both windows must already belong to WORKSPACE.
+;;
+;; Function: etaf-desktop-layout-resize-split (desktop path ratio &optional workspace)
+;;;###autoload (autoload 'etaf-desktop-layout-resize-split "etaf-desktop" nil nil)
+;; Change the split at PATH, where each path element is 0 (first child) or 1
+;; (second child), then apply the layout.
+;;
+;; Function: etaf-desktop-layout-remove-window (desktop id &optional workspace)
+;;;###autoload (autoload 'etaf-desktop-layout-remove-window "etaf-desktop" nil nil)
+;; Remove ID from layout policy after its owning window is closed.  This does
+;; not close the window itself.
+
+;; Function: etaf-desktop-register-app (id &key title icon open close serialize restore capabilities default-window replace)
+;;;###autoload (autoload 'etaf-desktop-register-app "etaf-desktop" nil nil)
+;; Register an ETAF application manifest.  Its callbacks receive a context
+;; plist and may create one or more desktop windows.  Return a detached
+;; manifest plist.
+
+;; Function: etaf-desktop-unregister-app (id &optional force)
+;;;###autoload (autoload 'etaf-desktop-unregister-app "etaf-desktop" nil nil)
+;; Remove an application manifest, rejecting live instances unless FORCE is
+;; non-nil.
+
+;; Function: etaf-desktop-app (id)
+;;;###autoload (autoload 'etaf-desktop-app "etaf-desktop" nil nil)
+;; Return a detached manifest plist for ID.
+
+;; Function: etaf-desktop-apps ()
+;;;###autoload (autoload 'etaf-desktop-apps "etaf-desktop" nil nil)
+;; Return all registered application manifests.
+
+;; Function: etaf-desktop-app-registered-p (id)
+;;;###autoload (autoload 'etaf-desktop-app-registered-p "etaf-desktop" nil nil)
+;; Return non-nil when ID is registered.
+
+;; Function: etaf-desktop-launch (desktop app-id &key instance-id options restore-data restore workspace)
+;;;###autoload (autoload 'etaf-desktop-launch "etaf-desktop" nil nil)
+;; Start an application instance.  Callback failures are isolated in an error
+;; instance and placeholder window while the desktop remains usable.
+
+;; Function: etaf-desktop-instances (desktop)
+;;;###autoload (autoload 'etaf-desktop-instances "etaf-desktop" nil nil)
+;; Return detached application instance states for DESKTOP.
+
+;; Function: etaf-desktop-instance (desktop id)
+;;;###autoload (autoload 'etaf-desktop-instance "etaf-desktop" nil nil)
+;; Return detached state for application instance ID.
+
+;; Function: etaf-desktop-set-instance-state (desktop id state)
+;;;###autoload (autoload 'etaf-desktop-set-instance-state "etaf-desktop" nil nil)
+;; Set application-owned serializable state for an instance.
+
+;; Function: etaf-desktop-focus-instance (desktop id)
+;;;###autoload (autoload 'etaf-desktop-focus-instance "etaf-desktop" nil nil)
+;; Focus the first visible window belonging to application instance ID.
+
+;; Function: etaf-desktop-suspend-instance (desktop id)
+;;;###autoload (autoload 'etaf-desktop-suspend-instance "etaf-desktop" nil nil)
+;; Minimize an application's windows and mark its lifecycle suspended.
+
+;; Function: etaf-desktop-restore-instance (desktop id)
+;;;###autoload (autoload 'etaf-desktop-restore-instance "etaf-desktop" nil nil)
+;; Restore an application's windows and focus its instance.
+
+;; Function: etaf-desktop-close-instance (desktop id &optional reason)
+;;;###autoload (autoload 'etaf-desktop-close-instance "etaf-desktop" nil nil)
+;; Close an application instance, invoke its callback and release its windows.
+
+;; Function: etaf-desktop-session-state (desktop)
+;;;###autoload (autoload 'etaf-desktop-session-state "etaf-desktop" nil nil)
+;; Return a serializable desktop and application session plist.
+
+;; Function: etaf-desktop-save-session (desktop file)
+;;;###autoload (autoload 'etaf-desktop-save-session "etaf-desktop" nil nil)
+;; Save a session plist to FILE.
+
+;; Function: etaf-desktop-restore-session (desktop session-or-file)
+;;;###autoload (autoload 'etaf-desktop-restore-session "etaf-desktop" nil nil)
+;; Restore a session plist or saved FILE; unknown applications become isolated
+;; error placeholders.
+
 ;;; Code:
 
 ;;;###autoload
@@ -133,6 +292,8 @@
                                       buffer-file-name)))))
 
 (require 'etaf-desktop-runtime)
+(require 'etaf-desktop-layout)
+(require 'etaf-desktop-apps)
 
 (provide 'etaf-desktop)
 ;;; etaf-desktop.el ends here

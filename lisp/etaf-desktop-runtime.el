@@ -6,6 +6,13 @@
 (require 'etaf)
 (require 'etaf-ui)
 
+(declare-function etaf-desktop-layout-mode "etaf-desktop-layout"
+                  (desktop &optional workspace))
+(declare-function etaf-desktop-layout-tree "etaf-desktop-layout"
+                  (desktop &optional workspace))
+(declare-function etaf-desktop-layout-resize-split "etaf-desktop-layout"
+                  (desktop path ratio &optional workspace))
+
 (define-error 'etaf-desktop-error "Invalid ETAF Desktop operation")
 
 (cl-defstruct (etaf-desktop--window
@@ -19,7 +26,7 @@
 
 (cl-defstruct (etaf-desktop--controller
                (:constructor etaf-desktop--controller-create))
-  name canvas-width canvas-height state-ref buffer runtime)
+  name canvas-width canvas-height state-ref buffer runtime launcher-ref switcher-ref)
 
 (defun etaf-desktop--fail (format-string &rest arguments)
   "Signal `etaf-desktop-error' with FORMAT-STRING and ARGUMENTS."
@@ -34,6 +41,32 @@
 (defun etaf-desktop--state (desktop)
   "Return DESKTOP's current state."
   (etaf-value (etaf-desktop--controller-state-ref desktop)))
+
+(defun etaf-desktop--canvas-window (desktop)
+  "Return the live Emacs window displaying DESKTOP, when available."
+  (or (and (buffer-live-p (etaf-desktop--controller-buffer desktop))
+           (get-buffer-window (etaf-desktop--controller-buffer desktop) t))
+      (selected-window)))
+
+(defun etaf-desktop--canvas-width-value (desktop)
+  "Return DESKTOP's effective canvas width in pixels."
+  (or (etaf-desktop--controller-canvas-width desktop)
+      (let ((window (etaf-desktop--canvas-window desktop)))
+        (if (window-live-p window)
+            (let ((pixel-width (window-body-width window t)))
+              (if (> pixel-width 10)
+                  pixel-width
+                (* (max 1 (window-body-width window))
+                   (max 1 (frame-char-width)))))
+          (* 80 (max 1 (frame-char-width)))))))
+
+(defun etaf-desktop--canvas-height-value (desktop)
+  "Return DESKTOP's effective canvas height in text rows."
+  (or (etaf-desktop--controller-canvas-height desktop)
+      (let ((window (etaf-desktop--canvas-window desktop)))
+        (if (window-live-p window)
+            (max 8 (- (window-body-height window) 4))
+          24))))
 
 (defun etaf-desktop--copy-window (window)
   "Copy WINDOW's application state."
@@ -93,6 +126,11 @@
 (defun etaf-desktop--publish (desktop state)
   "Publish STATE through DESKTOP's reactive state ref."
   (etaf-set-value (etaf-desktop--controller-state-ref desktop) state)
+  ;; Layout policy is an optional application-layer consumer of the runtime.
+  ;; Its guarded refresh applies an active tiling/monocle tree after ordinary
+  ;; window mutations, while avoiding a recursive publish during layout apply.
+  (when (fboundp 'etaf-desktop-layout-refresh)
+    (etaf-desktop-layout-refresh desktop))
   state)
 
 (defun etaf-desktop--update (desktop function)
@@ -239,53 +277,155 @@ at this boundary."
      (list body))))
 
 (defun etaf-desktop--taskbar-node (desktop state)
-  "Build the taskbar for STATE."
+  "Build the taskbar for STATE using the reusable ETAF UI component."
   (let ((items
          (cl-loop for window in (etaf-desktop--state-windows state)
-                  when (and (eq (etaf-desktop--window-workspace window)
-                                (etaf-desktop--state-active-workspace state))
-                            (etaf-desktop--window-minimized window))
+                  when (equal (etaf-desktop--window-workspace window)
+                              (etaf-desktop--state-active-workspace state))
                   collect
-                  (etaf-node 'etaf-button
-                             (list :key (etaf-desktop--window-id window)
-                                   :label (or (etaf-desktop--window-title window)
-                                              (format "%s" (etaf-desktop--window-id window)))
-                                   :variant 'ghost
-                                   :on-press
-                                   (lambda ()
-                                     (etaf-desktop-restore-window
-                                      desktop (etaf-desktop--window-id window))))
-                             nil))))
-    (etaf-node 'row
-               (list :class "etaf-desktop-taskbar" :height '(lh 2)
-                     :background-color "#263238" :color "#FFFFFF"
-                     :padding '((lh 0) (ch 1)) :item-gap '(ch 1))
-               (or items (list (etaf-node 'text nil (list "Desktop")))))))
+                  (list :key (etaf-desktop--window-id window)
+                        :label (or (etaf-desktop--window-title window)
+                                   (format "%s" (etaf-desktop--window-id window)))
+                        :state (cond
+                                ((etaf-desktop--window-minimized window) 'minimized)
+                                ((equal (etaf-desktop--window-id window)
+                                        (etaf-desktop--state-active-window state)) 'active)
+                                (t nil))))))
+    (etaf-node 'etaf-taskbar
+               (list :items items
+                     :active (etaf-desktop--state-active-window state)
+                     :on-select (lambda (id)
+                                  (etaf-desktop-focus-window desktop id))
+                     :on-launch (and (fboundp 'etaf-desktop-toggle-launcher)
+                                     (lambda ()
+                                       (etaf-desktop-toggle-launcher desktop))))
+               nil)))
 
 (defun etaf-desktop--workspace-node (desktop state)
-  "Build workspace controls for STATE."
-  (etaf-node 'row
-             (list :height '(lh 2) :background-color "#37474F"
-                   :color "#FFFFFF" :padding '((lh 0) (ch 1))
-                   :item-gap '(ch 1))
-             (mapcar
-              (lambda (workspace)
-                (etaf-node 'etaf-button
-                           (list :key workspace :label (format "%s" workspace)
-                                 :variant (if (equal workspace
-                                                    (etaf-desktop--state-active-workspace state))
-                                              'primary 'ghost)
-                                 :on-press
-                                 (lambda ()
-                                   (etaf-desktop-switch-workspace desktop workspace)))
-                           nil))
-              (etaf-desktop--state-workspaces state))))
+  "Build workspace controls for STATE using the reusable ETAF UI component."
+  (etaf-node 'etaf-workspace-bar
+             (list :workspaces (etaf-desktop--state-workspaces state)
+                   :active (etaf-desktop--state-active-workspace state)
+                   :on-select (lambda (workspace)
+                                (etaf-desktop-switch-workspace desktop workspace)))
+             nil))
+
+(defun etaf-desktop--splitter-ratio-change
+    (desktop workspace path orientation ratio gesture)
+  "Apply one controlled SPLITTER GESTURE to a layout ratio.
+The gesture remains an ETAF UI input fact; this application callback converts
+its axis delta into the caller-owned layout tree ratio through the public
+layout API."
+  (when (memq (plist-get gesture :phase) '(move end))
+    (let* ((delta (etaf-desktop--delta gesture))
+           (offset (if (eq orientation 'horizontal)
+                       (car delta) (cdr delta)))
+           (total (if (eq orientation 'horizontal)
+                      (etaf-desktop--canvas-width-value desktop)
+                    (etaf-desktop--canvas-height-value desktop)))
+           (next (max 0.1 (min 0.9 (+ ratio (/ (float offset)
+                                                (max 1 total)))))))
+      (when (fboundp 'etaf-desktop-layout-resize-split)
+        (etaf-desktop-layout-resize-split desktop path next workspace)))))
+
+(defun etaf-desktop--splitter-overlay
+    (desktop state tree workspace &optional path)
+  "Render an ETAF UI splitter overlay for TREE in WORKSPACE.
+The overlay contributes only divider interaction and delegates ratio updates
+to the desktop layout policy; windows remain the runtime's positioned shells."
+  (when (and tree (eq (car tree) :split))
+    (let* ((orientation (nth 1 tree))
+           (ratio (nth 2 tree))
+           (first (nth 3 tree))
+           (second (nth 4 tree))
+           (first-child (or (etaf-desktop--splitter-overlay
+                             desktop state first workspace (append path '(0)))
+                            (etaf-node 'box
+                                       (list :width 'stretch :height 'stretch
+                                             :visibility 'hidden)
+                                       nil)))
+           (second-child (or (etaf-desktop--splitter-overlay
+                              desktop state second workspace (append path '(1)))
+                             (etaf-node 'box
+                                        (list :width 'stretch :height 'stretch
+                                              :visibility 'hidden)
+                                        nil)))
+           (splitter
+            (etaf-node 'etaf-splitter
+                       (list :orientation orientation :ratio ratio
+                             :class "etaf-desktop-layout-splitter"
+                             :overlay t
+                             :on-change
+                             (lambda (gesture)
+                               (etaf-desktop--splitter-ratio-change
+                                desktop workspace path orientation ratio gesture)))
+                       nil
+                       (list (cons 'first (list first-child))
+                             (cons 'second (list second-child))))))
+      ;; The overlay splitter itself renders only the divider.  Do not wrap it
+      ;; in a full-size box: an empty positioned wrapper would paint spaces
+      ;; over the caller-owned window contents in a text buffer.
+      splitter)))
+
+(defun etaf-desktop--launcher-node (desktop)
+  "Build the controlled application launcher for DESKTOP."
+  (when (and (fboundp 'etaf-desktop-launcher-open-p)
+             (etaf-desktop-launcher-open-p desktop))
+    (let ((items
+           (if (fboundp 'etaf-desktop-apps)
+               (mapcar (lambda (app)
+                         (list :key (plist-get app :id)
+                               :label (or (plist-get app :title)
+                                          (format "%s" (plist-get app :id)))
+                               :description "ETAF application"))
+                       (etaf-desktop-apps))
+             nil)))
+      (etaf-node 'etaf-launcher
+                 (list :open (etaf-desktop--controller-launcher-ref desktop)
+                       :items items
+                       :on-select
+                       (lambda (app-id)
+                         (when (fboundp 'etaf-desktop-launch)
+                           (etaf-desktop-launch desktop app-id))
+                         (etaf-desktop-toggle-launcher desktop nil))
+                       :on-close (lambda ()
+                                   (etaf-desktop-toggle-launcher desktop nil)))
+                 nil))))
+
+(defun etaf-desktop--switcher-node (desktop state)
+  "Build the controlled window switcher for DESKTOP and STATE."
+  (when (and (fboundp 'etaf-desktop-switcher-open-p)
+             (etaf-desktop-switcher-open-p desktop))
+    (let ((items
+           (mapcar (lambda (window)
+                     (list :key (etaf-desktop--window-id window)
+                           :label (or (etaf-desktop--window-title window)
+                                      (format "%s" (etaf-desktop--window-id window)))
+                           :state (when (equal (etaf-desktop--window-id window)
+                                               (etaf-desktop--state-active-window state))
+                                    'active)))
+                   (etaf-desktop--state-windows state))))
+      (etaf-node 'etaf-switcher
+                 (list :open (etaf-desktop--controller-switcher-ref desktop)
+                       :selected (etaf-desktop--state-active-window state)
+                       :items items
+                       :on-select (lambda (id)
+                                    (etaf-desktop-focus-window desktop id)
+                                    (etaf-desktop-toggle-switcher desktop nil))
+                       :on-close (lambda ()
+                                   (etaf-desktop-toggle-switcher desktop nil)))
+                 nil))))
 
 (etaf-define-component etaf-desktop--application (&key desktop)
   "Render DESKTOP as a controlled desktop surface."
   :render
   (let* ((state (etaf-desktop--state desktop))
          (workspace (etaf-desktop--state-active-workspace state))
+         (layout-mode (when (fboundp 'etaf-desktop-layout-mode)
+                        (etaf-desktop-layout-mode desktop workspace)))
+         (layout-tree (when (and layout-mode
+                                 (memq layout-mode '(tiling master-stack monocle)))
+                        (etaf-desktop-layout-tree desktop workspace)))
          (windows
           (sort (cl-remove-if-not
                  (lambda (window)
@@ -298,30 +438,34 @@ at this boundary."
                                  (etaf-desktop--window-z-index b))))))
     (etaf-node
      'column
-     (list :width (list 'px (etaf-desktop--controller-canvas-width desktop))
-           :height (list 'lh (+ (etaf-desktop--controller-canvas-height desktop) 4))
+     (list :width (list 'px (etaf-desktop--canvas-width-value desktop))
+           :height (list 'lh (+ (etaf-desktop--canvas-height-value desktop) 4))
            :background-color "#CFD8DC" :color "#17202A")
      (list
       (etaf-desktop--workspace-node desktop state)
       (etaf-node
        'box
        (list :position 'relative
-             :width (list 'px (etaf-desktop--controller-canvas-width desktop))
-             :height (list 'lh (etaf-desktop--controller-canvas-height desktop))
+             :width (list 'px (etaf-desktop--canvas-width-value desktop))
+             :height (list 'lh (etaf-desktop--canvas-height-value desktop))
              :background-color "#ECEFF1")
        (mapcar (lambda (window) (etaf-desktop--window-node desktop window)) windows))
-      (etaf-desktop--taskbar-node desktop state)))))
+       (when layout-tree
+         (etaf-desktop--splitter-overlay desktop state layout-tree workspace))
+       (etaf-desktop--taskbar-node desktop state)
+      (etaf-desktop--launcher-node desktop)
+      (etaf-desktop--switcher-node desktop state)))))
 
 (cl-defun etaf-desktop-create
-    (&key (name "*ETAF Desktop*") (canvas-width 120)
-          (canvas-height 36) (workspaces '(main)))
+    (&key (name "*ETAF Desktop*") canvas-width canvas-height
+          (workspaces '(main)))
   "Create an application desktop with CANVAS-WIDTH and CANVAS-HEIGHT.
 WORKSPACES is a nonempty list of stable workspace keys.  The returned desktop
 owns its reactive state and does not mount a buffer until `etaf-desktop-mount'."
   (unless (and (stringp name) (not (string-empty-p name)))
     (etaf-desktop--fail "Desktop name must be a nonempty string"))
-  (etaf-desktop--number canvas-width "canvas-width" 1)
-  (etaf-desktop--number canvas-height "canvas-height" 1)
+  (when canvas-width (etaf-desktop--number canvas-width "canvas-width" 1))
+  (when canvas-height (etaf-desktop--number canvas-height "canvas-height" 8))
   (unless (and (listp workspaces) workspaces
                (not (cl-some #'null workspaces))
                (= (length workspaces) (length (delete-dups (copy-sequence workspaces)))))
@@ -334,17 +478,61 @@ owns its reactive state and does not mount a buffer until `etaf-desktop-mount'."
           (etaf-ref
            (etaf-desktop--state-create
             :windows nil :workspaces (copy-sequence workspaces)
-            :active-workspace (car workspaces) :active-window nil :next-z 1)
-           :name 'etaf-desktop-state))
+           :active-workspace (car workspaces) :active-window nil :next-z 1)
+           :name 'etaf-desktop-state)
+          (etaf-desktop--controller-launcher-ref controller)
+          (etaf-ref nil :name 'etaf-desktop-launcher-open)
+          (etaf-desktop--controller-switcher-ref controller)
+          (etaf-ref nil :name 'etaf-desktop-switcher-open))
     controller))
+
+(defun etaf-desktop-launcher-open-p (desktop)
+  "Return non-nil when DESKTOP's application launcher is open."
+  (etaf-value (etaf-desktop--controller-launcher-ref
+               (etaf-desktop--controller desktop))))
+
+(defun etaf-desktop-toggle-launcher (desktop &optional open)
+  "Set DESKTOP's launcher visibility to OPEN and return its new value.
+When OPEN is nil, toggle the current value unless an explicit nil is needed;
+callers can use `etaf-desktop-close-launcher' to close it unambiguously."
+  (let* ((desktop (etaf-desktop--controller desktop))
+         (ref (etaf-desktop--controller-launcher-ref desktop))
+         (value (if (null open) (not (etaf-value ref)) open)))
+    (etaf-set-value ref value)
+    value))
+
+(defun etaf-desktop-close-launcher (desktop)
+  "Close DESKTOP's application launcher and return nil."
+  (let ((desktop (etaf-desktop--controller desktop)))
+    (etaf-set-value (etaf-desktop--controller-launcher-ref desktop) nil)
+    nil))
+
+(defun etaf-desktop-switcher-open-p (desktop)
+  "Return non-nil when DESKTOP's window switcher is open."
+  (etaf-value (etaf-desktop--controller-switcher-ref
+               (etaf-desktop--controller desktop))))
+
+(defun etaf-desktop-toggle-switcher (desktop &optional open)
+  "Set DESKTOP's switcher visibility to OPEN, or toggle it when omitted."
+  (let* ((desktop (etaf-desktop--controller desktop))
+         (ref (etaf-desktop--controller-switcher-ref desktop))
+         (value (if (null open) (not (etaf-value ref)) open)))
+    (etaf-set-value ref value)
+    value))
+
+(defun etaf-desktop-close-switcher (desktop)
+  "Close DESKTOP's window switcher and return nil."
+  (let ((desktop (etaf-desktop--controller desktop)))
+    (etaf-set-value (etaf-desktop--controller-switcher-ref desktop) nil)
+    nil))
 
 (defun etaf-desktop-state (desktop)
   "Return DESKTOP's detached state plist, including windows and workspaces."
   (let ((desktop (etaf-desktop--controller desktop))
         (state (etaf-desktop--state desktop)))
     (list :name (etaf-desktop--controller-name desktop)
-          :canvas-width (etaf-desktop--controller-canvas-width desktop)
-          :canvas-height (etaf-desktop--controller-canvas-height desktop)
+          :canvas-width (etaf-desktop--canvas-width-value desktop)
+          :canvas-height (etaf-desktop--canvas-height-value desktop)
           :active-workspace (etaf-desktop--state-active-workspace state)
           :active-window (etaf-desktop--state-active-window state)
           :workspaces (copy-sequence (etaf-desktop--state-workspaces state))
@@ -372,8 +560,8 @@ owns its reactive state and does not mount a buffer until `etaf-desktop-mount'."
    (etaf-desktop--state (etaf-desktop--controller desktop))))
 
 (cl-defun etaf-desktop-open-window
-    (desktop id &key title view (x 0) (y 0) (width 40) (height 12)
-          (min-width 12) (min-height 3) max-width max-height workspace
+    (desktop id &key title view (x 0) (y 0) (width 400) (height 12)
+          (min-width 160) (min-height 3) max-width max-height workspace
           (visible t) (movable t) (resizable t))
   "Open window ID in DESKTOP and return its public state plist.
 VIEW is an ETAF View created by `etaf-view' or nil for a text placeholder.
@@ -498,9 +686,9 @@ WORKSPACE defaults to the active workspace."
        (setf (etaf-desktop--window-x window) 0
              (etaf-desktop--window-y window) 0
              (etaf-desktop--window-width window)
-             (etaf-desktop--controller-canvas-width desktop)
+             (etaf-desktop--canvas-width-value desktop)
              (etaf-desktop--window-height window)
-             (etaf-desktop--controller-canvas-height desktop)
+             (etaf-desktop--canvas-height-value desktop)
              (etaf-desktop--window-minimized window) nil
              (etaf-desktop--window-visible window) t
              (etaf-desktop--window-maximized window) t)

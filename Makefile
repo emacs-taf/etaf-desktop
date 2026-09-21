@@ -2,7 +2,7 @@
 .NOTPARALLEL:
 EMACS ?= emacs
 LOAD_PATH = -L . -L lisp -L tests -L ../etaf -L ../etaf-ui -L ../ebox -L ../ecss
-SOURCES = lisp/etaf-desktop-runtime.el etaf-desktop.el
+SOURCES = lisp/etaf-desktop-runtime.el lisp/etaf-desktop-layout.el lisp/etaf-desktop-apps.el etaf-desktop.el
 TEST_FILES := $(wildcard tests/*-tests.el)
 
 .PHONY: compile load check clean structure-check setup-hooks acceptance api-check test

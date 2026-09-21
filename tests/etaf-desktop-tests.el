@@ -72,7 +72,8 @@
 
 (ert-deftest etaf-desktop-mounted-window-and-taskbar ()
   "A mounted desktop displays current workspace windows and restores via taskbar."
-  (let ((desktop (etaf-desktop-create :name " *desktop-test*")))
+  (let ((desktop (etaf-desktop-create :name " *desktop-test*"
+                                      :canvas-width 400 :canvas-height 20)))
     (unwind-protect
         (progn
           (etaf-desktop-open-window desktop 'notes :title "Notes"
@@ -80,14 +81,14 @@
           (let ((buffer (etaf-desktop-mount desktop)))
             (should (buffer-live-p buffer))
             (with-current-buffer buffer
-              (should (string-match-p "desktop" (buffer-string))))
+              (should (string-match-p "Notes" (buffer-string))))
             (etaf-desktop-minimize-window desktop 'notes)
             (with-current-buffer buffer
               (should-not (string-match-p "Hello desktop" (buffer-string)))
               (should (string-match-p "Notes" (buffer-string))))
             (etaf-desktop-restore-window desktop 'notes)
             (with-current-buffer buffer
-              (should (string-match-p "desktop" (buffer-string))))))
+              (should (string-match-p "Hello desktop" (buffer-string))))))
       (etaf-desktop-close desktop))
     (etaf-desktop-close desktop)))
 
@@ -101,9 +102,12 @@
             (save-window-excursion
               (set-window-buffer (selected-window) buffer)
               (with-current-buffer buffer
-                (goto-char (point-min))
-                (search-forward "Notes")
-                (let* ((position (match-beginning 0))
+                (let* ((runtime (etaf-runtime-for-buffer buffer))
+                       ;; Resolve the committed title-bar Host directly so
+                       ;; the test is independent of the traffic-light
+                       ;; controls that precede the title text.
+                       (position (etaf-host-ref-position
+                                  runtime 'etaf-desktop-chrome-notes))
                        (window (selected-window))
                        (line-height (max 1 (frame-char-height)))
                        (press (list 'down-mouse-1
@@ -250,6 +254,41 @@
             (should (string-match-p "not registered"
                                     (plist-get instance :error)))
             (should (= 2 (length (etaf-desktop-windows desktop))))))
+      (etaf-desktop-close desktop))))
+
+(ert-deftest etaf-desktop-shell-controls-and-live-tiling-refresh ()
+  "The mounted shell exposes launcher/switcher controls and refreshes tiling on mutation."
+  (let ((desktop (etaf-desktop-create :name " *desktop-shell-controls*"
+                                      :canvas-width 80 :canvas-height 16
+                                      :workspaces '(main dev))))
+    (unwind-protect
+        (progn
+          (etaf-desktop-open-window desktop 'one :title "One" :width 20 :height 4
+                                    :min-width 5 :min-height 2)
+          (etaf-desktop-open-window desktop 'two :title "Two" :width 20 :height 4
+                                    :min-width 5 :min-height 2)
+          (etaf-desktop-set-layout-mode desktop 'tiling)
+          (let ((buffer (etaf-desktop-mount desktop)))
+            (should (buffer-live-p buffer))
+            (etaf-desktop-toggle-launcher desktop t)
+            (should (etaf-desktop-launcher-open-p desktop))
+            (with-current-buffer buffer
+              (should (string-match-p "Applications" (buffer-string))))
+            (etaf-desktop-toggle-switcher desktop t)
+            (should (etaf-desktop-switcher-open-p desktop))
+            (let ((props (etaf-runtime-host-props-entries
+                          (etaf-runtime-for-buffer buffer))))
+              (should (cl-some
+                       (lambda (entry)
+                         (equal "Switch application"
+                                (plist-get (cdr entry) :aria-label)))
+                       props)))
+            (etaf-desktop-open-window desktop 'three :title "Three"
+                                      :width 20 :height 4 :min-width 5 :min-height 2)
+            (should (= 80 (plist-get (etaf-desktop-window-state desktop 'three)
+                                     :width)))
+            (should (> (plist-get (etaf-desktop-window-state desktop 'three) :y)
+                       (plist-get (etaf-desktop-window-state desktop 'two) :y)))))
       (etaf-desktop-close desktop))))
 
 (provide 'etaf-desktop-tests)
