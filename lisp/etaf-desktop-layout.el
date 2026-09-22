@@ -436,8 +436,17 @@ stack whose ratios make each leaf the same height."
         (max 1 (min (1- total) ideal))
       (max low (min high ideal)))))
 
+(defconst etaf-desktop--layout-divider-px 3
+  "Divider width reserved beside a left/right tile (see `etaf-splitter').")
+
+(defconst etaf-desktop--layout-divider-rows 1
+  "Divider row reserved between top/bottom tiles (see `etaf-splitter').")
+
 (defun etaf-desktop--layout-rectangles (state node x y width height)
-  "Return `(ID X Y WIDTH HEIGHT)' rectangles for NODE."
+  "Return `(ID X Y WIDTH HEIGHT)' rectangles for NODE.
+
+Each split reserves its divider so the visible separator owns its own row or
+column instead of covering the second tile's title bar."
   (if (etaf-desktop--layout-leaf-p node)
       (list (list (nth 1 node) x y (max 1 width) (max 1 height)))
     (let* ((orientation (nth 1 node))
@@ -456,7 +465,9 @@ stack whose ratios make each leaf the same height."
              (etaf-desktop--layout-rectangles
               state first x y first-width height)
              (etaf-desktop--layout-rectangles
-              state second (+ x first-width) y (- width first-width) height)))
+              state second (+ x first-width etaf-desktop--layout-divider-px) y
+              (max 1 (- width first-width etaf-desktop--layout-divider-px))
+              height)))
         (let* ((first-height
                 (etaf-desktop--layout-split-pixel
                  height ratio
@@ -468,7 +479,8 @@ stack whose ratios make each leaf the same height."
            (etaf-desktop--layout-rectangles
             state first x y width first-height)
            (etaf-desktop--layout-rectangles
-            state second x (+ y first-height) width (- height first-height))))))))
+            state second x (+ y first-height etaf-desktop--layout-divider-rows) width
+            (max 1 (- height first-height etaf-desktop--layout-divider-rows)))))))))
 
 (defun etaf-desktop-layout-apply (desktop &optional workspace)
   "Apply DESKTOP's current layout to WORKSPACE and return its rectangles.

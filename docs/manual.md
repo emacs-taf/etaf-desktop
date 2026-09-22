@@ -18,10 +18,11 @@ size limits, workspace, visibility, minimized/maximized mode and z-index.
 (etaf-desktop-mount desktop))
 ```
 
-With no explicit `:canvas-width` or `:canvas-height`, the mounted surface uses
-the displaying Emacs window's body and stretches to its visible width and
-height.  Pass explicit dimensions when a desktop is embedding a fixed-size
-surface or when tests need deterministic geometry.
+With no explicit `:canvas-width` or `:canvas-height`, the mounted surface
+measures the Emacs window that displays it before the first render, so the
+workspace bar, canvas and taskbar fill the visible window body.  Pass explicit
+dimensions when a desktop embeds a fixed-size surface or when tests need
+deterministic geometry.
 
 The mounted desktop hides that buffer's header and mode lines so its workspace
 bar, canvas and taskbar occupy the complete visible body.  Application status
@@ -75,7 +76,10 @@ manifest, then launch one or more independent instances. The manifest's
   (etaf-desktop-focus-instance desktop (plist-get instance :id)))
 ```
 
-The host owns instance identity, lifecycle (`launching`, `active`,
+A manifest without the `multiple-instances` capability is single-instance:
+an implicit `etaf-desktop-launch` focuses its running instance instead of
+creating a second one, while session restore keeps passing explicit instance
+ids.  The host owns instance identity, lifecycle (`launching`, `active`,
 `suspended`, `closing`, `closed` or `error`) and all window cleanup. Applications
 may update their serializable state with `etaf-desktop-set-instance-state`;
 they do not mutate desktop internals. A callback error is isolated to that

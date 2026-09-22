@@ -242,6 +242,49 @@
       (etaf-desktop-unregister-app app t)
       (etaf-desktop-close desktop))))
 
+(ert-deftest etaf-desktop-inactive-windows-show-gray-traffic-lights ()
+  "Only the active window renders the colored macOS traffic lights."
+  (let* ((app 'etaf-desktop-test-controls)
+         (active-color "#FF5F57")
+         (inactive-color "#B7BDC6")
+         (desktop (etaf-desktop-create :name " *desktop-controls*"
+                                       :canvas-width 80 :canvas-height 16)))
+    (unwind-protect
+        (progn
+          (etaf-desktop-register-app
+           app :title "Controls" :capabilities '(multiple-instances)
+           :open (lambda (_context)
+                   (list :windows
+                         (list (list :id 'main :title "Controls"
+                                     :view (etaf-view (text "Body"))
+                                     :x 1 :y 1 :width 40 :height 6
+                                     :min-width 10)))))
+          (etaf-desktop-launch desktop app :instance-id "controls-1")
+          (etaf-desktop-launch desktop app :instance-id "controls-2")
+          (let* ((buffer (etaf-desktop-mount desktop))
+                 (runtime (etaf-runtime-for-buffer buffer))
+                 (colors (lambda ()
+                           (cl-loop for (_ref . props) in
+                                    (etaf-runtime-host-props-entries runtime)
+                                    when (equal "Close" (plist-get props :aria-label))
+                                    collect (plist-get props :color)))))
+            (let ((first (funcall colors)))
+              (should (= 2 (length first)))
+              (should (= 1 (cl-count active-color first :test #'equal)))
+              (should (= 1 (cl-count inactive-color first :test #'equal))))
+            ;; Focusing the other window swaps which lights are colored.
+            (let ((other (car (cl-remove-if
+                               (lambda (instance)
+                                 (equal (etaf-desktop-active-window desktop)
+                                        (car (plist-get instance :windows))))
+                               (etaf-desktop-instances desktop)))))
+              (etaf-desktop-focus-instance desktop (plist-get other :id))
+              (let ((second (funcall colors)))
+                (should (= 1 (cl-count active-color second :test #'equal)))
+                (should (= 1 (cl-count inactive-color second :test #'equal)))))))
+      (etaf-desktop-unregister-app app t)
+      (etaf-desktop-close desktop))))
+
 (ert-deftest etaf-desktop-application-errors-are-isolated ()
   "A failing application gets an error instance without breaking the desktop."
   (let* ((app 'etaf-desktop-test-failing)
@@ -324,6 +367,44 @@
             (should (string-match-p "not registered"
                                     (plist-get instance :error)))
             (should (= 2 (length (etaf-desktop-windows desktop))))))
+      (etaf-desktop-close desktop))))
+
+(ert-deftest etaf-desktop-default-canvas-fills-the-render-window ()
+  "A desktop without explicit dimensions fills the window it renders into.
+
+Headless callers keep the selected window as the render target, so the rendered
+surface spans that window body: workspace bar, canvas rows and taskbar, with no
+row wider than the window.
+"
+  (let ((app 'etaf-desktop-test-viewport)
+        (desktop (etaf-desktop-create :name " *desktop-viewport*")))
+    (unwind-protect
+        (progn
+          (etaf-desktop-register-app
+           app :title "Viewport"
+           :open (lambda (_context)
+                   (list :windows
+                         (list (list :id 'main :title "Viewport"
+                                     :view (etaf-view (text "Viewport"))
+                                     :x 1 :y 1 :width 40 :height 5
+                                     :min-width 10)))))
+          (etaf-desktop-launch desktop app)
+          (let ((buffer (etaf-mount "*desktop-viewport-surface*"
+                                    (etaf-desktop-view desktop))))
+            (unwind-protect
+                (with-current-buffer buffer
+                  (let* ((lines (split-string
+                                 (buffer-substring-no-properties (point-min) (point-max))
+                                 "\n"))
+                         (window (selected-window)))
+                    ;; Workspace bar + canvas rows + taskbar own the window.
+                    (should (= (+ 2 (max 8 (- (window-body-height window) 2)))
+                               (length lines)))
+                    (should (<= (apply #'max (mapcar #'length lines))
+                                (window-body-width window)))))
+              (when-let* ((runtime (etaf-runtime-for-buffer buffer)))
+                (etaf-unmount runtime)))))
+      (etaf-desktop-unregister-app app t)
       (etaf-desktop-close desktop))))
 
 (ert-deftest etaf-desktop-shell-controls-and-live-tiling-refresh ()

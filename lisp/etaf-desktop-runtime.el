@@ -6,9 +6,14 @@
 (require 'etaf)
 (require 'etaf-ui)
 
+(declare-function ebox-viewport-window-width "ebox-viewport" (window))
+(defvar ebox-viewport-width)
+(defvar ebox-viewport-height)
 (declare-function etaf-desktop-layout-mode "etaf-desktop-layout"
                   (desktop &optional workspace))
 (declare-function etaf-desktop-layout-tree "etaf-desktop-layout"
+                  (desktop &optional workspace))
+(declare-function etaf-desktop-layout-refresh "etaf-desktop-layout"
                   (desktop &optional workspace))
 (declare-function etaf-desktop-layout-resize-split "etaf-desktop-layout"
                   (desktop path ratio &optional workspace))
@@ -42,33 +47,78 @@
   "Return DESKTOP's current state."
   (etaf-value (etaf-desktop--controller-state-ref desktop)))
 
+(defvar etaf-desktop--mount-window nil
+  "Window mounting the current desktop while its first View renders.")
+
 (defun etaf-desktop--canvas-window (desktop)
-  "Return the live Emacs window displaying DESKTOP, when available."
+  "Return the live Emacs window displaying DESKTOP, when available.
+
+A consumer may render this View itself (for example a Playground preview), so
+the window currently displaying the rendered buffer wins over the window that
+happens to be selected."
   (or (and (buffer-live-p (etaf-desktop--controller-buffer desktop))
            (get-buffer-window (etaf-desktop--controller-buffer desktop) t))
+      (get-buffer-window (current-buffer) t)
+      (and (window-live-p etaf-desktop--mount-window) etaf-desktop--mount-window)
       (selected-window)))
 
-(defun etaf-desktop--canvas-width-value (desktop)
-  "Return DESKTOP's effective canvas width in pixels."
-  (or (etaf-desktop--controller-canvas-width desktop)
-      (let ((window (etaf-desktop--canvas-window desktop)))
-        (if (window-live-p window)
+(defun etaf-desktop--canvas-box-width (desktop)
+  "Return the shell/canvas width value for DESKTOP's mounted surface.
+
+A rendered viewport fits exactly and needs no pixel conversion, so the shell
+uses `stretch' there; outside a window (headless or batch callers) the
+measured pixel canvas keeps deterministic geometry."
+  (if (and (numberp ebox-viewport-width) (> ebox-viewport-width 0))
+      'stretch
+    (list 'px (etaf-desktop--canvas-width-value desktop))))
+
+(defun etaf-desktop--window-canvas-size (window)
+  "Return the (WIDTH . HEIGHT) an unconfigured desktop filling WINDOW uses.
+
+WIDTH is the window body's pixel width and HEIGHT leaves one row for the
+workspace bar and one for the taskbar, so a default desktop owns exactly the
+visible window body."
+  (cons (or (ebox-viewport-window-width window)
             (let ((pixel-width (window-body-width window t)))
               (if (> pixel-width 10)
                   pixel-width
                 (* (max 1 (window-body-width window))
-                   (max 1 (frame-char-width)))))
-          (* 80 (max 1 (frame-char-width)))))))
+                   (max 1 (frame-char-width))))))
+        (max 8 (- (window-body-height window) 2))))
+
+(defun etaf-desktop--canvas-width-value (desktop)
+  "Return DESKTOP's effective canvas width in pixels.
+
+A default desktop follows the render viewport, so a consumer that mounts the
+View itself (for example a Playground preview) still fills the window it is
+displayed in; the window measurement remains the fallback outside rendering."
+  (if-let* ((explicit (etaf-desktop--controller-canvas-width desktop)))
+      explicit
+    ;; A default desktop fills the viewport it renders in; the window
+    ;; measurement is the fallback for callers that render outside a displayed
+    ;; window.  The result stays on the character grid so a rounded-up pixel
+    ;; column cannot push a row into Emacs continuation.
+    (let* ((viewport (and (numberp ebox-viewport-width) (> ebox-viewport-width 0)
+                          ebox-viewport-width))
+           (width (or viewport
+                      (let ((window (etaf-desktop--canvas-window desktop)))
+                        (if (window-live-p window)
+                            (car (etaf-desktop--window-canvas-size window))
+                          (* 80 (max 1 (frame-char-width)))))))
+           (char-width (max 1 (frame-char-width))))
+      (max char-width (* char-width (floor (/ width char-width)))))))
 
 (defun etaf-desktop--canvas-height-value (desktop)
-  "Return DESKTOP's effective canvas height in text rows."
+  "Return DESKTOP's effective canvas height in text rows.
+
+One row is reserved for the workspace bar and one for the taskbar; the mounted
+desktop hides buffer chrome, so no extra padding row is needed at the bottom."
   (or (etaf-desktop--controller-canvas-height desktop)
+      (and (numberp ebox-viewport-height) (> ebox-viewport-height 0)
+           (max 8 (- ebox-viewport-height 2)))
       (let ((window (etaf-desktop--canvas-window desktop)))
         (if (window-live-p window)
-            ;; One row is reserved for the workspace bar and one for the
-            ;; taskbar.  The mounted desktop hides buffer chrome, so no extra
-            ;; padding row is needed at the bottom.
-            (max 8 (- (window-body-height window) 2))
+            (cdr (etaf-desktop--window-canvas-size window))
           24))))
 
 (defun etaf-desktop--copy-window (window)
@@ -300,6 +350,10 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
      'etaf-window
      (list :key id :id (format "%s" id) :ref (etaf-desktop--window-ref id)
            :chrome-ref (intern (format "etaf-desktop-chrome-%s" id))
+           ;; macOS presentation: only the active window shows colored
+           ;; traffic lights; every other window renders gray lights.
+           :controls-active
+           (equal id (etaf-desktop--state-active-window (etaf-desktop--state desktop)))
            :title title :mode mode :visible (etaf-desktop--window-visible window)
            :x (list 'px (etaf-desktop--window-x window))
            :y (list 'lh (etaf-desktop--window-y window))
@@ -400,6 +454,12 @@ layout API."
       (when (fboundp 'etaf-desktop-layout-resize-split)
         (etaf-desktop-layout-resize-split desktop path next workspace)))))
 
+(defun etaf-desktop--windows-max-z (state)
+  "Return the highest z-index among STATE's windows, or zero."
+  (let ((max-z 0))
+    (dolist (window (etaf-desktop--state-windows state) max-z)
+      (setq max-z (max max-z (or (etaf-desktop--window-z-index window) 0))))))
+
 (defun etaf-desktop--splitter-overlay
     (desktop state tree workspace &optional path)
   "Render an ETAF UI splitter overlay for TREE in WORKSPACE.
@@ -427,6 +487,25 @@ to the desktop layout policy; windows remain the runtime's positioned shells."
                        (list :orientation orientation :ratio ratio
                              :class "etaf-desktop-layout-splitter"
                              :overlay t
+                             ;; Dividers separate visible windows, so they
+                             ;; paint above every window z-index while the
+                             ;; windows keep their own stacking order.  An
+                             ;; overlay divider also owns the canvas extent
+                             ;; on its long axis because no flow parent
+                             ;; supplies one.
+                             :z-index (+ 1 (etaf-desktop--windows-max-z state))
+                             ;; A text divider carries its own extent, so an
+                             ;; unconfigured desktop fills the canvas it owns.
+                             :divider-content
+                             (if (eq orientation 'horizontal)
+                                 (mapconcat (lambda (_row) " ")
+                                            (number-sequence
+                                             1 (max 1 (etaf-desktop--canvas-height-value desktop)))
+                                            "\n")
+                               (make-string
+                                (max 1 (floor (/ (etaf-desktop--canvas-width-value desktop)
+                                                 (float (max 1 (frame-char-width))))))
+                                ?\s))
                              :on-change
                              (lambda (gesture)
                                (etaf-desktop--splitter-ratio-change
@@ -515,7 +594,12 @@ to the desktop layout policy; windows remain the runtime's positioned shells."
                                  (etaf-desktop--window-z-index b))))))
     (etaf-node
      'column
-     (list :width (list 'px (etaf-desktop--canvas-width-value desktop))
+     ;; The shell width fits the render viewport when one exists: the concrete
+     ;; pixel canvas in `etaf-desktop--canvas-width-value' only measures
+     ;; application geometry, so no pixel rounding can push a shell row into
+     ;; Emacs continuation.  The row count stays explicit so headless renders
+     ;; keep canvas-height rows between the workspace bar and the taskbar.
+     (list :width (etaf-desktop--canvas-box-width desktop)
            :height (list 'lh (+ (etaf-desktop--canvas-height-value desktop) 2))
            :background-color "#CBD7E1" :color "#17202A")
      (list
@@ -523,14 +607,18 @@ to the desktop layout policy; windows remain the runtime's positioned shells."
       (etaf-node
        'box
        (list :position 'relative
-             :width (list 'px (etaf-desktop--canvas-width-value desktop))
+             :width (etaf-desktop--canvas-box-width desktop)
              :height (list 'lh (etaf-desktop--canvas-height-value desktop))
              :background-color "#EDF2F7"
              :border '((px 1) solid "#D7E0E8"))
-       (mapcar (lambda (window) (etaf-desktop--window-node desktop window)) windows))
-       (when layout-tree
-         (etaf-desktop--splitter-overlay desktop state layout-tree workspace))
-       (etaf-desktop--taskbar-node desktop state)
+       (append
+        (mapcar (lambda (window) (etaf-desktop--window-node desktop window)) windows)
+        ;; Tiling dividers are canvas overlays: they must be positioned in
+        ;; canvas coordinates and painted after the windows they separate.
+        (when layout-tree
+          (list (etaf-desktop--splitter-overlay
+                 desktop state layout-tree workspace)))))
+      (etaf-desktop--taskbar-node desktop state)
       (etaf-desktop--launcher-node desktop)
       (etaf-desktop--switcher-node desktop state)))))
 
@@ -905,14 +993,22 @@ its position and size together."
 
 (defun etaf-desktop-mount (desktop &optional buffer-or-name)
   "Mount DESKTOP into BUFFER-OR-NAME and return the buffer.
-When BUFFER-OR-NAME is nil, DESKTOP's configured name is used.  A desktop can
-be mounted once; callers use `etaf-desktop-close' to release the Runtime."
-  (let ((desktop (etaf-desktop--controller desktop)))
+When BUFFER-OR-NAME is nil, DESKTOP's configured name is used.  A desktop
+without explicit canvas dimensions measures the window that will display it,
+so it fills the visible Emacs window body.  A desktop can be mounted once;
+callers use `etaf-desktop-close' to release the Runtime."
+  (let* ((desktop (etaf-desktop--controller desktop))
+         (name (or buffer-or-name (etaf-desktop--controller-name desktop)))
+         (target (get-buffer name)))
     (when (etaf-desktop--controller-runtime desktop)
       (etaf-desktop--fail "Desktop is already mounted"))
-    (let* ((buffer (etaf-mount (or buffer-or-name
-                                   (etaf-desktop--controller-name desktop))
-                               (etaf-desktop-view desktop)))
+    ;; A desktop without explicit dimensions fills the window that displays
+    ;; it.  The first render happens inside `etaf-mount', before the mounted
+    ;; buffer is recorded, so measure the target window for that render and
+    ;; re-apply the layout once the display settles.
+    (let* ((mount-window (and target (get-buffer-window target)))
+           (buffer (let ((etaf-desktop--mount-window mount-window))
+                     (etaf-mount name (etaf-desktop-view desktop))))
            (runtime (etaf-runtime-for-buffer buffer)))
       ;; The mounted desktop owns the complete Emacs window body.  Hiding the
       ;; buffer mode line avoids an extra application-looking row below the
@@ -922,6 +1018,17 @@ be mounted once; callers use `etaf-desktop-close' to release the Runtime."
         (setq-local header-line-format nil))
       (setf (etaf-desktop--controller-buffer desktop) buffer
             (etaf-desktop--controller-runtime desktop) runtime)
+      ;; Displaying a buffer can resize its window after the first render.
+      ;; Re-apply the default layout so the shell matches the settled window.
+      (when (and mount-window
+                 (null (etaf-desktop--controller-canvas-width desktop))
+                 (null (etaf-desktop--controller-canvas-height desktop)))
+        (run-at-time
+         0.2 nil
+         (lambda ()
+           (when (buffer-live-p buffer)
+             (with-current-buffer buffer
+               (etaf-desktop-layout-refresh desktop))))))
       buffer)))
 
 (defun etaf-desktop-close (desktop)

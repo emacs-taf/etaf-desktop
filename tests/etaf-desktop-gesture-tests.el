@@ -88,12 +88,15 @@
                                    (plist-get state :y)))))))
       (etaf-desktop-close desktop))))
 
-(ert-deftest etaf-desktop-gesture-resizes-all-edges-and-corners ()
-  "Each edge and corner publishes one controlled geometry update."
+(ert-deftest etaf-desktop-gesture-resizes-every-rendered-edge-and-corner ()
+  "Every rendered edge and corner publishes one controlled geometry update.
+
+The mounted title bar owns the first row, so the top edge is offered by its
+two corner cells while the title row's middle stays the window move gesture."
   (let ((desktop (etaf-desktop-create :name " *desktop-gesture-edges*")))
     (unwind-protect
         (progn
-          (dolist (id '(left top top-left bottom-right))
+          (dolist (id '(left right bottom top-left top-right bottom-right))
             (etaf-desktop-open-window desktop id :x 10 :y 4
                                       :width 100 :height 12
                                       :min-width 20 :min-height 3))
@@ -103,10 +106,16 @@
              runtime 'etaf-desktop-resize-left-left
              '((:phase start :delta (0 . 0)) (:phase end :delta (10 . 0))))
             (etaf-desktop-gesture-test--dispatch
-             runtime 'etaf-desktop-resize-top-top
+             runtime 'etaf-desktop-resize-right-right
+             '((:phase start :delta (0 . 0)) (:phase end :delta (10 . 0))))
+            (etaf-desktop-gesture-test--dispatch
+             runtime 'etaf-desktop-resize-bottom-bottom
              '((:phase start :delta (0 . 0)) (:phase end :delta (0 . 2))))
             (etaf-desktop-gesture-test--dispatch
              runtime 'etaf-desktop-resize-top-left-top-left
+             '((:phase start :delta (0 . 0)) (:phase end :delta (5 . 1))))
+            (etaf-desktop-gesture-test--dispatch
+             runtime 'etaf-desktop-resize-top-right-top-right
              '((:phase start :delta (0 . 0)) (:phase end :delta (5 . 1))))
             (etaf-desktop-gesture-test--dispatch
              runtime 'etaf-desktop-resize-bottom-right-bottom-right
@@ -115,16 +124,33 @@
                            (let ((s (etaf-desktop-window-state desktop 'left)))
                              (list (plist-get s :x) (plist-get s :y)
                                    (plist-get s :width) (plist-get s :height)))))
-            (should (equal '(10 6 100 10)
-                           (let ((s (etaf-desktop-window-state desktop 'top)))
+            (should (equal '(10 4 110 12)
+                           (let ((s (etaf-desktop-window-state desktop 'right)))
+                             (list (plist-get s :x) (plist-get s :y)
+                                   (plist-get s :width) (plist-get s :height)))))
+            (should (equal '(10 4 100 14)
+                           (let ((s (etaf-desktop-window-state desktop 'bottom)))
                              (list (plist-get s :x) (plist-get s :y)
                                    (plist-get s :width) (plist-get s :height)))))
             (should (equal '(15 5 95 11)
                            (let ((s (etaf-desktop-window-state desktop 'top-left)))
                              (list (plist-get s :x) (plist-get s :y)
                                    (plist-get s :width) (plist-get s :height)))))
+            (should (equal '(10 5 105 11)
+                           (let ((s (etaf-desktop-window-state desktop 'top-right)))
+                             (list (plist-get s :x) (plist-get s :y)
+                                   (plist-get s :width) (plist-get s :height)))))
             (should (equal '(10 4 105 14)
                            (let ((s (etaf-desktop-window-state desktop 'bottom-right)))
+                             (list (plist-get s :x) (plist-get s :y)
+                                   (plist-get s :width) (plist-get s :height)))))
+            ;; The title row's middle is the move gesture, not a second top
+            ;; edge: the same drag moves the window instead of resizing it.
+            (etaf-desktop-gesture-test--dispatch
+             runtime 'etaf-desktop-chrome-left
+             '((:phase start :delta (0 . 0)) (:phase end :delta (0 . 1))))
+            (should (equal '(20 5 90 12)
+                           (let ((s (etaf-desktop-window-state desktop 'left)))
                              (list (plist-get s :x) (plist-get s :y)
                                    (plist-get s :width) (plist-get s :height)))))))
       (etaf-desktop-close desktop))))

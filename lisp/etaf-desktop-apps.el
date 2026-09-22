@@ -259,17 +259,50 @@ When FORCE is nil, signal if any desktop still has a live instance of ID."
   "Return non-nil when application ID is registered."
   (and (gethash id etaf-desktop--apps) t))
 
+(defun etaf-desktop--single-instance-app-p (app)
+  "Return non-nil when APP declares no `multiple-instances' capability."
+  (not (memq 'multiple-instances (etaf-desktop--app-capabilities app))))
+
+(defun etaf-desktop--running-instance (store app-id)
+  "Return APP-ID's newest instance in STORE that is neither closed nor failed."
+  (let (found)
+    (maphash
+     (lambda (_id instance)
+       (when (and (equal app-id (etaf-desktop--instance-app-id instance))
+                  (not (memq (etaf-desktop--instance-status instance)
+                             '(closed error))))
+         (setq found instance)))
+     (etaf-desktop--app-store-instances store))
+    found))
+
 (cl-defun etaf-desktop-launch
     (desktop app-id &key instance-id options restore-data restore workspace)
   "Launch APP-ID in DESKTOP and return its instance state plist.
 An application failure is isolated to an `error' instance and an error
 placeholder window; the desktop remains usable.  INSTANCE-ID is stable across
 session restore.  RESTORE-DATA is passed to the app's restore callback;
-RESTORE forces that callback even when its saved value is nil."
+RESTORE forces that callback even when its saved value is nil.  An implicit
+launch of an application without the `multiple-instances' capability focuses
+its running instance instead of starting a second one; session restore passes
+INSTANCE-ID and keeps creating every recorded instance."
   (let* ((desktop (etaf-desktop--controller desktop))
          (app (etaf-desktop--app (etaf-desktop--validate-app-id app-id)))
          (store (etaf-desktop--app-store desktop))
-         (id (or instance-id (etaf-desktop--next-instance-id store app-id)))
+         (running (and (null instance-id)
+                       (etaf-desktop--single-instance-app-p app)
+                       (etaf-desktop--running-instance store app-id))))
+    (if running
+        (or (etaf-desktop-focus-instance desktop
+                                        (etaf-desktop--instance-id running))
+            (etaf-desktop--instance-plist running))
+      (etaf-desktop--launch-new-instance
+       desktop app store app-id instance-id options restore-data restore
+       workspace))))
+
+(cl-defun etaf-desktop--launch-new-instance
+    (desktop app store app-id instance-id options restore-data restore workspace)
+  "Create one new APP-ID instance in DESKTOP and return its state plist."
+  (let* ((id (or instance-id (etaf-desktop--next-instance-id store app-id)))
          (instances (etaf-desktop--app-store-instances store)))
     (when (gethash id instances)
       (etaf-desktop--fail "Application instance already exists: %S" id))
