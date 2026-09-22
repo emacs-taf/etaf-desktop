@@ -26,6 +26,8 @@
 (declare-function etaf-desktop-app "etaf-desktop-apps" (id))
 (declare-function etaf-runtime-update-host-geometry "etaf-runtime"
                   (runtime host-ref &rest geometry))
+(declare-function etaf-runtime-update-host-geometries "etaf-runtime"
+                  (runtime updates))
 
 (define-error 'etaf-desktop-error "Invalid ETAF Desktop operation")
 
@@ -41,7 +43,7 @@
 (cl-defstruct (etaf-desktop--controller
                (:constructor etaf-desktop--controller-create))
   name canvas-width canvas-height state-ref buffer runtime launcher-ref switcher-ref
-  settings-ref settings-open-ref)
+  settings-ref settings-open-ref gesture-refresh-timer)
 
 (defun etaf-desktop--default-settings ()
   "Return the detached default settings for a new Desktop controller."
@@ -605,7 +607,7 @@ at this boundary."
     (cons (round (or (car delta) 0))
           (round (/ (float (or (cdr delta) 0)) (or line-height 1))))))
 
-(defun etaf-desktop--gesture-geometry-update (desktop id window)
+(defun etaf-desktop--gesture-geometry-update (desktop id window &optional properties)
   "Project WINDOW geometry through ETAF's retained incremental boundary.
 
 The Desktop record is the policy authority; ETAF owns the bridge to Ebox's
@@ -616,13 +618,16 @@ and structural path, while pointer samples update only the committed Host."
       (etaf-desktop--fail "Desktop gesture has no mounted Runtime"))
     (condition-case nil
         (progn
-          (etaf-runtime-update-host-geometry
-           runtime (etaf-desktop--window-ref id)
-           :left (list 'px (etaf-desktop--window-x window))
-           :top (list 'lh (etaf-desktop--window-y window))
-           :width (list 'px (etaf-desktop--window-width window))
-           :height (list 'lh (etaf-desktop--window-height window))
-           :z-index (etaf-desktop--window-z-index window))
+          (etaf-runtime-update-host-geometries
+           runtime
+           (list
+            (cons (etaf-desktop--window-ref id)
+                  (or properties
+                      (list :left (list 'px (etaf-desktop--window-x window))
+                            :top (list 'lh (etaf-desktop--window-y window))
+                            :width (list 'px (etaf-desktop--window-width window))
+                            :height (list 'lh (etaf-desktop--window-height window))
+                            :z-index (etaf-desktop--window-z-index window))))))
           t)
       ;; A close-and-reopen in one event turn can leave the old Ebox logical
       ;; region retired until the next complete Runtime publication.  Recover
@@ -650,11 +655,56 @@ and structural path, while pointer samples update only the committed Host."
           (etaf-desktop--window-normal-geometry window)
           (list x y (etaf-desktop--window-width window)
                 (etaf-desktop--window-height window)))
-    (etaf-desktop--gesture-geometry-update desktop id window)
+    (etaf-desktop--gesture-geometry-update
+     desktop id window
+     (list :left (list 'px x)
+           :top (list 'lh y)
+           :z-index (etaf-desktop--window-z-index window)))
     (etaf-desktop--window-plist window)))
 
+(defun etaf-desktop--focus-window-during-gesture (desktop id)
+  "Raise ID through incremental Host geometry during a drag or resize.
+
+Focus and z-order are still Desktop policy state.  The two affected retained
+Hosts receive their new layer facts immediately; a terminal or cancelled
+gesture publishes the complete shell so controls, taskbar and application
+status projections converge together."
+  (let* ((state (etaf-desktop--state desktop))
+         (window (etaf-desktop--window-for state id)))
+    (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
+    (setf (etaf-desktop--window-minimized window) nil
+          (etaf-desktop--window-visible window) t)
+    (etaf-desktop--raise state window)
+    ;; The first move/resize update carries the new z-index together with the
+    ;; geometry.  Publishing another Host here would repeat the same retained
+    ;; Ebox work; a zero-motion click is converged by the deferred end publish.
+    (etaf-desktop--notify-window-event desktop id 'focused)
+    id))
+
+(defun etaf-desktop--finish-gesture-publication (desktop)
+  "Schedule a complete Desktop publication after an incremental gesture phase.
+
+The gesture's Ebox projection is already committed when this callback runs.
+Deferring the structural reconciliation lets the current input batch return
+without rebuilding every unrelated window; Emacs's next timer/redisplay turn
+then converges controls, taskbar and application projections."
+  (let ((desktop (etaf-desktop--controller desktop)))
+    (when (timerp (etaf-desktop--controller-gesture-refresh-timer desktop))
+      (cancel-timer (etaf-desktop--controller-gesture-refresh-timer desktop)))
+    (setf (etaf-desktop--controller-gesture-refresh-timer desktop)
+          (run-at-time
+           0 nil
+           (lambda (controller)
+             (when-let* ((runtime (etaf-desktop--controller-runtime controller))
+                         ((etaf-runtime-mounted-p runtime)))
+               (setf (etaf-desktop--controller-gesture-refresh-timer controller) nil)
+               (etaf-desktop--publish
+                controller
+                (etaf-desktop--copy-state (etaf-desktop--state controller)))))
+           desktop))))
+
 (defun etaf-desktop--set-window-geometry-during-gesture
-    (desktop id x y width height)
+    (desktop id x y width height &optional edge)
   "Update one controlled window and its retained Host during resize."
   (let* ((state (etaf-desktop--state desktop))
          (window (etaf-desktop--window-for state id)))
@@ -674,7 +724,18 @@ and structural path, while pointer samples update only the committed Host."
           (etaf-desktop--window-maximized window) nil
           (etaf-desktop--window-normal-geometry window)
           (list x y width height))
-    (etaf-desktop--gesture-geometry-update desktop id window)
+    (let ((properties
+           (append
+            (when (memq edge '(left top-left bottom-left))
+              (list :left (list 'px x)))
+            (when (memq edge '(top top-left top-right))
+              (list :top (list 'lh y)))
+            (when (memq edge '(right top-right bottom-right))
+              (list :width (list 'px width)))
+            (when (memq edge '(bottom bottom-left bottom-right))
+              (list :height (list 'lh height)))
+            (list :z-index (etaf-desktop--window-z-index window)))))
+      (etaf-desktop--gesture-geometry-update desktop id window properties))
     (etaf-desktop--window-plist window)))
 
 (defun etaf-desktop--move-behavior (desktop id)
@@ -688,7 +749,11 @@ and structural path, while pointer samples update only the committed Host."
       desktop id (plist-get next :x) (plist-get next :y)))
    :axis 'both :delta #'etaf-desktop--delta
    :on-start (lambda (_gesture)
-               (etaf-desktop-focus-window desktop id))))
+               (etaf-desktop--focus-window-during-gesture desktop id))
+   :on-end (lambda (_gesture)
+             (etaf-desktop--finish-gesture-publication desktop))
+   :on-cancel (lambda (_gesture)
+                (etaf-desktop--finish-gesture-publication desktop))))
 
 (defun etaf-desktop--resize-behavior (desktop id edge)
   "Construct a controlled resize Behavior for window ID on EDGE."
@@ -709,14 +774,18 @@ and structural path, while pointer samples update only the committed Host."
      (lambda (next)
        (etaf-desktop--set-window-geometry-during-gesture
         desktop id (plist-get next :x) (plist-get next :y)
-        (plist-get next :width) (plist-get next :height)))
+        (plist-get next :width) (plist-get next :height) edge))
      :edges edges :delta #'etaf-desktop--delta
      :min-width (plist-get state :min-width)
      :max-width (plist-get state :max-width)
      :min-height (plist-get state :min-height)
      :max-height (plist-get state :max-height)
      :on-start (lambda (_gesture)
-                 (etaf-desktop-focus-window desktop id)))))
+                 (etaf-desktop--focus-window-during-gesture desktop id))
+     :on-end (lambda (_gesture)
+               (etaf-desktop--finish-gesture-publication desktop))
+     :on-cancel (lambda (_gesture)
+                  (etaf-desktop--finish-gesture-publication desktop)))))
 
 (etaf-define-component etaf-desktop--window-surface (&key desktop id)
   "Own one window's gesture Behaviors for its retained Component lifetime."
@@ -1813,6 +1882,9 @@ Closing is idempotent and releases the Runtime's event and reactive resources."
   (let ((desktop (etaf-desktop--controller desktop))
         (runtime (etaf-desktop--controller-runtime desktop))
         (buffer (etaf-desktop--controller-buffer desktop)))
+    (when (timerp (etaf-desktop--controller-gesture-refresh-timer desktop))
+      (cancel-timer (etaf-desktop--controller-gesture-refresh-timer desktop))
+      (setf (etaf-desktop--controller-gesture-refresh-timer desktop) nil))
     (when runtime (etaf-unmount runtime))
     (when (buffer-live-p buffer) (kill-buffer buffer))
     (setf (etaf-desktop--controller-runtime desktop) nil
