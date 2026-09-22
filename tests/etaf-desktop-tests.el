@@ -407,6 +407,37 @@ row wider than the window.
       (etaf-desktop-unregister-app app t)
       (etaf-desktop-close desktop))))
 
+(ert-deftest etaf-desktop-toggle-layout-mode-switches-the-workspace ()
+  "The workspace control switches between floating and tiling."
+  (let ((desktop (etaf-desktop-create :name " *desktop-toggle*"
+                                      :canvas-width 90 :canvas-height 18)))
+    (unwind-protect
+        (progn
+          (etaf-desktop-open-window desktop 'one :x 4 :y 3 :width 30 :height 6
+                                    :min-width 10 :min-height 2)
+          (etaf-desktop-open-window desktop 'two :x 40 :y 8 :width 30 :height 6
+                                    :min-width 10 :min-height 2)
+          (should (eq 'floating (etaf-desktop-layout-mode desktop)))
+          (etaf-desktop-toggle-layout-mode desktop)
+          (should (eq 'tiling (etaf-desktop-layout-mode desktop)))
+          ;; Tiling reflows the tree across the canvas.
+          (should (= 90 (plist-get (etaf-desktop-window-state desktop 'one) :width)))
+          (etaf-desktop-toggle-layout-mode desktop)
+          (should (eq 'floating (etaf-desktop-layout-mode desktop)))
+          ;; Floating keeps the rectangles the layout last applied, and a move
+          ;; now persists because the layout no longer reflows the window.
+          (should (= 90 (plist-get (etaf-desktop-window-state desktop 'one) :width)))
+          (etaf-desktop-move-window desktop 'one 7 5)
+          (etaf-desktop-layout-refresh desktop)
+          (let ((state (etaf-desktop-window-state desktop 'one)))
+            (should (= 7 (plist-get state :x)))
+            (should (= 5 (plist-get state :y))))
+          ;; Other modes return to floating through the same control.
+          (etaf-desktop-set-layout-mode desktop 'master-stack)
+          (etaf-desktop-toggle-layout-mode desktop)
+          (should (eq 'floating (etaf-desktop-layout-mode desktop))))
+      (etaf-desktop-close desktop))))
+
 (ert-deftest etaf-desktop-shell-controls-and-live-tiling-refresh ()
   "The mounted shell exposes launcher/switcher controls and refreshes tiling on mutation."
   (let ((desktop (etaf-desktop-create :name " *desktop-shell-controls*"

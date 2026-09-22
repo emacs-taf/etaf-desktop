@@ -13,6 +13,8 @@
                   (desktop &optional workspace))
 (declare-function etaf-desktop-layout-tree "etaf-desktop-layout"
                   (desktop &optional workspace))
+(declare-function etaf-desktop-toggle-layout-mode "etaf-desktop-layout"
+                  (desktop &optional workspace))
 (declare-function etaf-desktop-layout-refresh "etaf-desktop-layout"
                   (desktop &optional workspace))
 (declare-function etaf-desktop-layout-resize-split "etaf-desktop-layout"
@@ -425,12 +427,21 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
     (etaf-node 'etaf-workspace-bar
                (list :workspaces (etaf-desktop--state-workspaces state)
                      :active (etaf-desktop--state-active-workspace state)
-                     ;; The right side is reserved for the focused
-                     ;; application's name; the shell itself is intentionally
-                     ;; not repeated as a product title or fake menu.
+                     ;; The right side reports the focused application and the
+                     ;; workspace's window-management mode, which the trailing
+                     ;; control switches without leaving the desktop.
                      :status (and active
                                   (or (etaf-desktop--window-title active)
                                       (format "%s" active-id)))
+                     :layout-label
+                     (if (eq (etaf-desktop-layout-mode desktop
+                                                       (etaf-desktop--state-active-workspace state))
+                             'tiling)
+                         "Tiled" "Floating")
+                     :layout-action
+                     (lambda ()
+                       (etaf-desktop-toggle-layout-mode
+                        desktop (etaf-desktop--state-active-workspace state)))
                      :on-select
                      (lambda (workspace)
                        (etaf-desktop-switch-workspace desktop workspace)))

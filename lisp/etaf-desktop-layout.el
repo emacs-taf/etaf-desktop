@@ -532,6 +532,16 @@ retaining the tree for instant return to tiling."
                      (1+ (etaf-desktop--state-next-z next-state)))))
          result))))))
 
+(defun etaf-desktop-toggle-layout-mode (desktop &optional workspace)
+  "Switch DESKTOP's WORKSPACE between `floating' and `tiling'.
+Return DESKTOP.  Other modes (`master-stack' and `monocle') return to tiling,
+so the trailing workspace control always has one predictable meaning."
+  (let* ((desktop (etaf-desktop--controller desktop))
+         (current (etaf-desktop-layout-mode desktop workspace)))
+    (etaf-desktop-set-layout-mode
+     desktop (if (eq current 'floating) 'tiling 'floating) workspace)
+    desktop))
+
 (defun etaf-desktop-set-layout-mode (desktop mode &optional workspace)
   "Set DESKTOP's WORKSPACE layout MODE and apply it.
 

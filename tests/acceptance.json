@@ -1,31 +1,139 @@
 {
   "schema": 1,
-  "load_path": [".", "tests", "../etaf", "../etaf-ui", "../ebox", "../ecss"],
+  "load_path": [
+    ".",
+    "tests",
+    "../etaf",
+    "../etaf-ui",
+    "../ebox",
+    "../ecss"
+  ],
   "support": [],
   "cases": [
-    {"name": "etaf-desktop-window-lifecycle-and-state-isolation", "file": "tests/etaf-desktop-tests.el", "purpose": "Window operations preserve identity, raise order and immutable public snapshots."},
-    {"name": "etaf-desktop-geometry-limits-maximize-minimize-restore", "file": "tests/etaf-desktop-tests.el", "purpose": "Size limits and maximize/minimize/restore preserve a normal rectangle."},
-    {"name": "etaf-desktop-workspace-policy", "file": "tests/etaf-desktop-tests.el", "purpose": "Workspace selection and removal preserve window ownership and reject invalid changes."},
-    {"name": "etaf-desktop-mounted-window-and-taskbar", "file": "tests/etaf-desktop-tests.el", "purpose": "A mounted window remains in the retained application tree while its body is hidden and returns through taskbar restore."},
-    {"name": "etaf-desktop-body-activation-raises-window", "file": "tests/etaf-desktop-tests.el", "purpose": "Pressing application content focuses and raises the corresponding desktop window."},
-    {"name": "etaf-desktop-nested-content-activation-raises-window", "file": "tests/etaf-desktop-tests.el", "purpose": "Pressing an interactive descendant bubbles to the window focus policy."},
-    {"name": "etaf-desktop-native-title-drag-converts-pixels-to-rows", "file": "tests/etaf-desktop-tests.el", "purpose": "A native title drag converts text-area pixel motion into one logical desktop row."},
-    {"name": "etaf-desktop-native-drag-keeps-behavior-origin-across-rerenders", "file": "tests/etaf-desktop-tests.el", "purpose": "A controlled title drag retains its origin while each motion publishes a new desktop generation."},
-    {"name": "etaf-desktop-gesture-retains-origin-through-multiple-motions", "file": "tests/etaf-desktop-gesture-tests.el", "purpose": "A mounted title gesture retains its origin through multiple move publications."},
-    {"name": "etaf-desktop-gesture-repeated-sequences-reset-origin", "file": "tests/etaf-desktop-gesture-tests.el", "purpose": "Repeated gestures begin from committed geometry after garbage collection."},
-    {"name": "etaf-desktop-gesture-close-and-reopen-releases-retained-component", "file": "tests/etaf-desktop-gesture-tests.el", "purpose": "Closing and reopening a window releases the old retained gesture component and starts cleanly."},
-    {"name": "etaf-desktop-gesture-resizes-every-rendered-edge-and-corner", "file": "tests/etaf-desktop-gesture-tests.el", "purpose": "Every rendered resize cell updates controlled geometry: side and bottom edges, all four corner cells, while the title row keeps the window move gesture."},
-    {"name": "etaf-desktop-application-registry-and-lifecycle", "file": "tests/etaf-desktop-tests.el", "purpose": "An application manifest launches, suspends, restores and closes an isolated instance through public callbacks."},
-    {"name": "etaf-desktop-inactive-windows-show-gray-traffic-lights", "file": "tests/etaf-desktop-tests.el", "purpose": "A desktop window renders gray macOS traffic lights unless it is the active window; focusing another window swaps the colored lights."},
-    {"name": "etaf-desktop-default-canvas-fills-the-render-window", "file": "tests/etaf-desktop-tests.el", "purpose": "An unconfigured desktop sizes its shell from the window it renders into, so a Playground-style preview fills its window without overflowing it."},
-    {"name": "etaf-desktop-application-errors-are-isolated", "file": "tests/etaf-desktop-tests.el", "purpose": "A failing application becomes an error placeholder while other desktop windows remain usable."},
-    {"name": "etaf-desktop-session-roundtrip-restores-app-state", "file": "tests/etaf-desktop-tests.el", "purpose": "A serializable desktop session invokes application restore callbacks and reapplies saved window geometry."},
-    {"name": "etaf-desktop-session-unknown-app-isolated", "file": "tests/etaf-desktop-tests.el", "purpose": "A missing application during session restore becomes an error placeholder without aborting the desktop."},
-    {"name": "etaf-desktop-shell-controls-and-live-tiling-refresh", "file": "tests/etaf-desktop-tests.el", "purpose": "The mounted shell exposes launcher and switcher controls and applies tiling to a newly opened window."},
-    {"name": "etaf-desktop-tiling-layout-and-split-resize", "file": "tests/etaf-desktop-layout-tests.el", "purpose": "Tiling assigns non-overlapping rectangles and applies an adjustable split ratio."},
-    {"name": "etaf-desktop-layout-floating-and-untile", "file": "tests/etaf-desktop-layout-tests.el", "purpose": "Untiling preserves a floating overlay and retile restores it to the tree."},
-    {"name": "etaf-desktop-layout-horizontal-split-and-minimums", "file": "tests/etaf-desktop-layout-tests.el", "purpose": "Horizontal tiling respects minimum widths and preserves the split ratio."},
-    {"name": "etaf-desktop-layout-monocle-and-close-sync", "file": "tests/etaf-desktop-layout-tests.el", "purpose": "Monocle fills the canvas and closing a window removes its layout leaf."},
-    {"name": "etaf-desktop-layout-master-stack-reflows-new-windows", "file": "tests/etaf-desktop-layout-tests.el", "purpose": "Master-stack gives the first window a master region and reflows newly opened stack windows."}
+    {
+      "name": "etaf-desktop-window-lifecycle-and-state-isolation",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "Window operations preserve identity, raise order and immutable public snapshots."
+    },
+    {
+      "name": "etaf-desktop-geometry-limits-maximize-minimize-restore",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "Size limits and maximize/minimize/restore preserve a normal rectangle."
+    },
+    {
+      "name": "etaf-desktop-workspace-policy",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "Workspace selection and removal preserve window ownership and reject invalid changes."
+    },
+    {
+      "name": "etaf-desktop-mounted-window-and-taskbar",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "A mounted window remains in the retained application tree while its body is hidden and returns through taskbar restore."
+    },
+    {
+      "name": "etaf-desktop-body-activation-raises-window",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "Pressing application content focuses and raises the corresponding desktop window."
+    },
+    {
+      "name": "etaf-desktop-nested-content-activation-raises-window",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "Pressing an interactive descendant bubbles to the window focus policy."
+    },
+    {
+      "name": "etaf-desktop-native-title-drag-converts-pixels-to-rows",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "A native title drag converts text-area pixel motion into one logical desktop row."
+    },
+    {
+      "name": "etaf-desktop-native-drag-keeps-behavior-origin-across-rerenders",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "A controlled title drag retains its origin while each motion publishes a new desktop generation."
+    },
+    {
+      "name": "etaf-desktop-gesture-retains-origin-through-multiple-motions",
+      "file": "tests/etaf-desktop-gesture-tests.el",
+      "purpose": "A mounted title gesture retains its origin through multiple move publications."
+    },
+    {
+      "name": "etaf-desktop-gesture-repeated-sequences-reset-origin",
+      "file": "tests/etaf-desktop-gesture-tests.el",
+      "purpose": "Repeated gestures begin from committed geometry after garbage collection."
+    },
+    {
+      "name": "etaf-desktop-gesture-close-and-reopen-releases-retained-component",
+      "file": "tests/etaf-desktop-gesture-tests.el",
+      "purpose": "Closing and reopening a window releases the old retained gesture component and starts cleanly."
+    },
+    {
+      "name": "etaf-desktop-gesture-resizes-every-rendered-edge-and-corner",
+      "file": "tests/etaf-desktop-gesture-tests.el",
+      "purpose": "Every rendered resize cell updates controlled geometry: side and bottom edges, all four corner cells, while the title row keeps the window move gesture."
+    },
+    {
+      "name": "etaf-desktop-application-registry-and-lifecycle",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "An application manifest launches, suspends, restores and closes an isolated instance through public callbacks."
+    },
+    {
+      "name": "etaf-desktop-inactive-windows-show-gray-traffic-lights",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "A desktop window renders gray macOS traffic lights unless it is the active window; focusing another window swaps the colored lights."
+    },
+    {
+      "name": "etaf-desktop-default-canvas-fills-the-render-window",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "An unconfigured desktop sizes its shell from the window it renders into, so a Playground-style preview fills its window without overflowing it."
+    },
+    {
+      "name": "etaf-desktop-application-errors-are-isolated",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "A failing application becomes an error placeholder while other desktop windows remain usable."
+    },
+    {
+      "name": "etaf-desktop-session-roundtrip-restores-app-state",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "A serializable desktop session invokes application restore callbacks and reapplies saved window geometry."
+    },
+    {
+      "name": "etaf-desktop-session-unknown-app-isolated",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "A missing application during session restore becomes an error placeholder without aborting the desktop."
+    },
+    {
+      "name": "etaf-desktop-toggle-layout-mode-switches-the-workspace",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "The workspace layout control switches between floating and tiling, restoring floating rectangles and returning master-stack to floating."
+    },
+    {
+      "name": "etaf-desktop-shell-controls-and-live-tiling-refresh",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "The mounted shell exposes launcher and switcher controls and applies tiling to a newly opened window."
+    },
+    {
+      "name": "etaf-desktop-tiling-layout-and-split-resize",
+      "file": "tests/etaf-desktop-layout-tests.el",
+      "purpose": "Tiling assigns non-overlapping rectangles and applies an adjustable split ratio."
+    },
+    {
+      "name": "etaf-desktop-layout-floating-and-untile",
+      "file": "tests/etaf-desktop-layout-tests.el",
+      "purpose": "Untiling preserves a floating overlay and retile restores it to the tree."
+    },
+    {
+      "name": "etaf-desktop-layout-horizontal-split-and-minimums",
+      "file": "tests/etaf-desktop-layout-tests.el",
+      "purpose": "Horizontal tiling respects minimum widths and preserves the split ratio."
+    },
+    {
+      "name": "etaf-desktop-layout-monocle-and-close-sync",
+      "file": "tests/etaf-desktop-layout-tests.el",
+      "purpose": "Monocle fills the canvas and closing a window removes its layout leaf."
+    },
+    {
+      "name": "etaf-desktop-layout-master-stack-reflows-new-windows",
+      "file": "tests/etaf-desktop-layout-tests.el",
+      "purpose": "Master-stack gives the first window a master region and reflows newly opened stack windows."
+    }
   ]
 }

@@ -164,6 +164,13 @@
 ;; Return WORKSPACE's `floating', `tiling', `master-stack' or `monocle' policy mode.
 ;; WORKSPACE defaults to the active workspace.
 ;;
+;; Function: etaf-desktop-toggle-layout-mode (desktop &optional workspace)
+;;;###autoload (autoload 'etaf-desktop-toggle-layout-mode "etaf-desktop" nil t)
+;; Switch WORKSPACE between `floating' and `tiling' and return DESKTOP.
+;;
+;; This is the interactive counterpart of `etaf-desktop-set-layout-mode': the
+;; workspace bar's trailing control calls it, and other modes return to tiling.
+;;
 ;; Function: etaf-desktop-set-layout-mode (desktop mode &optional workspace)
 ;;;###autoload (autoload 'etaf-desktop-set-layout-mode "etaf-desktop" nil nil)
 ;; Set and apply a workspace layout mode.  Tiling fills the canvas using its
