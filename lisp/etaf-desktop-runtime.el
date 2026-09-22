@@ -23,6 +23,7 @@
                   (desktop path ratio &optional workspace))
 (declare-function etaf-desktop-layout-split "etaf-desktop-layout"
                   (desktop target new-id orientation ratio &optional workspace))
+(declare-function etaf-desktop-app "etaf-desktop-apps" (id))
 
 (define-error 'etaf-desktop-error "Invalid ETAF Desktop operation")
 
@@ -654,33 +655,71 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
 
 (defun etaf-desktop--taskbar-node (desktop state)
   "Build the taskbar for STATE using the reusable ETAF UI component."
-  (let ((accent-color (plist-get (etaf-desktop--settings desktop) :accent-color))
-        (items
-         (cl-loop for window in (etaf-desktop--state-windows state)
-                  when (equal (etaf-desktop--window-workspace window)
-                              (etaf-desktop--state-active-workspace state))
-                  collect
-                  (list :key (etaf-desktop--window-id window)
-                        :ref (etaf-desktop--window-ref
-                              (format "taskbar-%s"
-                                      (etaf-desktop--window-id window)))
-                        :label (or (etaf-desktop--window-title window)
-                                   (format "%s" (etaf-desktop--window-id window)))
-                        :state (cond
-                                ((etaf-desktop--window-minimized window) 'minimized)
-                                ((equal (etaf-desktop--window-id window)
-                                        (etaf-desktop--state-active-window state)) 'active)
-                                (t nil))))))
+  (let* ((settings (etaf-desktop--settings desktop))
+         (accent-color (plist-get settings :accent-color))
+         (grouping (plist-get settings :taskbar-grouping))
+         (active-id (format "%s" (or (etaf-desktop--state-active-window state) "")))
+         (active-key (if (and (eq grouping 'application)
+                              (string-match "\\`\\([^/]+\\)/" active-id))
+                         (match-string 1 active-id)
+                       active-id))
+         (windows (cl-remove-if-not
+                   (lambda (window)
+                     (equal (etaf-desktop--window-workspace window)
+                            (etaf-desktop--state-active-workspace state)))
+                   (etaf-desktop--state-windows state)))
+         (groups nil))
+    (dolist (window windows)
+      (let* ((id (format "%s" (etaf-desktop--window-id window)))
+             (key (if (and (eq grouping 'application)
+                           (string-match "\\`\\([^/]+\\)/" id))
+                       (match-string 1 id)
+                     id))
+             (entry (assoc key groups)))
+        (if entry
+            (setcdr entry (append (cdr entry) (list window)))
+          (setq groups (append groups (list (cons key (list window))))))))
+    (let ((items
+           (mapcar
+            (lambda (group)
+              (let* ((key (car group))
+                     (members (cdr group))
+                     (first (car members))
+                     (active (cl-some
+                              (lambda (window)
+                                (equal (etaf-desktop--window-id window)
+                                       (etaf-desktop--state-active-window state)))
+                              members))
+                     (minimized (cl-every #'etaf-desktop--window-minimized members))
+                     (label (if (eq grouping 'application)
+                                (or (ignore-errors
+                                      (plist-get (etaf-desktop-app key) :title))
+                                    key)
+                              (or (etaf-desktop--window-title first) key))))
+                (list :key key
+                      :ref (etaf-desktop--window-ref (format "taskbar-%s" key))
+                      :label (format "%s" label)
+                      :state (cond (active 'active)
+                                   (minimized 'minimized)
+                                   (t nil))
+                      :window-id (etaf-desktop--window-id first))))
+            groups)))
     (etaf-node 'etaf-taskbar
                (list :items items
                      :accent-color accent-color
-                     :active (etaf-desktop--state-active-window state)
+                      :active active-key
                      :on-select (lambda (id)
-                                  (etaf-desktop-focus-window desktop id))
+                                  (let ((target (or (plist-get
+                                                     (cl-find id items :key (lambda (item)
+                                                                            (plist-get item :key))
+                                                                  :test #'equal)
+                                                     :window-id)
+                                                    id)))
+                                    (etaf-desktop-focus-window desktop target)))
                      :on-launch (and (fboundp 'etaf-desktop-toggle-launcher)
                                      (lambda ()
                                        (etaf-desktop-toggle-launcher desktop))))
-               nil)))
+               nil))))
 
 (defun etaf-desktop--workspace-node (desktop state)
   "Build workspace controls for STATE using the reusable ETAF UI component."
