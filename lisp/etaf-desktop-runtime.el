@@ -24,6 +24,8 @@
 (declare-function etaf-desktop-layout-split "etaf-desktop-layout"
                   (desktop target new-id orientation ratio &optional workspace))
 (declare-function etaf-desktop-app "etaf-desktop-apps" (id))
+(declare-function etaf-runtime-update-host-geometry "etaf-runtime"
+                  (runtime host-ref &rest geometry))
 
 (define-error 'etaf-desktop-error "Invalid ETAF Desktop operation")
 
@@ -603,6 +605,78 @@ at this boundary."
     (cons (round (or (car delta) 0))
           (round (/ (float (or (cdr delta) 0)) (or line-height 1))))))
 
+(defun etaf-desktop--gesture-geometry-update (desktop id window)
+  "Project WINDOW geometry through ETAF's retained incremental boundary.
+
+The Desktop record is the policy authority; ETAF owns the bridge to Ebox's
+typed geometry operation.  A complete state publication remains the recovery
+and structural path, while pointer samples update only the committed Host."
+  (let ((runtime (etaf-desktop--controller-runtime desktop)))
+    (unless runtime
+      (etaf-desktop--fail "Desktop gesture has no mounted Runtime"))
+    (condition-case nil
+        (progn
+          (etaf-runtime-update-host-geometry
+           runtime (etaf-desktop--window-ref id)
+           :left (list 'px (etaf-desktop--window-x window))
+           :top (list 'lh (etaf-desktop--window-y window))
+           :width (list 'px (etaf-desktop--window-width window))
+           :height (list 'lh (etaf-desktop--window-height window))
+           :z-index (etaf-desktop--window-z-index window))
+          t)
+      ;; A close-and-reopen in one event turn can leave the old Ebox logical
+      ;; region retired until the next complete Runtime publication.  Recover
+      ;; through the normal structural path rather than losing the gesture.
+      (etaf-runtime-error
+       (etaf-desktop--publish
+        desktop (etaf-desktop--copy-state (etaf-desktop--state desktop)))
+       nil))))
+
+(defun etaf-desktop--move-window-during-gesture (desktop id x y)
+  "Update one controlled window and its retained Host during a move gesture."
+  (let* ((state (etaf-desktop--state desktop))
+         (window (etaf-desktop--window-for state id)))
+    (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
+    (when (etaf-desktop--window-maximized window)
+      (pcase-let ((`(,normal-x ,normal-y ,normal-width ,normal-height)
+                   (etaf-desktop--window-normal-geometry window)))
+        (setf (etaf-desktop--window-x window) normal-x
+              (etaf-desktop--window-y window) normal-y
+              (etaf-desktop--window-width window) normal-width
+              (etaf-desktop--window-height window) normal-height
+              (etaf-desktop--window-maximized window) nil)))
+    (setf (etaf-desktop--window-x window) x
+          (etaf-desktop--window-y window) y
+          (etaf-desktop--window-normal-geometry window)
+          (list x y (etaf-desktop--window-width window)
+                (etaf-desktop--window-height window)))
+    (etaf-desktop--gesture-geometry-update desktop id window)
+    (etaf-desktop--window-plist window)))
+
+(defun etaf-desktop--set-window-geometry-during-gesture
+    (desktop id x y width height)
+  "Update one controlled window and its retained Host during resize."
+  (let* ((state (etaf-desktop--state desktop))
+         (window (etaf-desktop--window-for state id)))
+    (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
+    (unless (etaf-desktop--window-resizable window)
+      (etaf-desktop--fail "Desktop window is not resizable: %S" id))
+    (setq width (etaf-desktop--clamp width
+                                     (etaf-desktop--window-min-width window)
+                                     (etaf-desktop--window-max-width window))
+          height (etaf-desktop--clamp height
+                                      (etaf-desktop--window-min-height window)
+                                      (etaf-desktop--window-max-height window)))
+    (setf (etaf-desktop--window-x window) x
+          (etaf-desktop--window-y window) y
+          (etaf-desktop--window-width window) width
+          (etaf-desktop--window-height window) height
+          (etaf-desktop--window-maximized window) nil
+          (etaf-desktop--window-normal-geometry window)
+          (list x y width height))
+    (etaf-desktop--gesture-geometry-update desktop id window)
+    (etaf-desktop--window-plist window)))
+
 (defun etaf-desktop--move-behavior (desktop id)
   "Construct a controlled move Behavior for window ID in DESKTOP."
   (etaf-draggable-controlled
@@ -610,9 +684,8 @@ at this boundary."
      (let ((state (etaf-desktop-window-state desktop id)))
        (list :x (plist-get state :x) :y (plist-get state :y))))
    (lambda (next)
-     (etaf-desktop-move-window desktop id
-                              (plist-get next :x)
-                              (plist-get next :y)))
+     (etaf-desktop--move-window-during-gesture
+      desktop id (plist-get next :x) (plist-get next :y)))
    :axis 'both :delta #'etaf-desktop--delta
    :on-start (lambda (_gesture)
                (etaf-desktop-focus-window desktop id))))
@@ -634,7 +707,7 @@ at this boundary."
                :width (plist-get current :width)
                :height (plist-get current :height))))
      (lambda (next)
-       (etaf-desktop--set-window-geometry
+       (etaf-desktop--set-window-geometry-during-gesture
         desktop id (plist-get next :x) (plist-get next :y)
         (plist-get next :width) (plist-get next :height)))
      :edges edges :delta #'etaf-desktop--delta
