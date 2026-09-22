@@ -54,16 +54,18 @@
         :confirm-close nil
         :taskbar-grouping 'window
         :keybindings
-        (list :focus-next "M-`"
-              :focus-previous "M-~"
-              :launcher "C-c d a"
-              :switcher "C-c d w"
-              :toggle-layout "C-c d l"
-              :split-window "C-c d s"
-              :swap-window "C-c d x"
-              :maximize-window "C-c d m"
-              :minimize-window "C-c d n"
-              :close-window "C-c d c")))
+        (list :focus-next "n"
+              :focus-previous "p"
+              :launcher "a"
+              :switcher "w"
+              :settings "o"
+              :toggle-layout "l"
+              :split-window "s"
+              :swap-window "x"
+              :maximize-window "m"
+              :restore-window "r"
+              :minimize-window "i"
+              :close-window "q")))
 
 (defun etaf-desktop--fail (format-string &rest arguments)
   "Signal `etaf-desktop-error' with FORMAT-STRING and ARGUMENTS."
@@ -258,6 +260,7 @@ settings are projected by the next retained shell publication."
            (cons :focus-previous (lambda () (etaf-desktop--focus-relative desktop -1)))
            (cons :launcher (lambda () (etaf-desktop-toggle-launcher desktop)))
            (cons :switcher (lambda () (etaf-desktop-toggle-switcher desktop)))
+           (cons :settings (lambda () (etaf-desktop-toggle-settings desktop)))
            (cons :toggle-layout
                  (lambda () (etaf-desktop-toggle-layout-mode desktop)))
            (cons :split-window
@@ -267,6 +270,9 @@ settings are projected by the next retained shell publication."
            (cons :maximize-window
                  (lambda () (when-let* ((id (funcall active)))
                               (etaf-desktop-maximize-window desktop id))))
+           (cons :restore-window
+                 (lambda () (when-let* ((id (funcall active)))
+                              (etaf-desktop-restore-window desktop id))))
            (cons :minimize-window
                  (lambda () (when-let* ((id (funcall active)))
                               (etaf-desktop-minimize-window desktop id))))
@@ -278,7 +284,11 @@ settings are projected by the next retained shell publication."
                (let ((callback (cdr (assq key actions))))
                  (when (and callback (stringp action))
                    (condition-case nil
-                       (define-key map (kbd action) callback)
+                       (define-key map (kbd action)
+                                   (let ((handler callback))
+                                     (lambda ()
+                                       (interactive)
+                                       (funcall handler))))
                      (error nil)))))
       map)))
 
@@ -294,6 +304,15 @@ settings are projected by the next retained shell publication."
           (push (cons 'etaf-desktop-keymap
                       (etaf-desktop--buffer-keymap desktop))
                 minor-mode-overriding-map-alist))))))
+
+(defun etaf-desktop--clear-buffer-keymap (desktop)
+  "Remove DESKTOP's local keymap from its mounted buffer."
+  (when-let* ((buffer (etaf-desktop--controller-buffer desktop))
+              ((buffer-live-p buffer)))
+    (with-current-buffer buffer
+      (setq minor-mode-overriding-map-alist
+            (assq-delete-all 'etaf-desktop-keymap
+                             minor-mode-overriding-map-alist)))))
 
 (defvar etaf-desktop--mount-window nil
   "Window mounting the current desktop while its first View renders.")
@@ -1091,6 +1110,12 @@ to the desktop layout policy; windows remain the runtime's positioned shells."
                              (etaf-desktop--set-keybinding desktop :maximize-window value)))
                      nil)
           (etaf-node 'etaf-text-input
+                     (list :label "Restore key" :value (plist-get keybindings :restore-window)
+                           :on-change
+                           (lambda (value)
+                             (etaf-desktop--set-keybinding desktop :restore-window value)))
+                     nil)
+          (etaf-node 'etaf-text-input
                      (list :label "Minimize key" :value (plist-get keybindings :minimize-window)
                            :on-change
                            (lambda (value)
@@ -1112,6 +1137,14 @@ to the desktop layout policy; windows remain the runtime's positioned shells."
 
 (etaf-define-component etaf-desktop--application (&key desktop)
   "Render DESKTOP as a controlled desktop surface."
+  :setup
+  (progn
+    ;; Playground mounts the public View directly instead of calling
+    ;; `etaf-desktop-mount'; keep the buffer-local shortcut lifecycle at the
+    ;; Desktop Component boundary so both consumers behave identically.
+    (etaf-on-mounted (lambda () (etaf-desktop--refresh-buffer-keymap desktop)))
+    (etaf-on-unmounted (lambda () (etaf-desktop--clear-buffer-keymap desktop)))
+    nil)
   :render
   (let* ((state (etaf-desktop--state desktop))
          (colors (etaf-desktop--theme-colors desktop))

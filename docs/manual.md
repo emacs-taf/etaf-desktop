@@ -66,6 +66,12 @@ switcher, layout, split, swap, maximize, minimize and close bindings.
 `etaf-desktop-session-state`; invalid persisted values are rejected through the
 same public validator during restore.
 
+The default Desktop buffer map uses single letters because it is local to the
+Desktop surface: `n`/`p` focus next/previous, `a` opens Applications, `w`
+opens the switcher, `o` opens Settings, `l` toggles layout, `s` splits, `x`
+swaps, `m` maximizes, `r` restores, `i` minimizes, and `q` closes the active
+window. A modal or native input surface temporarily takes precedence.
+
 Read-only queries return detached plists: `etaf-desktop-state`,
 `etaf-desktop-windows`, `etaf-desktop-window-state`,
 `etaf-desktop-active-window` and `etaf-desktop-active-workspace`. Callers must
