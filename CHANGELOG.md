@@ -6,6 +6,9 @@ All notable changes to ETAF Desktop are documented here.
 
 ### Changed
 
+- Session snapshots now persist each workspace's layout mode, split tree and
+  floating membership, so restore keeps tiling topology and ratios.
+
 - An implicit launch of an application without the `multiple-instances`
   capability focuses its running instance instead of creating a second one.
   Session restore still passes explicit instance ids and recreates every
