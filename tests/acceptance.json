@@ -31,6 +31,16 @@
       "purpose": "A mounted window remains in the retained application tree while its body is hidden and returns through taskbar restore."
     },
     {
+      "name": "etaf-desktop-mounted-buffer-uses-configured-local-shortcuts",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "Mounted Desktop buffers dispatch configured single-letter actions and update the local map when bindings change."
+    },
+    {
+      "name": "etaf-desktop-view-installs-shortcuts-in-named-target-buffer",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "Mounting a Desktop View by target name installs local shortcuts in that target instead of the caller buffer."
+    },
+    {
       "name": "etaf-desktop-body-activation-raises-window",
       "file": "tests/etaf-desktop-tests.el",
       "purpose": "Pressing application content focuses and raises the corresponding desktop window."
@@ -74,6 +84,11 @@
       "name": "etaf-desktop-application-registry-and-lifecycle",
       "file": "tests/etaf-desktop-tests.el",
       "purpose": "An application manifest launches, suspends, restores and closes an isolated instance through public callbacks."
+    },
+    {
+      "name": "etaf-desktop-direct-window-close-syncs-app-lifecycle",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "Directly closing owned windows updates application ownership, closes the final instance and focuses the remaining window."
     },
     {
       "name": "etaf-desktop-inactive-windows-show-gray-traffic-lights",

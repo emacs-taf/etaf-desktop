@@ -292,27 +292,47 @@ settings are projected by the next retained shell publication."
                      (error nil)))))
       map)))
 
-(defun etaf-desktop--refresh-buffer-keymap (desktop)
-  "Install DESKTOP's settings keymap in its mounted buffer."
-  (when-let* ((buffer (etaf-desktop--controller-buffer desktop))
+(defvar-local etaf-desktop--keymap-active nil
+  "Non-nil while the Desktop buffer-local keymap is active.")
+
+(defun etaf-desktop--lifecycle-buffer (desktop)
+  "Return the buffer owned by DESKTOP's current lifecycle Runtime.
+
+`etaf-mount' may be called with a buffer name while another buffer is
+current.  Lifecycle callbacks therefore use the Runtime supplied by ETAF;
+fall back to DESKTOP's recorded buffer for callbacks outside a live Runtime."
+  (or (when-let* ((runtime (etaf-current-runtime)))
+        (etaf-runtime-buffer runtime))
+      (etaf-desktop--controller-buffer desktop)
+      (current-buffer)))
+
+(defun etaf-desktop--refresh-buffer-keymap (desktop &optional buffer)
+  "Install DESKTOP's settings keymap in BUFFER or its owned mount."
+  (when-let* ((buffer (or buffer (etaf-desktop--controller-buffer desktop)))
               ((buffer-live-p buffer)))
     (with-current-buffer buffer
-      (let ((entry (assq 'etaf-desktop-keymap
+      ;; `minor-mode-overriding-map-alist' activates an entry only while the
+      ;; corresponding buffer-local mode variable is non-nil.  Desktop is a
+      ;; mounted surface rather than a user-visible minor mode, so retain the
+      ;; same local precedence contract with a private marker variable.
+      (setq-local etaf-desktop--keymap-active t)
+      (let ((entry (assq 'etaf-desktop--keymap-active
                          minor-mode-overriding-map-alist)))
         (if entry
             (setcdr entry (etaf-desktop--buffer-keymap desktop))
-          (push (cons 'etaf-desktop-keymap
+          (push (cons 'etaf-desktop--keymap-active
                       (etaf-desktop--buffer-keymap desktop))
                 minor-mode-overriding-map-alist))))))
 
-(defun etaf-desktop--clear-buffer-keymap (desktop)
-  "Remove DESKTOP's local keymap from its mounted buffer."
-  (when-let* ((buffer (etaf-desktop--controller-buffer desktop))
+(defun etaf-desktop--clear-buffer-keymap (desktop &optional buffer)
+  "Remove DESKTOP's local keymap from BUFFER or its owned mount."
+  (when-let* ((buffer (or buffer (etaf-desktop--controller-buffer desktop)))
               ((buffer-live-p buffer)))
     (with-current-buffer buffer
       (setq minor-mode-overriding-map-alist
-            (assq-delete-all 'etaf-desktop-keymap
-                             minor-mode-overriding-map-alist)))))
+            (assq-delete-all 'etaf-desktop--keymap-active
+                             minor-mode-overriding-map-alist)
+            etaf-desktop--keymap-active nil))))
 
 (defvar etaf-desktop--mount-window nil
   "Window mounting the current desktop while its first View renders.")
@@ -421,6 +441,40 @@ desktop hides buffer chrome, so no extra padding row is needed at the bottom."
    :active-window (etaf-desktop--state-active-window state)
    :next-z (etaf-desktop--state-next-z state)))
 
+(defun etaf-desktop--state-signature (state)
+  "Return the mutable Desktop facts used to detect a no-op update.
+
+Window Views are caller-owned retained trees and must not participate in this
+comparison.  Geometry and lifecycle updates only change the scalar fields
+below, so avoiding a publication when those facts are unchanged keeps a drag's
+terminal event from rebuilding the retained Runtime tree a second time."
+  (list
+   (etaf-desktop--state-workspaces state)
+   (etaf-desktop--state-active-workspace state)
+   (etaf-desktop--state-active-window state)
+   (etaf-desktop--state-next-z state)
+   (mapcar
+    (lambda (window)
+      (list (etaf-desktop--window-id window)
+            (etaf-desktop--window-title window)
+            (etaf-desktop--window-x window)
+            (etaf-desktop--window-y window)
+            (etaf-desktop--window-width window)
+            (etaf-desktop--window-height window)
+            (etaf-desktop--window-min-width window)
+            (etaf-desktop--window-min-height window)
+            (etaf-desktop--window-max-width window)
+            (etaf-desktop--window-max-height window)
+            (etaf-desktop--window-visible window)
+            (etaf-desktop--window-minimized window)
+            (etaf-desktop--window-maximized window)
+            (etaf-desktop--window-workspace window)
+            (etaf-desktop--window-normal-geometry window)
+            (etaf-desktop--window-z-index window)
+            (etaf-desktop--window-movable window)
+            (etaf-desktop--window-resizable window)))
+    (etaf-desktop--state-windows state))))
+
 (defun etaf-desktop--window-for (state id)
   "Return the window named ID in STATE, or nil."
   (cl-find id (etaf-desktop--state-windows state)
@@ -456,22 +510,47 @@ desktop hides buffer chrome, so no extra padding row is needed at the bottom."
 (defun etaf-desktop--update (desktop function)
   "Copy DESKTOP state, call FUNCTION with it, and publish the copy."
   (let* ((desktop (etaf-desktop--controller desktop))
-         (state (etaf-desktop--copy-state (etaf-desktop--state desktop)))
+         (current (etaf-desktop--state desktop))
+         (state (etaf-desktop--copy-state current))
          (result (funcall function state)))
-    (etaf-desktop--publish desktop state)
+    ;; Ebox emits a terminal drag event with the same geometry as its final
+    ;; move event.  Do not publish an unchanged state: the retained Runtime
+    ;; tree and Ebox surface are already current.
+    (unless (equal (etaf-desktop--state-signature current)
+                   (etaf-desktop--state-signature state))
+      (etaf-desktop--publish desktop state))
     result))
 
 (defun etaf-desktop--raise (state window)
   "Raise WINDOW in STATE and make it active."
-  (setf (etaf-desktop--window-z-index window)
-        (etaf-desktop--state-next-z state)
-        (etaf-desktop--state-next-z state)
-        (1+ (etaf-desktop--state-next-z state))
-        (etaf-desktop--state-active-window state)
+  (unless (and (equal (etaf-desktop--state-active-window state)
+                      (etaf-desktop--window-id window))
+               (equal (etaf-desktop--state-active-workspace state)
+                      (etaf-desktop--window-workspace window))
+               ;; A defensive max check preserves raising if a caller has
+               ;; changed z-order independently of the active-window field.
+               (>= (etaf-desktop--window-z-index window)
+                   (etaf-desktop--windows-max-z state)))
+    (setf (etaf-desktop--window-z-index window)
+          (etaf-desktop--state-next-z state)
+          (etaf-desktop--state-next-z state)
+          (1+ (etaf-desktop--state-next-z state))))
+  (setf (etaf-desktop--state-active-window state)
         (etaf-desktop--window-id window)
         (etaf-desktop--state-active-workspace state)
         (etaf-desktop--window-workspace window))
   window)
+
+(defun etaf-desktop--notify-window-event (desktop id event)
+  "Notify the application registry that window ID experienced EVENT.
+
+The runtime owns window geometry and deliberately does not require the
+application registry (which depends on this module).  The optional callback is
+installed by `etaf-desktop-apps' when the full package is loaded, keeping the
+provider dependency acyclic while allowing app-instance lifecycle state to
+follow direct window interactions."
+  (when (fboundp 'etaf-desktop--application-window-event)
+    (funcall #'etaf-desktop--application-window-event desktop id event)))
 
 (defun etaf-desktop--geometry (window)
   "Return WINDOW's current geometry as `(X Y WIDTH HEIGHT)'."
@@ -1142,8 +1221,14 @@ to the desktop layout policy; windows remain the runtime's positioned shells."
     ;; Playground mounts the public View directly instead of calling
     ;; `etaf-desktop-mount'; keep the buffer-local shortcut lifecycle at the
     ;; Desktop Component boundary so both consumers behave identically.
-    (etaf-on-mounted (lambda () (etaf-desktop--refresh-buffer-keymap desktop)))
-    (etaf-on-unmounted (lambda () (etaf-desktop--clear-buffer-keymap desktop)))
+    (etaf-on-mounted
+     (lambda ()
+       (etaf-desktop--refresh-buffer-keymap
+        desktop (etaf-desktop--lifecycle-buffer desktop))))
+    (etaf-on-unmounted
+     (lambda ()
+       (etaf-desktop--clear-buffer-keymap
+        desktop (etaf-desktop--lifecycle-buffer desktop))))
     nil)
   :render
   (let* ((state (etaf-desktop--state desktop))
@@ -1345,8 +1430,26 @@ WORKSPACE defaults to the active workspace."
            (etaf-desktop--raise state window)
            (etaf-desktop--window-plist window)))))))
 
+(defun etaf-desktop--highest-visible-window (state workspace)
+  "Return the highest visible, non-minimized window in WORKSPACE."
+  (car
+   (sort
+    (cl-remove-if-not
+     (lambda (candidate)
+       (and (equal workspace (etaf-desktop--window-workspace candidate))
+            (etaf-desktop--window-visible candidate)
+            (not (etaf-desktop--window-minimized candidate))))
+     (copy-sequence (etaf-desktop--state-windows state)))
+    (lambda (left right)
+      (> (etaf-desktop--window-z-index left)
+         (etaf-desktop--window-z-index right))))))
+
 (defun etaf-desktop-close-window (desktop id)
-  "Close window ID in DESKTOP and return non-nil when it existed."
+  "Close window ID in DESKTOP and return non-nil when it existed.
+
+When the active window is removed, the highest visible window in the same
+workspace becomes active so closing a window never leaves the desktop without
+a focused target while other windows remain available."
   (let ((result
          (etaf-desktop--update
           desktop
@@ -1354,24 +1457,36 @@ WORKSPACE defaults to the active workspace."
             (let ((window (etaf-desktop--window-for state id)))
               (if (not window)
                   nil
-                (setf (etaf-desktop--state-windows state)
-                      (delq window (etaf-desktop--state-windows state)))
-                (when (equal id (etaf-desktop--state-active-window state))
-                  (setf (etaf-desktop--state-active-window state) nil))
-                t))))))
+                (let ((workspace (etaf-desktop--window-workspace window))
+                      (was-active
+                       (equal id (etaf-desktop--state-active-window state))))
+                  (setf (etaf-desktop--state-windows state)
+                        (delq window (etaf-desktop--state-windows state)))
+                  (when was-active
+                    (let ((replacement
+                           (etaf-desktop--highest-visible-window state workspace)))
+                      (setf (etaf-desktop--state-active-window state)
+                            (and replacement
+                                 (etaf-desktop--window-id replacement)))))
+                  t)))))))
+    (when result
+      (etaf-desktop--notify-window-event desktop id 'closed))
     result))
 
 (defun etaf-desktop-focus-window (desktop id)
   "Focus and raise window ID, switching to its workspace."
-  (etaf-desktop--update
-   desktop
-   (lambda (state)
-     (let ((window (etaf-desktop--window-for state id)))
-       (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
-       (setf (etaf-desktop--window-minimized window) nil
-             (etaf-desktop--window-visible window) t)
-       (etaf-desktop--raise state window)
-       id))))
+  (let ((result
+         (etaf-desktop--update
+          desktop
+          (lambda (state)
+            (let ((window (etaf-desktop--window-for state id)))
+              (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
+              (setf (etaf-desktop--window-minimized window) nil
+                    (etaf-desktop--window-visible window) t)
+              (etaf-desktop--raise state window)
+              id)))))
+    (etaf-desktop--notify-window-event desktop id 'focused)
+    result))
 
 (defun etaf-desktop-move-window (desktop id x y)
   "Move window ID to X and Y, returning its public state plist."
@@ -1479,36 +1594,42 @@ its position and size together."
 
 (defun etaf-desktop-minimize-window (desktop id)
   "Minimize window ID into DESKTOP's taskbar."
-  (etaf-desktop--update
-   desktop
-   (lambda (state)
-     (let ((window (etaf-desktop--window-for state id)))
-       (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
-       (setf (etaf-desktop--window-minimized window) t
-             (etaf-desktop--window-visible window) nil)
-       (when (equal id (etaf-desktop--state-active-window state))
-         (setf (etaf-desktop--state-active-window state) nil))
-       (etaf-desktop--window-plist window)))))
+  (let ((result
+         (etaf-desktop--update
+          desktop
+          (lambda (state)
+            (let ((window (etaf-desktop--window-for state id)))
+              (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
+              (setf (etaf-desktop--window-minimized window) t
+                    (etaf-desktop--window-visible window) nil)
+              (when (equal id (etaf-desktop--state-active-window state))
+                (setf (etaf-desktop--state-active-window state) nil))
+              (etaf-desktop--window-plist window))))))
+    (etaf-desktop--notify-window-event desktop id 'minimized)
+    result))
 
 (defun etaf-desktop-restore-window (desktop id)
   "Restore minimized or maximized window ID and focus it."
-  (etaf-desktop--update
-   desktop
-   (lambda (state)
-     (let ((window (etaf-desktop--window-for state id)))
-       (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
-       (when (etaf-desktop--window-maximized window)
-         (pcase-let ((`(,x ,y ,width ,height)
-                      (etaf-desktop--window-normal-geometry window)))
-           (setf (etaf-desktop--window-x window) x
-                 (etaf-desktop--window-y window) y
-                 (etaf-desktop--window-width window) width
-                 (etaf-desktop--window-height window) height)))
-       (setf (etaf-desktop--window-maximized window) nil
-             (etaf-desktop--window-minimized window) nil
-             (etaf-desktop--window-visible window) t)
-       (etaf-desktop--raise state window)
-       (etaf-desktop--window-plist window)))))
+  (let ((result
+         (etaf-desktop--update
+          desktop
+          (lambda (state)
+            (let ((window (etaf-desktop--window-for state id)))
+              (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
+              (when (etaf-desktop--window-maximized window)
+                (pcase-let ((`(,x ,y ,width ,height)
+                             (etaf-desktop--window-normal-geometry window)))
+                  (setf (etaf-desktop--window-x window) x
+                        (etaf-desktop--window-y window) y
+                        (etaf-desktop--window-width window) width
+                        (etaf-desktop--window-height window) height)))
+              (setf (etaf-desktop--window-maximized window) nil
+                    (etaf-desktop--window-minimized window) nil
+                    (etaf-desktop--window-visible window) t)
+              (etaf-desktop--raise state window)
+              (etaf-desktop--window-plist window))))))
+    (etaf-desktop--notify-window-event desktop id 'restored)
+    result))
 
 (defun etaf-desktop-window-maximized-p (desktop id)
   "Return non-nil when window ID is maximized."

@@ -46,6 +46,76 @@
                   :instances (make-hash-table :test #'equal) :next-id 1)
                  etaf-desktop--app-stores))))
 
+(defun etaf-desktop--instance-has-visible-window-p (desktop instance)
+  "Return non-nil when INSTANCE owns a visible, non-minimized window."
+  (cl-some
+   (lambda (window-id)
+     (let ((state (condition-case nil
+                      (etaf-desktop-window-state desktop window-id)
+                    (etaf-desktop-error nil))))
+       (and state
+            (plist-get state :visible)
+            (not (plist-get state :minimized)))))
+   (etaf-desktop--instance-windows instance)))
+
+(defun etaf-desktop--application-window-event (desktop window-id event)
+  "Keep application instances synchronized with WINDOW-ID EVENT.
+
+The geometry runtime calls this private integration point after a direct
+window operation.  It lets title-bar actions and application-owned calls share
+the same lifecycle semantics without making the runtime depend on the app
+registry.  Closing an instance's last window invokes its manifest close
+callback once; closing one of several windows only removes that window from
+the instance record."
+  (when-let* ((store (gethash desktop etaf-desktop--app-stores)))
+    (maphash
+     (lambda (_instance-id instance)
+       (when (member window-id (etaf-desktop--instance-windows instance))
+         (pcase event
+           ('closed
+            (setf (etaf-desktop--instance-windows instance)
+                  (delete window-id
+                          (etaf-desktop--instance-windows instance)))
+            (unless (memq (etaf-desktop--instance-status instance)
+                          '(closing closed error))
+              (if (etaf-desktop--instance-windows instance)
+                  (setf (etaf-desktop--instance-status instance)
+                        (if (etaf-desktop--instance-has-visible-window-p
+                             desktop instance)
+                            'active 'suspended))
+                ;; A user closing the last app window is the app-level close
+                ;; operation.  Keep callback failures isolated in the same
+                ;; way as `etaf-desktop-close-instance'.
+                (setf (etaf-desktop--instance-status instance) 'closing)
+                (let ((app (gethash (etaf-desktop--instance-app-id instance)
+                                    etaf-desktop--apps))
+                      (callback-error nil))
+                  (when (and app (etaf-desktop--app-close app))
+                    (condition-case err
+                        (funcall (etaf-desktop--app-close app)
+                                 (etaf-desktop--instance-context desktop instance)
+                                 'window-close)
+                      (error (setq callback-error
+                                    (error-message-string err)))))
+                  (setf (etaf-desktop--instance-status instance)
+                        (if callback-error 'error 'closed)
+                        (etaf-desktop--instance-error instance)
+                        callback-error)))))
+           ((or 'focused 'restored)
+            (unless (memq (etaf-desktop--instance-status instance)
+                          '(closed error))
+              (etaf-desktop--deactivate-other-instances store
+                                                         (etaf-desktop--instance-id instance))
+              (setf (etaf-desktop--instance-status instance) 'active)))
+           ('minimized
+            (unless (memq (etaf-desktop--instance-status instance)
+                          '(closed error closing))
+              (setf (etaf-desktop--instance-status instance)
+                    (if (etaf-desktop--instance-has-visible-window-p
+                         desktop instance)
+                        'active 'suspended)))))))
+     (etaf-desktop--app-store-instances store))))
+
 (defun etaf-desktop--app (id)
   "Return registered app ID ID or signal a public desktop error."
   (or (gethash id etaf-desktop--apps)

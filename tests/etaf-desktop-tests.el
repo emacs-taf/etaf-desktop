@@ -94,6 +94,51 @@
       (etaf-desktop-close desktop))
     (etaf-desktop-close desktop)))
 
+(ert-deftest etaf-desktop-mounted-buffer-uses-configured-local-shortcuts ()
+  "Mounted Desktop buffers dispatch configured single-letter actions locally."
+  (let ((desktop (etaf-desktop-create :name " *desktop-keymap-test*"
+                                      :canvas-width 80 :canvas-height 16)))
+    (unwind-protect
+        (let ((buffer (etaf-desktop-mount desktop)))
+          (with-current-buffer buffer
+            (should (commandp (key-binding (kbd "n"))))
+            (should (commandp (key-binding (kbd "o")))))
+          (etaf-desktop-set-setting
+           desktop :keybindings
+           (plist-put (copy-sequence
+                       (plist-get (etaf-desktop-settings desktop) :keybindings))
+                      :focus-next "f"))
+          (with-current-buffer buffer
+            (should (commandp (key-binding (kbd "f"))))))
+      (etaf-desktop-close desktop))))
+
+(ert-deftest etaf-desktop-view-installs-shortcuts-in-named-target-buffer ()
+  "A View mounted by name binds shortcuts in its target, not the caller."
+  (let* ((desktop (etaf-desktop-create :name " *desktop-keymap-target*"
+                                       :canvas-width 80 :canvas-height 16))
+         (target (get-buffer-create " *desktop-keymap-target-buffer*"))
+         (caller (current-buffer)))
+    (unwind-protect
+        (progn
+          ;; Deliberately call from CALLER without selecting TARGET.  The
+          ;; target buffer is the only buffer that should receive the local
+          ;; Desktop keymap.
+          (etaf-mount target (etaf-desktop-view desktop))
+          (let ((target-next
+                 (with-current-buffer target (key-binding (kbd "n"))))
+                (target-settings
+                 (with-current-buffer target (key-binding (kbd "o"))))
+                (caller-next (with-current-buffer caller
+                               (key-binding (kbd "n")))))
+            (should (commandp target-next))
+            (should (commandp target-settings))
+            (should-not (eq caller-next target-next))))
+      (when-let* ((runtime (etaf-runtime-for-buffer target)))
+        (etaf-unmount runtime))
+      (when (buffer-live-p target)
+        (kill-buffer target))
+      (etaf-desktop-close desktop))))
+
 (ert-deftest etaf-desktop-body-activation-raises-window ()
   "Pressing application content focuses and raises that window."
   (let ((desktop (etaf-desktop-create :name " *desktop-body-focus*")))
@@ -239,6 +284,41 @@
                         (plist-get (etaf-desktop-close-instance desktop id 'quit)
                                    :status)))
             (should (equal (list id 'quit) closed))))
+      (etaf-desktop-unregister-app app t)
+      (etaf-desktop-close desktop))))
+
+(ert-deftest etaf-desktop-direct-window-close-syncs-app-lifecycle ()
+  "Closing app windows directly keeps instance ownership and lifecycle state exact."
+  (let* ((app 'etaf-desktop-test-window-close-sync)
+         (closed nil)
+         (desktop (etaf-desktop-create :name " *desktop-window-close-sync*")))
+    (unwind-protect
+        (progn
+          (etaf-desktop-register-app
+           app :title "Window sync" :capabilities '(multiple-instances)
+           :open (lambda (_context)
+                   (list :windows
+                         (list (list :id 'first :title "First")
+                               (list :id 'second :title "Second"))))
+           :close (lambda (context reason)
+                    (setq closed (list (plist-get context :instance-id) reason))))
+          (let* ((instance (etaf-desktop-launch desktop app))
+                 (id (plist-get instance :id))
+                 (windows (copy-sequence (plist-get instance :windows)))
+                 (active (etaf-desktop-active-window desktop)))
+            (should (= 2 (length windows)))
+            (should (equal (car (last windows)) active))
+            ;; Closing the focused second view raises the remaining first view.
+            (should (etaf-desktop-close-window desktop active))
+            (let ((current (etaf-desktop-instance desktop id)))
+              (should (equal (list (car windows)) (plist-get current :windows)))
+              (should (eq 'active (plist-get current :status)))
+              (should (equal (car windows) (etaf-desktop-active-window desktop))))
+            ;; Closing the last view is the app-level close operation.
+            (should (etaf-desktop-close-window desktop (car windows)))
+            (should (eq 'closed (plist-get (etaf-desktop-instance desktop id)
+                                           :status)))
+            (should (equal (list id 'window-close) closed))))
       (etaf-desktop-unregister-app app t)
       (etaf-desktop-close desktop))))
 
