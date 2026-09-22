@@ -11,6 +11,8 @@
 (defvar ebox-viewport-height)
 (declare-function etaf-desktop-layout-mode "etaf-desktop-layout"
                   (desktop &optional workspace))
+(declare-function etaf-desktop-set-layout-mode "etaf-desktop-layout"
+                  (desktop mode &optional workspace))
 (declare-function etaf-desktop-layout-tree "etaf-desktop-layout"
                   (desktop &optional workspace))
 (declare-function etaf-desktop-toggle-layout-mode "etaf-desktop-layout"
@@ -19,6 +21,8 @@
                   (desktop &optional workspace))
 (declare-function etaf-desktop-layout-resize-split "etaf-desktop-layout"
                   (desktop path ratio &optional workspace))
+(declare-function etaf-desktop-layout-split "etaf-desktop-layout"
+                  (desktop target new-id orientation ratio &optional workspace))
 
 (define-error 'etaf-desktop-error "Invalid ETAF Desktop operation")
 
@@ -33,7 +37,32 @@
 
 (cl-defstruct (etaf-desktop--controller
                (:constructor etaf-desktop--controller-create))
-  name canvas-width canvas-height state-ref buffer runtime launcher-ref switcher-ref)
+  name canvas-width canvas-height state-ref buffer runtime launcher-ref switcher-ref
+  settings-ref settings-open-ref)
+
+(defun etaf-desktop--default-settings ()
+  "Return the detached default settings for a new Desktop controller."
+  (list :theme 'system
+        :accent-color "#3657D6"
+        :layout-mode 'floating
+        :title-font-size 14
+        :content-font-size 14
+        :font-family nil
+        :drag-lock-modifier 'shift
+        :resize-enabled t
+        :confirm-close nil
+        :taskbar-grouping 'window
+        :keybindings
+        (list :focus-next "M-`"
+              :focus-previous "M-~"
+              :launcher "C-c d a"
+              :switcher "C-c d w"
+              :toggle-layout "C-c d l"
+              :split-window "C-c d s"
+              :swap-window "C-c d x"
+              :maximize-window "C-c d m"
+              :minimize-window "C-c d n"
+              :close-window "C-c d c")))
 
 (defun etaf-desktop--fail (format-string &rest arguments)
   "Signal `etaf-desktop-error' with FORMAT-STRING and ARGUMENTS."
@@ -48,6 +77,222 @@
 (defun etaf-desktop--state (desktop)
   "Return DESKTOP's current state."
   (etaf-value (etaf-desktop--controller-state-ref desktop)))
+
+(defun etaf-desktop--settings (desktop)
+  "Return DESKTOP's current settings plist."
+  (copy-tree
+   (etaf-value (etaf-desktop--controller-settings-ref
+                (etaf-desktop--controller desktop)))))
+
+(defun etaf-desktop-settings (desktop)
+  "Return a detached settings plist for DESKTOP.
+
+Settings are caller-visible configuration, not a second geometry store.  Use
+`etaf-desktop-set-setting' or `etaf-desktop-reset-settings' to change them."
+  (etaf-desktop--settings desktop))
+
+(defun etaf-desktop-settings-open-p (desktop)
+  "Return non-nil when DESKTOP's settings dialog is open."
+  (etaf-value (etaf-desktop--controller-settings-open-ref
+               (etaf-desktop--controller desktop))))
+
+(defun etaf-desktop-toggle-settings (desktop &optional open)
+  "Set DESKTOP's settings dialog to OPEN, or toggle it when OPEN is nil."
+  (let* ((desktop (etaf-desktop--controller desktop))
+         (ref (etaf-desktop--controller-settings-open-ref desktop))
+         (value (if (null open) (not (etaf-value ref)) open)))
+    (etaf-set-value ref value)
+    value))
+
+(defun etaf-desktop-close-settings (desktop)
+  "Close DESKTOP's settings dialog and return nil."
+  (etaf-set-value
+   (etaf-desktop--controller-settings-open-ref
+    (etaf-desktop--controller desktop))
+   nil)
+  nil)
+
+(defun etaf-desktop--valid-setting-p (key value)
+  "Return non-nil when KEY accepts VALUE as a Desktop setting."
+  (pcase key
+    (:theme (memq value '(system light dark)))
+    (:accent-color
+     (and (stringp value)
+          (string-match-p "\\`#[[:xdigit:]]\\{6\\}\\'" value)))
+    (:layout-mode (memq value '(floating tiling master-stack monocle)))
+    ((or :title-font-size :content-font-size)
+     (and (numberp value) (>= value 8) (<= value 32)))
+    (:font-family (or (null value) (stringp value)))
+    (:drag-lock-modifier (memq value '(nil shift control meta super hyper)))
+    (:resize-enabled (booleanp value))
+    (:confirm-close (booleanp value))
+    (:taskbar-grouping (memq value '(window application)))
+    (:keybindings
+     (and (listp value)
+          (cl-loop for (name binding) on value by #'cddr
+                   always (and (keywordp name) (stringp binding)
+                               (not (string-empty-p binding))
+                               (condition-case nil
+                                   (progn (ignore (kbd binding)) t)
+                                 (error nil))))))
+    (_ nil)))
+
+(defun etaf-desktop-set-setting (desktop key value)
+  "Set DESKTOP setting KEY to VALUE and return its detached settings.
+
+The `:layout-mode' setting applies to the active workspace immediately; other
+settings are projected by the next retained shell publication."
+  (let ((desktop (etaf-desktop--controller desktop)))
+    (unless (and (keywordp key) (etaf-desktop--valid-setting-p key value))
+      (etaf-desktop--fail "Invalid Desktop setting %S=%S" key value))
+    (let ((settings (etaf-desktop--settings desktop)))
+      (setq settings (plist-put settings key (copy-tree value)))
+      (etaf-set-value (etaf-desktop--controller-settings-ref desktop) settings)
+      (when (eq key :layout-mode)
+        (etaf-desktop-set-layout-mode
+         desktop value (etaf-desktop-active-workspace desktop)))
+      (when (eq key :keybindings)
+        (etaf-desktop--refresh-buffer-keymap desktop))
+      (etaf-desktop-settings desktop))))
+
+(defun etaf-desktop-reset-settings (desktop)
+  "Restore DESKTOP's default settings and return them."
+  (let ((desktop (etaf-desktop--controller desktop)))
+    (etaf-set-value (etaf-desktop--controller-settings-ref desktop)
+                    (etaf-desktop--default-settings))
+    (etaf-desktop-set-layout-mode
+     desktop 'floating (etaf-desktop-active-workspace desktop))
+    (etaf-desktop-settings desktop)))
+
+(defun etaf-desktop--set-keybinding (desktop key value)
+  "Set one keybinding KEY in DESKTOP settings to VALUE."
+  (unless (and (keywordp key) (stringp value) (not (string-empty-p value)))
+    (etaf-desktop--fail "Invalid Desktop keybinding %S=%S" key value))
+  (let ((bindings (copy-tree
+                   (plist-get (etaf-desktop--settings desktop) :keybindings))))
+    (setq bindings (plist-put bindings key value))
+    (etaf-desktop-set-setting desktop :keybindings bindings)))
+
+(defun etaf-desktop--focus-relative (desktop direction)
+  "Focus the next or previous visible window in the active workspace."
+  (let* ((state (etaf-desktop--state desktop))
+         (windows (sort
+                   (cl-remove-if-not
+                    (lambda (window)
+                      (and (equal (etaf-desktop--window-workspace window)
+                                  (etaf-desktop--state-active-workspace state))
+                           (etaf-desktop--window-visible window)
+                           (not (etaf-desktop--window-minimized window))))
+                    (copy-sequence (etaf-desktop--state-windows state)))
+                   (lambda (left right)
+                     (< (etaf-desktop--window-z-index left)
+                        (etaf-desktop--window-z-index right)))))
+         (ids (mapcar #'etaf-desktop--window-id windows))
+         (active (etaf-desktop--state-active-window state))
+         (index (or (cl-position active ids :test #'equal)
+                    (if (> direction 0) -1 (length ids))))
+         (next (and ids (nth (mod (+ index direction) (length ids)) ids))))
+    (when next (etaf-desktop-focus-window desktop next))))
+
+(defun etaf-desktop--active-window-id (desktop)
+  "Return the active window ID or nil."
+  (etaf-desktop-active-window desktop))
+
+(defun etaf-desktop--split-active-window (desktop)
+  "Split the active window beside the next visible workspace window."
+  (let* ((active (etaf-desktop--active-window-id desktop))
+         (windows (etaf-desktop-windows desktop))
+         (other (cl-find-if
+                 (lambda (window)
+                   (and (equal (plist-get window :workspace)
+                               (etaf-desktop-active-workspace desktop))
+                        (not (equal (plist-get window :id) active))))
+                 windows)))
+    (when (and active other (fboundp 'etaf-desktop-layout-split))
+      (etaf-desktop-layout-split desktop active (plist-get other :id)
+                                  'horizontal 0.5)
+      (etaf-desktop-set-layout-mode desktop 'tiling)))
+  desktop)
+
+(defun etaf-desktop--swap-active-window (desktop)
+  "Swap the active window's floating rectangle with the next window."
+  (let* ((state (etaf-desktop--state desktop))
+         (active (etaf-desktop--state-active-window state))
+         (windows (etaf-desktop--state-windows state))
+         (other
+          (cl-find-if
+           (lambda (window)
+             (and (equal (etaf-desktop--window-workspace window)
+                         (etaf-desktop--state-active-workspace state))
+                  (not (equal (etaf-desktop--window-id window) active))))
+           windows)))
+    (when-let* ((first (etaf-desktop--window-for state active))
+                (second other))
+      (let ((first-geometry (etaf-desktop--geometry first))
+            (second-geometry (etaf-desktop--geometry second)))
+        (etaf-desktop--update
+         desktop
+         (lambda (next)
+           (let ((left (etaf-desktop--window-for next active))
+                 (right (etaf-desktop--window-for next
+                                                   (etaf-desktop--window-id second))))
+             (dolist (pair (list (cons left second-geometry)
+                                 (cons right first-geometry)))
+               (setf (etaf-desktop--window-x (car pair)) (nth 0 (cdr pair))
+                     (etaf-desktop--window-y (car pair)) (nth 1 (cdr pair))
+                     (etaf-desktop--window-width (car pair)) (nth 2 (cdr pair))
+                     (etaf-desktop--window-height (car pair)) (nth 3 (cdr pair))
+                     (etaf-desktop--window-normal-geometry (car pair))
+                     (copy-sequence (cdr pair))))
+             (etaf-desktop--raise next left))))))
+  desktop))
+
+(defun etaf-desktop--buffer-keymap (desktop)
+  "Build the current Desktop buffer keymap from user settings."
+  (let* ((bindings (plist-get (etaf-desktop--settings desktop) :keybindings))
+         (active (lambda () (etaf-desktop--active-window-id desktop)))
+         (actions
+          (list
+           (cons :focus-next (lambda () (etaf-desktop--focus-relative desktop 1)))
+           (cons :focus-previous (lambda () (etaf-desktop--focus-relative desktop -1)))
+           (cons :launcher (lambda () (etaf-desktop-toggle-launcher desktop)))
+           (cons :switcher (lambda () (etaf-desktop-toggle-switcher desktop)))
+           (cons :toggle-layout
+                 (lambda () (etaf-desktop-toggle-layout-mode desktop)))
+           (cons :split-window
+                 (lambda () (etaf-desktop--split-active-window desktop)))
+           (cons :swap-window
+                 (lambda () (etaf-desktop--swap-active-window desktop)))
+           (cons :maximize-window
+                 (lambda () (when-let* ((id (funcall active)))
+                              (etaf-desktop-maximize-window desktop id))))
+           (cons :minimize-window
+                 (lambda () (when-let* ((id (funcall active)))
+                              (etaf-desktop-minimize-window desktop id))))
+           (cons :close-window
+                 (lambda () (when-let* ((id (funcall active)))
+                              (etaf-desktop-close-window desktop id)))))))
+    (let ((map (make-sparse-keymap)))
+      (cl-loop for (key action) on bindings by #'cddr do
+               (let ((callback (cdr (assq key actions))))
+                 (when (and callback (stringp action))
+                   (condition-case nil
+                       (define-key map (kbd action) callback)
+                     (error nil)))))
+      map)))
+
+(defun etaf-desktop--refresh-buffer-keymap (desktop)
+  "Install DESKTOP's settings keymap in its mounted buffer."
+  (when-let* ((buffer (etaf-desktop--controller-buffer desktop))
+              ((buffer-live-p buffer)))
+    (with-current-buffer buffer
+      (let ((entry (assq 'etaf-desktop-keymap
+                         minor-mode-overriding-map-alist)))
+        (if entry
+            (setcdr entry (etaf-desktop--buffer-keymap desktop))
+          (push (cons 'etaf-desktop-keymap
+                      (etaf-desktop--buffer-keymap desktop))
+                minor-mode-overriding-map-alist))))))
 
 (defvar etaf-desktop--mount-window nil
   "Window mounting the current desktop while its first View renders.")
@@ -327,27 +572,39 @@ at this boundary."
                    :desktop desktop :id (etaf-desktop--window-id window))
              nil))
 
+(defun etaf-desktop--request-close-window (desktop id)
+  "Close ID, optionally asking for confirmation from Desktop settings."
+  (if (plist-get (etaf-desktop--settings desktop) :confirm-close)
+      (when (etaf-confirm-dialog
+             (format "Close the %s window?"
+                     (or (plist-get (etaf-desktop-window-state desktop id) :title)
+                         id)))
+        (etaf-desktop-close-window desktop id))
+    (etaf-desktop-close-window desktop id)))
+
 (defun etaf-desktop--window-shell
     (desktop window move resize-left resize-right resize-top resize-bottom
              resize-top-left resize-top-right resize-bottom-left resize-bottom-right)
   "Build WINDOW's ETAF UI shell with its retained geometry Behaviors.
 MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
   (let* ((id (etaf-desktop--window-id window))
+         (settings (etaf-desktop--settings desktop))
          (title (or (etaf-desktop--window-title window) (format "%s" id)))
          (body (or (etaf-desktop--window-view window)
                    (etaf-node 'text nil (list title))))
+         (resize-enabled (plist-get settings :resize-enabled))
          (mode (cond ((etaf-desktop--window-minimized window) 'minimized)
                      ((etaf-desktop--window-maximized window) 'maximized)
                      (t 'normal)))
          (move (and (etaf-desktop--window-movable window) move))
-         (resize-left (and (etaf-desktop--window-resizable window) resize-left))
-         (resize-right (and (etaf-desktop--window-resizable window) resize-right))
-         (resize-top (and (etaf-desktop--window-resizable window) resize-top))
-         (resize-bottom (and (etaf-desktop--window-resizable window) resize-bottom))
-         (resize-top-left (and (etaf-desktop--window-resizable window) resize-top-left))
-         (resize-top-right (and (etaf-desktop--window-resizable window) resize-top-right))
-         (resize-bottom-left (and (etaf-desktop--window-resizable window) resize-bottom-left))
-         (resize-bottom-right (and (etaf-desktop--window-resizable window) resize-bottom-right)))
+         (resize-left (and resize-enabled (etaf-desktop--window-resizable window) resize-left))
+         (resize-right (and resize-enabled (etaf-desktop--window-resizable window) resize-right))
+         (resize-top (and resize-enabled (etaf-desktop--window-resizable window) resize-top))
+         (resize-bottom (and resize-enabled (etaf-desktop--window-resizable window) resize-bottom))
+         (resize-top-left (and resize-enabled (etaf-desktop--window-resizable window) resize-top-left))
+         (resize-top-right (and resize-enabled (etaf-desktop--window-resizable window) resize-top-right))
+         (resize-bottom-left (and resize-enabled (etaf-desktop--window-resizable window) resize-bottom-left))
+         (resize-bottom-right (and resize-enabled (etaf-desktop--window-resizable window) resize-bottom-right)))
     (etaf-node
      'etaf-window
      (list :key id :id (format "%s" id) :ref (etaf-desktop--window-ref id)
@@ -357,6 +614,10 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
            :controls-active
            (equal id (etaf-desktop--state-active-window (etaf-desktop--state desktop)))
            :title title :mode mode :visible (etaf-desktop--window-visible window)
+           :title-font-size (plist-get settings :title-font-size)
+           :content-font-size (plist-get settings :content-font-size)
+           :font-family (plist-get settings :font-family)
+           :drag-lock-modifier (plist-get settings :drag-lock-modifier)
            :x (list 'px (etaf-desktop--window-x window))
            :y (list 'lh (etaf-desktop--window-y window))
            :width (list 'px (etaf-desktop--window-width window))
@@ -368,7 +629,7 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
                            (list 'px (etaf-desktop--window-max-width window)))
            :max-height (and (etaf-desktop--window-max-height window)
                             (list 'lh (etaf-desktop--window-max-height window)))
-           :resizable (etaf-desktop--window-resizable window)
+           :resizable (and (etaf-desktop--window-resizable window) resize-enabled)
            :resize-edges '(top right bottom left top-left top-right bottom-right bottom-left)
            :resize-refs
            (mapcar (lambda (edge)
@@ -387,13 +648,14 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
            :on-minimize (lambda () (etaf-desktop-minimize-window desktop id))
            :on-maximize (lambda () (etaf-desktop-maximize-window desktop id))
            :on-restore (lambda () (etaf-desktop-restore-window desktop id))
-           :on-close (lambda () (etaf-desktop-close-window desktop id))
+           :on-close (lambda () (etaf-desktop--request-close-window desktop id))
            :on-focus (lambda () (etaf-desktop-focus-window desktop id)))
      (list body))))
 
 (defun etaf-desktop--taskbar-node (desktop state)
   "Build the taskbar for STATE using the reusable ETAF UI component."
-  (let ((items
+  (let ((accent-color (plist-get (etaf-desktop--settings desktop) :accent-color))
+        (items
          (cl-loop for window in (etaf-desktop--state-windows state)
                   when (equal (etaf-desktop--window-workspace window)
                               (etaf-desktop--state-active-workspace state))
@@ -411,6 +673,7 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
                                 (t nil))))))
     (etaf-node 'etaf-taskbar
                (list :items items
+                     :accent-color accent-color
                      :active (etaf-desktop--state-active-window state)
                      :on-select (lambda (id)
                                   (etaf-desktop-focus-window desktop id))
@@ -421,11 +684,13 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
 
 (defun etaf-desktop--workspace-node (desktop state)
   "Build workspace controls for STATE using the reusable ETAF UI component."
-  (let* ((active-id (etaf-desktop--state-active-window state))
+  (let* ((accent-color (plist-get (etaf-desktop--settings desktop) :accent-color))
+         (active-id (etaf-desktop--state-active-window state))
          (active (and active-id
                       (etaf-desktop--window-for state active-id))))
     (etaf-node 'etaf-workspace-bar
                (list :workspaces (etaf-desktop--state-workspaces state)
+                     :accent-color accent-color
                      :active (etaf-desktop--state-active-workspace state)
                      ;; The right side reports the focused application and the
                      ;; workspace's window-management mode, which the trailing
@@ -442,6 +707,9 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
                      (lambda ()
                        (etaf-desktop-toggle-layout-mode
                         desktop (etaf-desktop--state-active-workspace state)))
+                     :settings-label "Settings"
+                     :settings-action
+                     (lambda () (etaf-desktop-toggle-settings desktop))
                      :on-select
                      (lambda (workspace)
                        (etaf-desktop-switch-workspace desktop workspace)))
@@ -583,10 +851,231 @@ to the desktop layout policy; windows remain the runtime's positioned shells."
                                    (etaf-desktop-toggle-switcher desktop nil)))
                  nil))))
 
+(defun etaf-desktop--theme-colors (desktop)
+  "Return shell colors for DESKTOP's selected theme."
+  (let* ((settings (etaf-desktop--settings desktop))
+         (theme (plist-get settings :theme))
+         (dark (if (eq theme 'system)
+                   (eq (etaf-theme-current-mode) 'dark)
+                 (eq theme 'dark)))
+         (accent (plist-get settings :accent-color)))
+    (if dark
+        (list :shell-bg "#17202A" :shell-fg "#F8FAFC"
+              :canvas-bg "#202B36" :canvas-fg "#F8FAFC"
+              :canvas-border "#4B5D6D" :accent accent)
+      (list :shell-bg "#CBD7E1" :shell-fg "#17202A"
+            :canvas-bg "#EDF2F7" :canvas-fg "#17202A"
+            :canvas-border "#D7E0E8" :accent accent))))
+
+(defun etaf-desktop--settings-node (desktop)
+  "Render DESKTOP's caller-owned settings dialog over the current surface."
+  (when (fboundp 'etaf-desktop-settings-open-p)
+    (let* ((settings (etaf-desktop--settings desktop))
+           (theme (plist-get settings :theme))
+           (accent (plist-get settings :accent-color))
+           (layout (plist-get settings :layout-mode))
+           (title-size (plist-get settings :title-font-size))
+           (content-size (plist-get settings :content-font-size))
+           (family (or (plist-get settings :font-family) ""))
+           (drag-lock (plist-get settings :drag-lock-modifier))
+           (resize-enabled (plist-get settings :resize-enabled))
+           (confirm-close (plist-get settings :confirm-close))
+           (grouping (plist-get settings :taskbar-grouping))
+           (keybindings (plist-get settings :keybindings)))
+      (etaf-node
+       'etaf-dialog
+       (list :open (etaf-desktop-settings-open-p desktop)
+             :title "Desktop Settings" :width '(ch 88)
+             :close-label "Done" :backdrop nil
+             :on-close (lambda () (etaf-desktop-close-settings desktop)))
+       (list
+        (etaf-node
+         'grid
+         (list :class "etaf-desktop-settings-grid" :width 'stretch
+               :grid-template-columns '((fr 1) (fr 1))
+               :column-gap '(ch 2) :row-gap '(lh 1)
+               :padding '((lh 1) (ch 2))
+               :background-color "#F8FAFC"
+               :border '((px 1) solid "#D7E0E8"))
+         (list
+          ;; Keep a visible dismissal control at the top as well as the
+          ;; dialog footer: the preferences form can be taller than a small
+          ;; text viewport, while closing must never depend on a clipped row.
+          (etaf-node 'box (list :grid-column '(1 :span 2))
+                     (list (etaf-node 'etaf-button
+                                      (list :label "Done" :aria-label "Done"
+                                            :variant 'ghost
+                                            :on-press
+                                            (lambda ()
+                                              (etaf-desktop-close-settings desktop)))
+                                      nil)))
+          (etaf-node 'box (list :grid-column '(1 :span 2))
+                     (list (etaf-node 'etaf-label
+                                      (list :text "Appearance" :variant 'strong)
+                                      nil)))
+          (etaf-node 'etaf-segmented
+                     (list :value theme
+                           :options '((system . "System") (light . "Light") (dark . "Dark"))
+                           :on-change
+                           (lambda (value)
+                             (etaf-desktop-set-setting desktop :theme value)))
+                     nil)
+          (etaf-node 'etaf-text-input
+                     (list :label "Accent color" :value accent
+                           :on-change
+                           (lambda (value)
+                             (etaf-desktop-set-setting desktop :accent-color value)))
+                     nil)
+          (etaf-node 'box (list :grid-column '(1 :span 2))
+                     (list (etaf-node 'etaf-label
+                                      (list :text "Typography" :variant 'strong)
+                                      nil)))
+          (etaf-node 'etaf-segmented
+                     (list :value layout
+                           :options '((floating . "Floating") (tiling . "Tiling")
+                                      (master-stack . "Master") (monocle . "Monocle"))
+                           :on-change
+                           (lambda (value)
+                             (etaf-desktop-set-setting desktop :layout-mode value)))
+                     nil)
+          (etaf-node 'etaf-number-input
+                     (list :label "Title font size" :value title-size
+                           :min 8 :max 32
+                           :on-change
+                           (lambda (value)
+                             (etaf-desktop-set-setting desktop :title-font-size value)))
+                     nil)
+          (etaf-node 'etaf-number-input
+                     (list :label "Content font size" :value content-size
+                           :min 8 :max 32
+                           :on-change
+                           (lambda (value)
+                             (etaf-desktop-set-setting desktop :content-font-size value)))
+                     nil)
+          (etaf-node 'etaf-text-input
+                     (list :label "Font family" :value family
+                           :placeholder "Emacs default"
+                           :on-change
+                           (lambda (value)
+                             (etaf-desktop-set-setting
+                              desktop :font-family
+                              (unless (string-empty-p value) value))))
+                     nil)
+          (etaf-node 'box (list :grid-column '(1 :span 2))
+                     (list (etaf-node 'etaf-label
+                                      (list :text "Window behavior" :variant 'strong)
+                                      nil)))
+          (etaf-node 'etaf-select
+                     (list :label "Drag lock modifier"
+                           :value drag-lock
+                           :options '((shift . "Shift") (control . "Control")
+                                      (meta . "Meta") (super . "Super")
+                                      (hyper . "Hyper"))
+                           :on-change
+                           (lambda (value)
+                             (etaf-desktop-set-setting desktop :drag-lock-modifier value)))
+                     nil)
+          (etaf-node 'etaf-checkbox
+                     (list :label "Allow window resizing" :checked resize-enabled
+                           :on-change
+                           (lambda (value)
+                             (etaf-desktop-set-setting desktop :resize-enabled value)))
+                     nil)
+          (etaf-node 'etaf-checkbox
+                     (list :label "Confirm before closing" :checked confirm-close
+                           :on-change
+                           (lambda (value)
+                             (etaf-desktop-set-setting desktop :confirm-close value)))
+                     nil)
+          (etaf-node 'box (list :grid-column '(1 :span 2))
+                     (list (etaf-node 'etaf-label
+                                      (list :text "Workspace and session" :variant 'strong)
+                                      nil)))
+          (etaf-node 'etaf-select
+                     (list :label "Taskbar grouping" :value grouping
+                           :options '((window . "Every window")
+                                      (application . "By application"))
+                           :on-change
+                           (lambda (value)
+                             (etaf-desktop-set-setting desktop :taskbar-grouping value)))
+                     nil)
+          (etaf-node 'box (list :grid-column '(1 :span 2))
+                     (list (etaf-node 'etaf-label
+                                      (list :text "Keyboard shortcuts" :variant 'strong)
+                                      nil)))
+          (etaf-node 'etaf-text-input
+                     (list :label "Focus next key" :value (plist-get keybindings :focus-next)
+                           :on-change
+                           (lambda (value)
+                             (etaf-desktop--set-keybinding desktop :focus-next value)))
+                     nil)
+          (etaf-node 'etaf-text-input
+                     (list :label "Focus previous key" :value (plist-get keybindings :focus-previous)
+                           :on-change
+                           (lambda (value)
+                             (etaf-desktop--set-keybinding desktop :focus-previous value)))
+                     nil)
+          (etaf-node 'etaf-text-input
+                     (list :label "Launcher key" :value (plist-get keybindings :launcher)
+                           :on-change
+                           (lambda (value)
+                             (etaf-desktop--set-keybinding desktop :launcher value)))
+                     nil)
+          (etaf-node 'etaf-text-input
+                     (list :label "Switcher key" :value (plist-get keybindings :switcher)
+                           :on-change
+                           (lambda (value)
+                             (etaf-desktop--set-keybinding desktop :switcher value)))
+                     nil)
+          (etaf-node 'etaf-text-input
+                     (list :label "Toggle layout key" :value (plist-get keybindings :toggle-layout)
+                           :on-change
+                           (lambda (value)
+                             (etaf-desktop--set-keybinding desktop :toggle-layout value)))
+                     nil)
+          (etaf-node 'etaf-text-input
+                     (list :label "Split window key" :value (plist-get keybindings :split-window)
+                           :on-change
+                           (lambda (value)
+                             (etaf-desktop--set-keybinding desktop :split-window value)))
+                     nil)
+          (etaf-node 'etaf-text-input
+                     (list :label "Swap windows key" :value (plist-get keybindings :swap-window)
+                           :on-change
+                           (lambda (value)
+                             (etaf-desktop--set-keybinding desktop :swap-window value)))
+                     nil)
+          (etaf-node 'etaf-text-input
+                     (list :label "Maximize key" :value (plist-get keybindings :maximize-window)
+                           :on-change
+                           (lambda (value)
+                             (etaf-desktop--set-keybinding desktop :maximize-window value)))
+                     nil)
+          (etaf-node 'etaf-text-input
+                     (list :label "Minimize key" :value (plist-get keybindings :minimize-window)
+                           :on-change
+                           (lambda (value)
+                             (etaf-desktop--set-keybinding desktop :minimize-window value)))
+                     nil)
+          (etaf-node 'etaf-text-input
+                     (list :label "Close window key" :value (plist-get keybindings :close-window)
+                           :on-change
+                           (lambda (value)
+                             (etaf-desktop--set-keybinding desktop :close-window value)))
+                     nil)
+          (etaf-node 'box (list :grid-column '(1 :span 2))
+                     (list (etaf-node 'etaf-button
+                                      (list :label "Reset settings" :variant 'ghost
+                                            :on-press
+                                            (lambda ()
+                                              (etaf-desktop-reset-settings desktop)))
+                                      nil))))))))))
+
 (etaf-define-component etaf-desktop--application (&key desktop)
   "Render DESKTOP as a controlled desktop surface."
   :render
   (let* ((state (etaf-desktop--state desktop))
+         (colors (etaf-desktop--theme-colors desktop))
          (workspace (etaf-desktop--state-active-workspace state))
          (layout-mode (when (fboundp 'etaf-desktop-layout-mode)
                         (etaf-desktop-layout-mode desktop workspace)))
@@ -612,7 +1101,8 @@ to the desktop layout policy; windows remain the runtime's positioned shells."
      ;; keep canvas-height rows between the workspace bar and the taskbar.
      (list :width (etaf-desktop--canvas-box-width desktop)
            :height (list 'lh (+ (etaf-desktop--canvas-height-value desktop) 2))
-           :background-color "#CBD7E1" :color "#17202A")
+           :background-color (plist-get colors :shell-bg)
+           :color (plist-get colors :shell-fg))
      (list
       (etaf-desktop--workspace-node desktop state)
       (etaf-node
@@ -620,8 +1110,9 @@ to the desktop layout policy; windows remain the runtime's positioned shells."
        (list :position 'relative
              :width (etaf-desktop--canvas-box-width desktop)
              :height (list 'lh (etaf-desktop--canvas-height-value desktop))
-             :background-color "#EDF2F7"
-             :border '((px 1) solid "#D7E0E8"))
+             :background-color (plist-get colors :canvas-bg)
+             :color (plist-get colors :canvas-fg)
+             :border (list '(px 1) 'solid (plist-get colors :canvas-border)))
        (append
         (mapcar (lambda (window) (etaf-desktop--window-node desktop window)) windows)
         ;; Tiling dividers are canvas overlays: they must be positioned in
@@ -631,7 +1122,8 @@ to the desktop layout policy; windows remain the runtime's positioned shells."
                  desktop state layout-tree workspace)))))
       (etaf-desktop--taskbar-node desktop state)
       (etaf-desktop--launcher-node desktop)
-      (etaf-desktop--switcher-node desktop state)))))
+      (etaf-desktop--switcher-node desktop state)
+      (etaf-desktop--settings-node desktop)))))
 
 (cl-defun etaf-desktop-create
     (&key (name "*ETAF Desktop*") canvas-width canvas-height
@@ -660,7 +1152,12 @@ owns its reactive state and does not mount a buffer until `etaf-desktop-mount'."
           (etaf-desktop--controller-launcher-ref controller)
           (etaf-ref nil :name 'etaf-desktop-launcher-open)
           (etaf-desktop--controller-switcher-ref controller)
-          (etaf-ref nil :name 'etaf-desktop-switcher-open))
+          (etaf-ref nil :name 'etaf-desktop-switcher-open)
+          (etaf-desktop--controller-settings-ref controller)
+          (etaf-ref (etaf-desktop--default-settings)
+                    :name 'etaf-desktop-settings)
+          (etaf-desktop--controller-settings-open-ref controller)
+          (etaf-ref nil :name 'etaf-desktop-settings-open))
     controller))
 
 (defun etaf-desktop-launcher-open-p (desktop)
@@ -710,6 +1207,7 @@ callers can use `etaf-desktop-close-launcher' to close it unambiguously."
     (list :name (etaf-desktop--controller-name desktop)
           :canvas-width (etaf-desktop--canvas-width-value desktop)
           :canvas-height (etaf-desktop--canvas-height-value desktop)
+          :settings (etaf-desktop-settings desktop)
           :active-workspace (etaf-desktop--state-active-workspace state)
           :active-window (etaf-desktop--state-active-window state)
           :workspaces (copy-sequence (etaf-desktop--state-workspaces state))
@@ -1029,6 +1527,7 @@ callers use `etaf-desktop-close' to release the Runtime."
         (setq-local header-line-format nil))
       (setf (etaf-desktop--controller-buffer desktop) buffer
             (etaf-desktop--controller-runtime desktop) runtime)
+      (etaf-desktop--refresh-buffer-keymap desktop)
       ;; Displaying a buffer can resize its window after the first render.
       ;; Re-apply the default layout so the shell matches the settled window.
       (when (and mount-window

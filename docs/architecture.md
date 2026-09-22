@@ -47,3 +47,25 @@ Restore invokes the registered restore callback and reapplies saved window
 state. An unavailable application becomes an error placeholder, while a
 low-level window without an application manifest is recreated with a title
 placeholder because its caller-owned View cannot be serialized.
+
+## Settings and shell composition
+
+Desktop settings are stored in one controller-owned reactive plist and are
+serialized with the desktop snapshot. The mounted shell projects that value
+through ETAF UI Components: the workspace bar exposes a settings action and
+`etaf-dialog` renders the form as a retained root-layer panel. Desktop chooses
+the unpainted modal variant so the underlying application windows remain
+visible; the reusable UI component retains its normal painted backdrop for
+other modal callers. Font changes set the positioned window host to the larger
+of the title and content sizes, preserving Ebox's shared line-height invariant.
+
+The settings form owns only policies already supported by the application:
+theme/accent presentation, typography, resize and locked-drag behavior,
+taskbar grouping, close confirmation, and keyboard actions. Session restore
+remains the explicit public save/restore workflow. Keyboard callbacks are
+installed in the mounted Desktop buffer through its local overriding map;
+they do not become global Emacs bindings.
+
+Tiling geometry reserves no extra vertical row. The retained splitter overlay
+owns the single visible divider row, while window records remain authoritative
+for their rectangles.

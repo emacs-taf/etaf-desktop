@@ -503,6 +503,16 @@ other applications continue restoring."
     (etaf-desktop--clear-windows desktop)
     (etaf-desktop--restore-workspaces desktop
                                       (plist-get saved-desktop :workspaces))
+    ;; Settings are part of the serializable desktop value.  Apply them
+    ;; through the public validator so an invalid preference cannot poison the
+    ;; restored controller or bypass the layout policy.
+    (dolist (key '(:theme :accent-color :layout-mode :title-font-size
+                   :content-font-size :font-family :drag-lock-modifier
+                   :resize-enabled :confirm-close :taskbar-grouping
+                   :keybindings))
+      (when (plist-member (plist-get saved-desktop :settings) key)
+        (etaf-desktop-set-setting
+         desktop key (plist-get (plist-get saved-desktop :settings) key))))
     (dolist (saved saved-instances)
       (let* ((id (plist-get saved :id))
              (app-id (plist-get saved :app-id))

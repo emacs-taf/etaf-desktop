@@ -33,8 +33,9 @@ surface.
 state update paths used by ETAF's controlled geometry Behaviors. Resize is
 clamped to each window's minimum and optional maximum, and Ebox pixel deltas
 are converted to desktop text-row units before application state is changed.
-The built-in shell exposes right and bottom resize handles; applications that
-need edge-specific policy can compose the public ETAF UI shell directly.
+The built-in shell exposes all four edges and all four corners through the
+reusable ETAF UI shell. A Shift-modified title drag can enter the Ebox locked
+drag lifecycle; the setting is configurable from Desktop Settings.
 The desktop package does not run a second event loop or keep a second geometry
 store.
 
@@ -44,6 +45,26 @@ become invisible and are listed by the taskbar; restoring them makes them
 visible and active. `etaf-desktop-focus-window` raises a window and switches to
 its workspace. Workspaces are application state: removing one moves its windows
 to a remaining workspace and the final workspace cannot be removed.
+
+## Desktop Settings
+
+The workspace bar's Settings action opens an in-buffer ETAF UI dialog as a
+root-layer projection, so the existing desktop remains visible underneath.
+On a graphical Emacs viewport the panel is centered, limited to the visible
+canvas and scrollable; the compact form uses two columns and keeps controls at
+the standard line height. The form groups settings into appearance, window
+behavior, workspace/session, and keyboard shortcuts. It includes theme mode,
+accent color, font family and sizes, drag-lock modifier, resize availability,
+close policy and taskbar grouping; session restore remains an explicit
+`etaf-desktop-save-session`/`etaf-desktop-restore-session` workflow. It also
+provides focus traversal, launcher,
+switcher, layout, split, swap, maximize, minimize and close bindings.
+
+`etaf-desktop-settings` returns a detached plist. Use
+`etaf-desktop-set-setting` for validated changes or
+`etaf-desktop-reset-settings` to restore defaults. Settings are included in
+`etaf-desktop-session-state`; invalid persisted values are rejected through the
+same public validator during restore.
 
 Read-only queries return detached plists: `etaf-desktop-state`,
 `etaf-desktop-windows`, `etaf-desktop-window-state`,

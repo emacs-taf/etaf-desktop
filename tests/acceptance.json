@@ -111,6 +111,11 @@
       "purpose": "The mounted shell exposes launcher and switcher controls and applies tiling to a newly opened window."
     },
     {
+      "name": "etaf-desktop-settings-modal-overlays-live-shell",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "Settings persist as desktop state and open as a modal over the retained window surface."
+    },
+    {
       "name": "etaf-desktop-tiling-layout-and-split-resize",
       "file": "tests/etaf-desktop-layout-tests.el",
       "purpose": "Tiling assigns non-overlapping rectangles and applies an adjustable split ratio."

@@ -473,5 +473,33 @@ row wider than the window.
                        (plist-get (etaf-desktop-window-state desktop 'two) :y)))))
       (etaf-desktop-close desktop))))
 
+(ert-deftest etaf-desktop-settings-modal-overlays-live-shell ()
+  "Settings remain application state and open as a retained modal over windows."
+  (let ((desktop (etaf-desktop-create :name " *desktop-settings*"
+                                      :canvas-width 80 :canvas-height 16)))
+    (unwind-protect
+        (progn
+          (etaf-desktop-open-window desktop 'one :title "One"
+                                    :view (etaf-view (text "Window content"))
+                                    :width 24 :height 5 :min-width 10 :min-height 2)
+          (let ((buffer (etaf-desktop-mount desktop)))
+            (progn
+                  (etaf-desktop-set-setting desktop :theme 'dark)
+                  (etaf-desktop-set-setting desktop :title-font-size 16)
+                  (etaf-desktop-toggle-settings desktop t)
+                  (should (etaf-desktop-settings-open-p desktop))
+                  (with-current-buffer buffer
+                    ;; The retained desktop remains in the buffer while the
+                    ;; dialog is projected on the root layer above it.
+                    (should (string-match-p "One" (buffer-string)))
+                    (should (string-match-p "Desktop Settings" (buffer-string))))
+                  (should (equal 'dark (plist-get (etaf-desktop-settings desktop)
+                                                  :theme)))
+                  (should (= 16 (plist-get (etaf-desktop-settings desktop)
+                                           :title-font-size)))
+                  (etaf-desktop-close-settings desktop)
+                  (should-not (etaf-desktop-settings-open-p desktop))))
+      (etaf-desktop-close desktop)))))
+
 (provide 'etaf-desktop-tests)
 ;;; etaf-desktop-tests.el ends here

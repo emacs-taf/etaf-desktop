@@ -439,14 +439,17 @@ stack whose ratios make each leaf the same height."
 (defconst etaf-desktop--layout-divider-px 3
   "Divider width reserved beside a left/right tile (see `etaf-splitter').")
 
-(defconst etaf-desktop--layout-divider-rows 1
-  "Divider row reserved between top/bottom tiles (see `etaf-splitter').")
+(defconst etaf-desktop--layout-divider-rows 0
+  "Deprecated vertical divider reservation.
+
+The retained splitter overlay owns the one visible divider row, so the layout
+tree must not reserve a second empty row for it.")
 
 (defun etaf-desktop--layout-rectangles (state node x y width height)
   "Return `(ID X Y WIDTH HEIGHT)' rectangles for NODE.
 
-Each split reserves its divider so the visible separator owns its own row or
-column instead of covering the second tile's title bar."
+Horizontal splits reserve the splitter's pixel column. Vertical splits leave
+the row to the retained splitter overlay, so no second empty row is created."
   (if (etaf-desktop--layout-leaf-p node)
       (list (list (nth 1 node) x y (max 1 width) (max 1 height)))
     (let* ((orientation (nth 1 node))

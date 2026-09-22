@@ -26,15 +26,15 @@
       (should (= 0 (plist-get one :y)))
       (should (< (plist-get one :y) (plist-get two :y)))
       (should (< (plist-get two :y) (plist-get three :y)))
-      ;; Every split reserves its divider row between the tiles.
+      ;; The retained splitter owns one visible divider row for the tree.
       (should (= 20 (+ (plist-get one :height)
                        (plist-get two :height)
                        (plist-get three :height)
-                       2))))
+                       0))))
     (etaf-desktop-layout-resize-split desktop nil 0.75)
     (let ((three (etaf-desktop-window-state desktop 'three)))
-      ;; Third leaf keeps the second split's divider row above it.
-      (should (= 16 (plist-get three :y))))))
+      ;; Third leaf keeps the second split's single divider row above it.
+      (should (= 15 (plist-get three :y))))))
 
 (ert-deftest etaf-desktop-layout-floating-and-untile ()
   "Untiling preserves a window as a floating overlay while tree leaves reflow."
@@ -106,14 +106,14 @@
           (stack-three (etaf-desktop-window-state desktop 'stack-three)))
       (should (= 60 (plist-get master :width)))
       (should (= 0 (plist-get master :x)))
-      ;; The master/stack split reserves its divider between the panes.
+      ;; The master/stack splitter owns one visible divider between panes.
       (dolist (window (list stack-one stack-two stack-three))
         (should (= 63 (plist-get window :x)))
         (should (= 37 (plist-get window :width))))
       (should (= 20 (+ (plist-get stack-one :height)
                        (plist-get stack-two :height)
                        (plist-get stack-three :height)
-                       2))))))
+                       0))))))
 
 (defun etaf-desktop--test-leaves (tree)
   "Return public tree leaves for the layout assertions."

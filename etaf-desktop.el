@@ -146,6 +146,32 @@
 ;; Function: etaf-desktop-close-switcher (desktop)
 ;;;###autoload (autoload 'etaf-desktop-close-switcher "etaf-desktop" nil nil)
 ;; Close the window switcher.
+
+;; Function: etaf-desktop-settings (desktop)
+;;;###autoload (autoload 'etaf-desktop-settings "etaf-desktop" nil nil)
+;; Return detached user settings for DESKTOP: theme, layout mode, title/content
+;; font sizes, optional font family and tiling keybindings.
+
+;; Function: etaf-desktop-set-setting (desktop key value)
+;;;###autoload (autoload 'etaf-desktop-set-setting "etaf-desktop" nil nil)
+;; Validate and set one user setting.  `:layout-mode' applies immediately to
+;; the active workspace; the other values are projected by the retained shell.
+
+;; Function: etaf-desktop-reset-settings (desktop)
+;;;###autoload (autoload 'etaf-desktop-reset-settings "etaf-desktop" nil nil)
+;; Restore the default Desktop settings and return the detached plist.
+
+;; Function: etaf-desktop-settings-open-p (desktop)
+;;;###autoload (autoload 'etaf-desktop-settings-open-p "etaf-desktop" nil nil)
+;; Return whether the in-buffer settings modal is visible.
+
+;; Function: etaf-desktop-toggle-settings (desktop &optional open)
+;;;###autoload (autoload 'etaf-desktop-toggle-settings "etaf-desktop" nil nil)
+;; Open or toggle the reusable ETAF UI settings modal.
+
+;; Function: etaf-desktop-close-settings (desktop)
+;;;###autoload (autoload 'etaf-desktop-close-settings "etaf-desktop" nil nil)
+;; Close the settings modal without changing its values.
 ;;
 ;; Function: etaf-desktop-layout-sync (desktop &optional workspace)
 ;;;###autoload (autoload 'etaf-desktop-layout-sync "etaf-desktop" nil nil)
