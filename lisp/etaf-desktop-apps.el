@@ -6,6 +6,17 @@
 (require 'etaf)
 (require 'etaf-desktop-runtime)
 
+(declare-function etaf-desktop-layout-floating-windows "etaf-desktop-layout"
+                  (desktop &optional workspace))
+(declare-function etaf-desktop-layout-mode "etaf-desktop-layout"
+                  (desktop &optional workspace))
+(declare-function etaf-desktop-set-layout-mode "etaf-desktop-layout"
+                  (desktop mode &optional workspace))
+(declare-function etaf-desktop-layout-set-tree "etaf-desktop-layout"
+                  (desktop tree &optional workspace))
+(declare-function etaf-desktop-layout-tree "etaf-desktop-layout"
+                  (desktop &optional workspace))
+
 ;; This module owns application policy only.  Geometry and rendering continue
 ;; to go through the public `etaf-desktop-open-window' and related APIs.
 
@@ -505,6 +516,16 @@ recorded on the instance while all desktop windows are still released."
                                (etaf-desktop-error nil))))
                   (etaf-desktop--instance-windows instance)))))
 
+(defun etaf-desktop--session-layouts (desktop workspaces)
+  "Return serializable layout policy for each WORKSPACE."
+  (mapcar
+   (lambda (workspace)
+     (list :workspace workspace
+           :mode (etaf-desktop-layout-mode desktop workspace)
+           :tree (etaf-desktop-layout-tree desktop workspace)
+           :floating (etaf-desktop-layout-floating-windows desktop workspace)))
+   workspaces))
+
 (defun etaf-desktop-session-state (desktop)
   "Return a serializable session plist for DESKTOP.
 Application-owned data is obtained only through registered serialize
@@ -516,7 +537,10 @@ callbacks; View objects and Runtime internals are excluded."
                             (hash-table-values
                              (etaf-desktop--app-store-instances
                               (etaf-desktop--app-store desktop))))))
-    (list :version 1 :desktop (copy-tree state) :instances instances)))
+    (list :version 1 :desktop (copy-tree state)
+          :layouts (etaf-desktop--session-layouts
+                    desktop (plist-get state :workspaces))
+          :instances instances)))
 
 (defun etaf-desktop-save-session (desktop file)
   "Write `etaf-desktop-session-state' for DESKTOP to FILE and return FILE."
@@ -558,6 +582,24 @@ callbacks; View objects and Runtime internals are excluded."
       (ignore-errors (etaf-desktop-remove-workspace desktop workspace))))
   (etaf-desktop-switch-workspace desktop (car workspaces)))
 
+(defun etaf-desktop--restore-layouts (desktop layouts)
+  "Restore serializable LAYOUTS after all windows have been recreated."
+  (dolist (layout layouts)
+    (let ((workspace (plist-get layout :workspace))
+          (mode (plist-get layout :mode))
+          (tree (plist-get layout :tree)))
+      (when (and (member workspace
+                         (plist-get (etaf-desktop-state desktop) :workspaces))
+                 (memq mode '(floating tiling master-stack monocle)))
+        ;; Application restore callbacks can legitimately return a different
+        ;; set of windows.  Keep that app isolated while preserving every
+        ;; valid workspace layout that can be reconstructed.
+        (condition-case nil
+            (progn
+              (etaf-desktop-set-layout-mode desktop mode workspace)
+              (etaf-desktop-layout-set-tree desktop tree workspace))
+          (etaf-desktop-error nil))))))
+
 (defun etaf-desktop-restore-session (desktop session-or-file)
   "Restore DESKTOP from a session plist or FILE and return its state.
 Unknown applications become isolated error instances with a visible placeholder;
@@ -565,6 +607,7 @@ other applications continue restoring."
   (let* ((desktop (etaf-desktop--controller desktop))
          (session (etaf-desktop--read-session session-or-file))
          (saved-desktop (plist-get session :desktop))
+         (saved-layouts (plist-get session :layouts))
          (saved-instances (plist-get session :instances)))
     (unless (and (listp session) (= (or (plist-get session :version) 0) 1)
                  (listp saved-desktop))
@@ -649,6 +692,7 @@ other applications continue restoring."
                :resizable (if (plist-member saved-window :resizable)
                               (plist-get saved-window :resizable) t))
               (etaf-desktop--restore-window-state desktop id saved-window))))))
+    (etaf-desktop--restore-layouts desktop saved-layouts)
     (etaf-desktop-switch-workspace desktop (or (plist-get saved-desktop :active-workspace)
                                                (car (plist-get saved-desktop :workspaces))))
     (etaf-desktop-state desktop)))

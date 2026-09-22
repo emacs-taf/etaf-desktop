@@ -41,12 +41,15 @@ instance. These rules isolate one application failure from the mounted
 desktop and other applications.
 
 Session state contains desktop geometry, workspaces, window state and instance
-options. Application-owned data enters the session only through the manifest's
-serialize callback; View and Runtime objects never enter the persisted value.
-Restore invokes the registered restore callback and reapplies saved window
-state. An unavailable application becomes an error placeholder, while a
+options. It also records each workspace's layout mode, detached tree, split
+orientations/ratios and floating membership. Application-owned data enters the
+session only through the manifest's serialize callback; View and Runtime objects
+never enter the persisted value. Restore invokes the registered restore callback,
+reapplies saved window state, then validates and reapplies each saved workspace
+layout. An unavailable application becomes an error placeholder, while a
 low-level window without an application manifest is recreated with a title
-placeholder because its caller-owned View cannot be serialized.
+placeholder because its caller-owned View cannot be serialized. Older sessions
+without layout records continue through the existing window-only restore path.
 
 ## Settings and shell composition
 

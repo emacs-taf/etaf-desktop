@@ -115,11 +115,14 @@ continue operating. `etaf-desktop-instances` and `etaf-desktop-instance`
 return detached state snapshots.
 
 `etaf-desktop-session-state` excludes View and Runtime objects. It records
-desktop geometry, workspaces, instance options and application-owned data from
-`:serialize`. `etaf-desktop-save-session` writes this plist, and
-`etaf-desktop-restore-session` invokes the registered `:restore` callback and
-reapplies saved window state. If an application is no longer registered, its
-instance is restored as an error placeholder instead of aborting the session.
+desktop geometry, workspaces, instance options, application-owned data from
+`:serialize`, and every workspace's layout mode/tree/split ratios and floating
+membership. `etaf-desktop-save-session` writes this plist, and
+`etaf-desktop-restore-session` invokes the registered `:restore` callback,
+reapplies saved window state, then restores the saved layout policy. If an
+application is no longer registered, its instance is restored as an error
+placeholder instead of aborting the session. Sessions written before layout
+records were introduced remain readable.
 
 ## Workspace layout policy
 

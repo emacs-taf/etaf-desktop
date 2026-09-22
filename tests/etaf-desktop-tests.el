@@ -426,6 +426,46 @@
       (etaf-desktop-close desktop)
       (etaf-desktop-close restored))))
 
+(ert-deftest etaf-desktop-session-roundtrip-restores-layout-policy ()
+  "Session restore keeps each workspace's tiling tree and split ratios."
+  (let* ((desktop (etaf-desktop-create :name " *desktop-layout-session-a*"
+                                       :canvas-width 120 :canvas-height 24
+                                       :workspaces '(main second)))
+         (restored (etaf-desktop-create :name " *desktop-layout-session-b*"
+                                        :canvas-width 120 :canvas-height 24)))
+    (unwind-protect
+        (progn
+          (dolist (id '(one two three))
+            (etaf-desktop-open-window
+             desktop id :title (format "%s" id)
+             :view (etaf-view (text (expr (format "%s" id))))
+             :workspace 'main :min-width 10 :min-height 3))
+          (etaf-desktop-set-layout-mode desktop 'tiling 'main)
+          (etaf-desktop-layout-split desktop 'one 'two 'horizontal 0.7 'main)
+          (etaf-desktop-layout-split desktop 'two 'three 'vertical 0.4 'main)
+          ;; Give the second workspace an independent policy to prove that
+          ;; restoration does not collapse per-workspace state into one mode.
+          (etaf-desktop-open-window
+           desktop 'other :title "Other"
+           :view (etaf-view (text "Other")) :workspace 'second
+           :min-width 10 :min-height 3)
+          (etaf-desktop-set-layout-mode desktop 'tiling 'second)
+          (let* ((session (etaf-desktop-session-state desktop))
+                 (layouts (plist-get session :layouts))
+                 (main-layout (cl-find 'main layouts :key (lambda (item)
+                                                            (plist-get item :workspace))))
+                 (main-tree (plist-get main-layout :tree)))
+            (should (equal 'tiling (plist-get main-layout :mode)))
+            (should (equal 'horizontal (nth 1 main-tree)))
+            (etaf-desktop-restore-session restored session)
+            (should (equal main-tree (etaf-desktop-layout-tree restored 'main)))
+            (should (eq 'tiling (etaf-desktop-layout-mode restored 'main)))
+            (should (eq 'tiling (etaf-desktop-layout-mode restored 'second)))
+            (should (= (plist-get (etaf-desktop-window-state restored 'one) :width)
+                       (plist-get (etaf-desktop-window-state desktop 'one) :width)))))
+      (etaf-desktop-close desktop)
+      (etaf-desktop-close restored))))
+
 (ert-deftest etaf-desktop-session-unknown-app-isolated ()
   "Restoring a session with an unavailable app creates an error placeholder."
   (let ((desktop (etaf-desktop-create :name " *desktop-session-missing*")))

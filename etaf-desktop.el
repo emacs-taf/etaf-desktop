@@ -209,6 +209,12 @@
 ;; Return a detached layout tree using `(:leaf ID)' and
 ;; `(:split ORIENTATION RATIO FIRST SECOND)' nodes.
 ;;
+;; Function: etaf-desktop-layout-set-tree (desktop tree &optional workspace)
+;;;###autoload (autoload 'etaf-desktop-layout-set-tree "etaf-desktop" nil nil)
+;; Validate and apply a detached layout TREE for WORKSPACE.  Windows omitted
+;; from TREE remain floating; this is also the public restore boundary for
+;; persisted split topology and ratios.
+
 ;; Function: etaf-desktop-layout-floating-windows (desktop &optional workspace)
 ;;;###autoload (autoload 'etaf-desktop-layout-floating-windows "etaf-desktop" nil nil)
 ;; Return floating window IDs for WORKSPACE as a detached list.

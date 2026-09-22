@@ -111,6 +111,11 @@
       "purpose": "A serializable desktop session invokes application restore callbacks and reapplies saved window geometry."
     },
     {
+      "name": "etaf-desktop-session-roundtrip-restores-layout-policy",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "Session restore preserves independent workspace layout modes, split topology and ratios."
+    },
+    {
       "name": "etaf-desktop-session-unknown-app-isolated",
       "file": "tests/etaf-desktop-tests.el",
       "purpose": "A missing application during session restore becomes an error placeholder without aborting the desktop."

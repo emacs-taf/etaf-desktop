@@ -336,6 +336,31 @@ The tree uses `(:leaf WINDOW-ID)' and
      (etaf-desktop--layout-workspace-tree
       (etaf-desktop--layout-ensure-workspace desktop workspace)))))
 
+(defun etaf-desktop-layout-set-tree (desktop tree &optional workspace)
+  "Set WORKSPACE's detached layout TREE and apply it.
+
+TREE must contain only windows currently owned by WORKSPACE.  Windows omitted
+from TREE remain floating, which lets session restoration preserve both tiled
+membership and explicit floating windows.  The operation returns the detached
+TREE after validation and synchronization."
+  (let* ((desktop (etaf-desktop--controller desktop))
+         (state (etaf-desktop--state desktop))
+         (workspace (or workspace (etaf-desktop--state-active-workspace state))))
+    (etaf-desktop--assert-workspace state workspace)
+    (etaf-desktop-layout-sync desktop workspace)
+    (etaf-desktop--layout-validate-tree desktop workspace tree)
+    (let* ((policy (etaf-desktop--layout-ensure-workspace desktop workspace))
+           (leaves (etaf-desktop--layout-tree-leaves tree))
+           (known (etaf-desktop--layout-workspace-ids state workspace)))
+      (setf (etaf-desktop--layout-workspace-tree policy)
+            (etaf-desktop--layout-copy-tree tree)
+            (etaf-desktop--layout-workspace-floating policy)
+            (cl-remove-if (lambda (id) (member id leaves))
+                          (copy-sequence known))
+            (etaf-desktop--layout-workspace-pending policy) nil)
+      (etaf-desktop-layout-apply desktop workspace)
+      (etaf-desktop-layout-tree desktop workspace))))
+
 (defun etaf-desktop-layout-floating-windows (desktop &optional workspace)
   "Return floating window IDs for DESKTOP's WORKSPACE."
   (let* ((desktop (etaf-desktop--controller desktop))
