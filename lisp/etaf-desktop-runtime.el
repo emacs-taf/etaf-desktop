@@ -607,13 +607,23 @@ at this boundary."
     (cons (round (or (car delta) 0))
           (round (/ (float (or (cdr delta) 0)) (or line-height 1))))))
 
+(defun etaf-desktop--gesture-runtime (desktop)
+  "Return the Runtime dispatching DESKTOP's current gesture.
+
+Playground may mount `etaf-desktop-view' directly instead of calling the
+Desktop convenience mount function.  ETAF's current operation context is the
+authoritative mounted Runtime in that case; the controller slot is the
+fallback for the convenience path and deferred reconciliation."
+  (or (etaf-current-runtime)
+      (etaf-desktop--controller-runtime desktop)))
+
 (defun etaf-desktop--gesture-geometry-update (desktop id window &optional properties)
   "Project WINDOW geometry through ETAF's retained incremental boundary.
 
 The Desktop record is the policy authority; ETAF owns the bridge to Ebox's
 typed geometry operation.  A complete state publication remains the recovery
 and structural path, while pointer samples update only the committed Host."
-  (let ((runtime (etaf-desktop--controller-runtime desktop)))
+  (let ((runtime (etaf-desktop--gesture-runtime desktop)))
     (unless runtime
       (etaf-desktop--fail "Desktop gesture has no mounted Runtime"))
     (condition-case nil
@@ -1365,12 +1375,20 @@ to the desktop layout policy; windows remain the runtime's positioned shells."
     ;; Desktop Component boundary so both consumers behave identically.
     (etaf-on-mounted
      (lambda ()
+       (when-let* ((runtime (etaf-current-runtime)))
+         (setf (etaf-desktop--controller-runtime desktop) runtime
+               (etaf-desktop--controller-buffer desktop)
+               (etaf-runtime-buffer runtime)))
        (etaf-desktop--refresh-buffer-keymap
         desktop (etaf-desktop--lifecycle-buffer desktop))))
     (etaf-on-unmounted
      (lambda ()
        (etaf-desktop--clear-buffer-keymap
-        desktop (etaf-desktop--lifecycle-buffer desktop))))
+        desktop (etaf-desktop--lifecycle-buffer desktop))
+       (when (eq (etaf-desktop--controller-runtime desktop)
+                 (etaf-current-runtime))
+         (setf (etaf-desktop--controller-runtime desktop) nil
+               (etaf-desktop--controller-buffer desktop) nil))))
     nil)
   :render
   (let* ((state (etaf-desktop--state desktop))

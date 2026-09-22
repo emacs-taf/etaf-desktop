@@ -604,6 +604,14 @@ for a later return."
               (etaf-desktop--layout-workspace-pending policy) nil))
       (setf (etaf-desktop--layout-workspace-mode policy) mode)
       (etaf-desktop-layout-apply desktop workspace)
+      ;; Layout policy lives beside the window state.  Even when applying the
+      ;; new mode leaves every rectangle unchanged, the retained shell must
+      ;; rerender its mode label and keep the layout button's action current.
+      ;; Publish a fresh structural state after the policy mutation so a
+      ;; second Floating/Tiled click is observable through the UI.
+      (etaf-set-value
+       (etaf-desktop--controller-state-ref desktop)
+       (etaf-desktop--copy-state (etaf-desktop--state desktop)))
       mode)))
 
 (defun etaf-desktop-layout-tile-window (desktop id &optional workspace)

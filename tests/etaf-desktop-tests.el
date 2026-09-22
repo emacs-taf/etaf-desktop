@@ -139,6 +139,28 @@
         (kill-buffer target))
       (etaf-desktop-close desktop))))
 
+(ert-deftest etaf-desktop-view-direct-mount-resolves-current-runtime-for-gestures ()
+  "A View mounted directly by a consumer still routes gestures to its Runtime."
+  (let* ((desktop (etaf-desktop-create :name " *desktop-direct-gesture*"))
+         (target (get-buffer-create " *desktop-direct-gesture-target*")))
+    (unwind-protect
+        (progn
+          (etaf-desktop-open-window desktop 'notes :x 2 :y 1)
+          (etaf-mount target (etaf-desktop-view desktop))
+          (let ((runtime (etaf-runtime-for-buffer target)))
+            (etaf-dispatch-event
+             runtime 'etaf-desktop-chrome-notes 'drag
+             '(:phase start :delta (0 . 0)) t)
+            (etaf-dispatch-event
+             runtime 'etaf-desktop-chrome-notes 'drag
+             '(:phase end :delta (8 . 1)) t)
+            (should (= 10 (plist-get
+                           (etaf-desktop-window-state desktop 'notes) :x)))))
+      (when-let* ((runtime (etaf-runtime-for-buffer target)))
+        (etaf-unmount runtime))
+      (when (buffer-live-p target) (kill-buffer target))
+      (etaf-desktop-close desktop))))
+
 (ert-deftest etaf-desktop-body-activation-raises-window ()
   "Pressing application content focuses and raises that window."
   (let ((desktop (etaf-desktop-create :name " *desktop-body-focus*")))
@@ -319,6 +341,31 @@
             (should (eq 'closed (plist-get (etaf-desktop-instance desktop id)
                                            :status)))
             (should (equal (list id 'window-close) closed))))
+      (etaf-desktop-unregister-app app t)
+      (etaf-desktop-close desktop))))
+
+(ert-deftest etaf-desktop-launch-cleans-partial-window-creation ()
+  "A failed multi-window launch leaves only its isolated error placeholder."
+  (let* ((app 'etaf-desktop-test-partial-launch)
+         (desktop (etaf-desktop-create :name " *desktop-partial-launch*")))
+    (unwind-protect
+        (progn
+          (etaf-desktop-register-app
+           app :title "Partial" :capabilities '(multiple-instances)
+           :open (lambda (_context)
+                   (list :windows
+                         (list (list :id 'first :title "First" :width 220)
+                               (list :id 'broken :width 1 :min-width 20)))))
+          (let* ((instance (etaf-desktop-launch desktop app))
+                 (id (plist-get instance :id))
+                 (windows (etaf-desktop-windows desktop)))
+            (should (eq 'error (plist-get instance :status)))
+            (should (= 1 (length (plist-get instance :windows))))
+            (should (string-match-p "error" (format "%s" (car (plist-get instance :windows)))))
+            (should (= 1 (length windows)))
+            (should (equal (plist-get instance :windows)
+                           (mapcar (lambda (window) (plist-get window :id)) windows)))
+            (should (eq 'error (plist-get (etaf-desktop-instance desktop id) :status)))))
       (etaf-desktop-unregister-app app t)
       (etaf-desktop-close desktop))))
 
@@ -556,6 +603,25 @@ row wider than the window.
           (etaf-desktop-set-layout-mode desktop 'master-stack)
           (etaf-desktop-toggle-layout-mode desktop)
           (should (eq 'floating (etaf-desktop-layout-mode desktop))))
+      (etaf-desktop-close desktop))))
+
+(ert-deftest etaf-desktop-mounted-layout-toggle-rerenders-both-directions ()
+  "The mounted Floating/Tiled control remains live after its first click."
+  (let ((desktop (etaf-desktop-create :name " *desktop-toggle-mounted*"
+                                      :canvas-width 360 :canvas-height 16)))
+    (unwind-protect
+        (progn
+          (etaf-desktop-open-window desktop 'one :title "One")
+          (let* ((buffer (etaf-desktop-mount desktop))
+                 (runtime (etaf-runtime-for-buffer buffer)))
+            (etaf-dispatch-event runtime 'etaf-workspace-layout 'press)
+            (should (eq 'tiling (etaf-desktop-layout-mode desktop)))
+            (with-current-buffer buffer
+              (should (string-match-p "Tiled" (buffer-string))))
+            (etaf-dispatch-event runtime 'etaf-workspace-layout 'press)
+            (should (eq 'floating (etaf-desktop-layout-mode desktop)))
+            (with-current-buffer buffer
+              (should (string-match-p "Floating" (buffer-string))))))
       (etaf-desktop-close desktop))))
 
 (ert-deftest etaf-desktop-shell-controls-and-live-tiling-refresh ()

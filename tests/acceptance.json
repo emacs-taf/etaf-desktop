@@ -41,6 +41,11 @@
       "purpose": "Mounting a Desktop View by target name installs local shortcuts in that target instead of the caller buffer."
     },
     {
+      "name": "etaf-desktop-view-direct-mount-resolves-current-runtime-for-gestures",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "A Playground-style direct View mount resolves the owning Runtime for title gestures and updates controlled geometry."
+    },
+    {
       "name": "etaf-desktop-body-activation-raises-window",
       "file": "tests/etaf-desktop-tests.el",
       "purpose": "Pressing application content focuses and raises the corresponding desktop window."
@@ -91,6 +96,11 @@
       "purpose": "Directly closing owned windows updates application ownership, closes the final instance and focuses the remaining window."
     },
     {
+      "name": "etaf-desktop-launch-cleans-partial-window-creation",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "A failed multi-window launch rolls back already-created windows before installing its isolated error placeholder."
+    },
+    {
       "name": "etaf-desktop-inactive-windows-show-gray-traffic-lights",
       "file": "tests/etaf-desktop-tests.el",
       "purpose": "A desktop window renders gray macOS traffic lights unless it is the active window; focusing another window swaps the colored lights."
@@ -124,6 +134,11 @@
       "name": "etaf-desktop-toggle-layout-mode-switches-the-workspace",
       "file": "tests/etaf-desktop-tests.el",
       "purpose": "The workspace layout control switches between floating and tiling, restoring floating rectangles and returning master-stack to floating."
+    },
+    {
+      "name": "etaf-desktop-mounted-layout-toggle-rerenders-both-directions",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "The mounted Floating/Tiled control remains live and rerenders its label after both directions of a toggle."
     },
     {
       "name": "etaf-desktop-shell-controls-and-live-tiling-refresh",
