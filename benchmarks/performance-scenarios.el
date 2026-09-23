@@ -10,6 +10,7 @@
 
 (require 'cl-lib)
 (require 'etaf)
+(require 'ebox)
 (require 'etaf-desktop)
 
 (declare-function taf-benchmark-register "performance-driver" (id &rest properties))
@@ -75,6 +76,9 @@
                           :y (plist-get state :y)
                           :width (plist-get state :width)
                           :height (plist-get state :height))))
+       :observe (lambda (sink)
+                  (ebox-buffer-set-observer mounted sink)
+                  (lambda () (ebox-buffer-set-observer mounted nil)))
        :cleanup (lambda ()
                   (etaf-desktop-close desktop)
                   (when (buffer-live-p buffer) (kill-buffer buffer)))))))
@@ -167,6 +171,9 @@ samples measure application policy without duplicating an interaction loop."
                         :active (format "%s" (etaf-desktop-active-window desktop))
                         :workspace (format "%s" (etaf-desktop-active-workspace desktop))
                         :layout (format "%s" (etaf-desktop-layout-mode desktop 'main))))
+       :observe (lambda (sink)
+                  (ebox-buffer-set-observer mounted sink)
+                  (lambda () (ebox-buffer-set-observer mounted nil)))
        :cleanup (lambda ()
                   (etaf-desktop-close desktop)
                   (when (buffer-live-p buffer) (kill-buffer buffer)))))))
