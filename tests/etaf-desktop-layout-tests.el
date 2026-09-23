@@ -1,7 +1,9 @@
 ;;; etaf-desktop-layout-tests.el --- Public layout scenarios -*- lexical-binding: t; -*-
 
 (require 'ert)
+(require 'cl-lib)
 (require 'etaf-desktop)
+(require 'etaf)
 
 (ert-deftest etaf-desktop-tiling-layout-and-split-resize ()
   "Tiling assigns non-overlapping rectangles and split ratios are adjustable."
@@ -26,11 +28,15 @@
       (should (= 0 (plist-get one :y)))
       (should (< (plist-get one :y) (plist-get two :y)))
       (should (< (plist-get two :y) (plist-get three :y)))
-      ;; The retained splitter owns one visible divider row for the tree.
+      ;; Two split nodes reserve two visible divider rows, outside title rows.
       (should (= 20 (+ (plist-get one :height)
                        (plist-get two :height)
                        (plist-get three :height)
-                       0))))
+                       2)))
+      (should (= (1+ (+ (plist-get one :y) (plist-get one :height)))
+                 (plist-get two :y)))
+      (should (= (1+ (+ (plist-get two :y) (plist-get two :height)))
+                 (plist-get three :y))))
     (etaf-desktop-layout-resize-split desktop nil 0.75)
     (let ((three (etaf-desktop-window-state desktop 'three)))
       ;; Third leaf keeps the second split's single divider row above it.
@@ -52,6 +58,68 @@
     (should-not (member 'two (etaf-desktop-layout-floating-windows desktop)))
     (should (member 'two (etaf-desktop--test-leaves
                           (etaf-desktop-layout-tree desktop))))))
+
+(ert-deftest etaf-desktop-nested-splitters-occupy-reserved-gaps ()
+  "Every nested divider renders between, rather than over, tiled windows."
+  (let ((desktop (etaf-desktop-create :name " *desktop-nested-dividers*"
+                                      :canvas-width 360 :canvas-height 20)))
+    (unwind-protect
+        (progn
+          (etaf-desktop-open-window desktop 'one :title "one"
+                                    :width 100 :min-width 10 :max-width 120
+                                    :min-height 2)
+          (dolist (id '(two three))
+            (etaf-desktop-open-window desktop id
+                                      :title (format "%s" id)
+                                      :width 100 :min-width 10 :min-height 2))
+          (etaf-desktop-set-layout-mode desktop 'tiling)
+          (etaf-desktop-layout-set-tree
+           desktop '(:split horizontal 0.6 (:leaf one)
+                            (:split vertical 0.5 (:leaf two) (:leaf three))))
+          (let* ((buffer (etaf-desktop-mount desktop))
+                 (runtime (etaf-runtime-for-buffer buffer))
+                 (entries (etaf-runtime-host-props-entries runtime))
+                 (dividers
+                  (cl-loop for (ref . props) in entries
+                           when (equal "etaf-splitter-divider"
+                                       (plist-get props :class))
+                           collect ref))
+                 (columns (cl-find-if
+                           (lambda (entry)
+                             (equal "Resize columns"
+                                    (plist-get (cdr entry) :aria-label)))
+                           entries))
+                 (rows (cl-find-if
+                        (lambda (entry)
+                          (equal "Resize rows"
+                                 (plist-get (cdr entry) :aria-label)))
+                        entries))
+                 (one (etaf-desktop-window-state desktop 'one))
+                 (two (etaf-desktop-window-state desktop 'two))
+                 (three (etaf-desktop-window-state desktop 'three)))
+            (should (= 2 (length dividers)))
+            (should (cl-every (lambda (ref)
+                                (etaf-host-ref-position runtime ref))
+                              dividers))
+            (should (= 3 (- (plist-get two :x)
+                            (+ (plist-get one :x) (plist-get one :width)))))
+            (should (= 1 (- (plist-get three :y)
+                            (+ (plist-get two :y) (plist-get two :height)))))
+            (should (equal '(px 120) (plist-get (cdr columns) :left)))
+            (should rows)
+            (let* ((before (etaf-desktop-layout-tree desktop))
+                   (root-ratio (nth 2 before))
+                   (nested-ratio (nth 2 (nth 4 before))))
+              (etaf-dispatch-event runtime (car rows) 'drag
+                                   (list :phase 'move
+                                         :delta (cons 0 (* 2 (frame-char-height)))) t)
+              (let ((after (etaf-desktop-layout-tree desktop)))
+                (should (= root-ratio (nth 2 after)))
+                (should (not (= nested-ratio (nth 2 (nth 4 after)))))))
+            (with-current-buffer buffer
+              (dolist (title '("one" "two" "three"))
+                (should (string-match-p title (buffer-string)))))))
+      (etaf-desktop-close desktop))))
 
 (ert-deftest etaf-desktop-layout-horizontal-split-and-minimums ()
   "Horizontal splits allocate width and respect each leaf's minimum width."
@@ -104,16 +172,16 @@
           (stack-one (etaf-desktop-window-state desktop 'stack-one))
           (stack-two (etaf-desktop-window-state desktop 'stack-two))
           (stack-three (etaf-desktop-window-state desktop 'stack-three)))
-      (should (= 60 (plist-get master :width)))
+      (should (= 58 (plist-get master :width)))
       (should (= 0 (plist-get master :x)))
       ;; The master/stack splitter owns one visible divider between panes.
       (dolist (window (list stack-one stack-two stack-three))
-        (should (= 63 (plist-get window :x)))
-        (should (= 37 (plist-get window :width))))
+        (should (= 61 (plist-get window :x)))
+        (should (= 39 (plist-get window :width))))
       (should (= 20 (+ (plist-get stack-one :height)
                        (plist-get stack-two :height)
                        (plist-get stack-three :height)
-                       0))))))
+                       2))))))
 
 (defun etaf-desktop--test-leaves (tree)
   "Return public tree leaves for the layout assertions."

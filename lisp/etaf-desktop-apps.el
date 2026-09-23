@@ -69,6 +69,15 @@
             (not (plist-get state :minimized)))))
    (etaf-desktop--instance-windows instance)))
 
+(defun etaf-desktop--instance-visible-status (desktop instance)
+  "Return INSTANCE's status from its visible windows and DESKTOP focus."
+  (if (not (etaf-desktop--instance-has-visible-window-p desktop instance))
+      'suspended
+    (if (member (etaf-desktop-active-window desktop)
+                (etaf-desktop--instance-windows instance))
+        'active
+      'inactive)))
+
 (defun etaf-desktop--application-window-event (desktop window-id event)
   "Keep application instances synchronized with WINDOW-ID EVENT.
 
@@ -79,6 +88,8 @@ registry.  Closing an instance's last window invokes its manifest close
 callback once; closing one of several windows only removes that window from
 the instance record."
   (when-let* ((store (gethash desktop etaf-desktop--app-stores)))
+    (when (eq event 'focus-cleared)
+      (etaf-desktop--deactivate-other-instances store nil))
     (maphash
      (lambda (_instance-id instance)
        (when (member window-id (etaf-desktop--instance-windows instance))
@@ -91,9 +102,7 @@ the instance record."
                           '(closing closed error))
               (if (etaf-desktop--instance-windows instance)
                   (setf (etaf-desktop--instance-status instance)
-                        (if (etaf-desktop--instance-has-visible-window-p
-                             desktop instance)
-                            'active 'suspended))
+                        (etaf-desktop--instance-visible-status desktop instance))
                 ;; A user closing the last app window is the app-level close
                 ;; operation.  Keep callback failures isolated in the same
                 ;; way as `etaf-desktop-close-instance'.
@@ -122,9 +131,7 @@ the instance record."
             (unless (memq (etaf-desktop--instance-status instance)
                           '(closed error closing))
               (setf (etaf-desktop--instance-status instance)
-                    (if (etaf-desktop--instance-has-visible-window-p
-                         desktop instance)
-                        'active 'suspended)))))))
+                    (etaf-desktop--instance-visible-status desktop instance)))))))
      (etaf-desktop--app-store-instances store))))
 
 (defun etaf-desktop--app (id)
@@ -571,8 +578,14 @@ callbacks; View objects and Runtime internals are excluded."
 
 (defun etaf-desktop--clear-apps (desktop)
   "Close all known app instances in DESKTOP."
-  (maphash (lambda (id _instance) (ignore-errors (etaf-desktop-close-instance desktop id 'restore)))
-           (copy-hash-table (etaf-desktop--app-store-instances (etaf-desktop--app-store desktop)))))
+  (let ((instances (etaf-desktop--app-store-instances
+                    (etaf-desktop--app-store desktop))))
+    (maphash (lambda (id _instance)
+               (ignore-errors (etaf-desktop-close-instance desktop id 'restore)))
+             (copy-hash-table instances))
+    ;; Closed records belong to the old session and must not collide with
+    ;; explicit instance IDs during the replacement restore.
+    (clrhash instances)))
 
 (defun etaf-desktop--clear-windows (desktop)
   "Close all remaining windows in DESKTOP."
@@ -705,6 +718,12 @@ other applications continue restoring."
     (etaf-desktop--restore-layouts desktop saved-layouts)
     (etaf-desktop-switch-workspace desktop (or (plist-get saved-desktop :active-workspace)
                                                (car (plist-get saved-desktop :workspaces))))
+    (let ((saved-active (plist-get saved-desktop :active-window)))
+      (when (and saved-active
+                 (condition-case nil
+                     (etaf-desktop-window-state desktop saved-active)
+                   (etaf-desktop-error nil)))
+        (etaf-desktop-focus-window desktop saved-active)))
     (etaf-desktop-state desktop)))
 
 (provide 'etaf-desktop-apps)

@@ -77,8 +77,12 @@ Read-only queries return detached plists: `etaf-desktop-state`,
 `etaf-desktop-active-window` and `etaf-desktop-active-workspace`. Callers must
 use the mutation functions rather than changing returned plists.
 
-`etaf-desktop-close` unmounts the Runtime and kills the buffer it owns. Closing
-is idempotent. A controller can be mounted only once at a time.
+`etaf-desktop-close` unmounts the Runtime created by `etaf-desktop-mount` and
+kills a buffer created by that call. An existing target buffer remains with its
+caller. When embedding `etaf-desktop-view` in another ETAF application, the
+caller owns the enclosing Runtime and buffer and unmounts them; closing the
+Desktop controller leaves that shared surface mounted. Closing is idempotent.
+A controller can be mounted only once at a time.
 
 ## Applications and instances
 
@@ -107,11 +111,12 @@ A manifest without the `multiple-instances` capability is single-instance:
 an implicit `etaf-desktop-launch` focuses its running instance instead of
 creating a second one, while session restore keeps passing explicit instance
 ids.  The host owns instance identity, lifecycle (`launching`, `active`,
-`suspended`, `closing`, `closed` or `error`) and all window cleanup. Applications
-may update their serializable state with `etaf-desktop-set-instance-state`;
-they do not mutate desktop internals. A callback error is isolated to that
-instance and produces a visible error placeholder so the remaining desktop can
-continue operating. `etaf-desktop-instances` and `etaf-desktop-instance`
+`inactive`, `suspended`, `closing`, `closed` or `error`) and all window cleanup.
+Applications may update their serializable state with
+`etaf-desktop-set-instance-state`; they do not mutate desktop internals. A
+callback error is isolated to that instance and produces a visible error
+placeholder so the remaining desktop can continue operating.
+`etaf-desktop-instances` and `etaf-desktop-instance`
 return detached state snapshots.
 
 `etaf-desktop-session-state` excludes View and Runtime objects. It records
@@ -143,6 +148,12 @@ visible window a wide master region and stacks the remaining leaves vertically.
 `monocle` keeps the tree but gives every leaf the canvas rectangle and raises
 the focused window, allowing a quick return to tiling.
 
+Each split reserves one visible divider gap: three pixels between left/right
+panes or one text row between top/bottom panes. The divider stays inside that
+gap, including in nested trees, so the following window's title bar remains
+visible and clickable. Splitter gestures change the ratio within that split's
+own span.
+
 `etaf-desktop-layout-tile-window` and `etaf-desktop-layout-untile-window`
 control individual leaves. An explicitly untiled window remains a floating
 overlay while other leaves reflow. Closing a window removes its leaf and
@@ -151,6 +162,11 @@ collapses empty split branches. The runtime invokes
 is inserted into an active tiling or master-stack workspace without a second
 event loop. Applications that publish through a custom mutation path should
 call the same refresh hook.
+
+Maximizing a window temporarily fills the canvas without discarding its tiling
+tree. Restoring that window returns it to the current layout. Changing a
+workspace's layout mode exits the temporary maximized view and publishes the
+new mode and window rectangles together, so all tiles become visible.
 
 The title bar uses a macOS-style traffic-light control group on the left:
 close is red, minimize is yellow and maximize/restore is green. The taskbar,

@@ -155,5 +155,30 @@ two corner cells while the title row's middle stays the window move gesture."
                                    (plist-get s :width) (plist-get s :height)))))))
       (etaf-desktop-close desktop))))
 
+(ert-deftest etaf-desktop-gesture-clamps-resize-at-desktop-origin ()
+  "Dragging a left or top edge beyond zero clamps instead of aborting."
+  (let ((desktop (etaf-desktop-create :name " *desktop-gesture-origin*")))
+    (unwind-protect
+        (progn
+          (etaf-desktop-open-window desktop 'notes :x 2 :y 2
+                                    :width 100 :height 12
+                                    :min-width 20 :min-height 3)
+          (let* ((buffer (etaf-desktop-mount desktop))
+                 (runtime (etaf-runtime-for-buffer buffer)))
+            (etaf-desktop-gesture-test--dispatch
+             runtime 'etaf-desktop-resize-notes-left
+             '((:phase start :delta (0 . 0)) (:phase end :delta (-20 . 0))))
+            (etaf-desktop-gesture-test--dispatch
+             runtime 'etaf-desktop-resize-notes-top
+             '((:phase start :delta (0 . 0)) (:phase end :delta (0 . -20))))
+            (let ((state (etaf-desktop-window-state desktop 'notes)))
+              (should (= 0 (plist-get state :x)))
+              (should (= 0 (plist-get state :y)))
+              (should (= 102 (+ (plist-get state :x)
+                                (plist-get state :width))))
+              (should (= 14 (+ (plist-get state :y)
+                               (plist-get state :height)))))))
+      (etaf-desktop-close desktop))))
+
 (provide 'etaf-desktop-gesture-tests)
 ;;; etaf-desktop-gesture-tests.el ends here

@@ -21,6 +21,21 @@
       "purpose": "Size limits and maximize/minimize/restore preserve a normal rectangle."
     },
     {
+      "name": "etaf-desktop-minimize-and-workspace-removal-preserve-focus",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "Minimizing or removing the active workspace selects a visible replacement window."
+    },
+    {
+      "name": "etaf-desktop-tiling-minimize-reflows-visible-leaves",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "Minimized tiled members leave the layout tree and visible windows reclaim their space until restore."
+    },
+    {
+      "name": "etaf-desktop-maximize-in-tiling-keeps-full-geometry",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "Maximizing a tiled window keeps the full canvas rectangle while new leaves join the layout, then returns to tiling on restore."
+    },
+    {
       "name": "etaf-desktop-workspace-policy",
       "file": "tests/etaf-desktop-tests.el",
       "purpose": "Workspace selection and removal preserve window ownership and reject invalid changes."
@@ -44,6 +59,11 @@
       "name": "etaf-desktop-view-direct-mount-resolves-current-runtime-for-gestures",
       "file": "tests/etaf-desktop-tests.el",
       "purpose": "A Playground-style direct View mount resolves the owning Runtime for title gestures and updates controlled geometry."
+    },
+    {
+      "name": "etaf-desktop-close-preserves-caller-owned-runtime-and-buffer",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "Closing a direct View preserves its caller-owned Runtime and buffer; a convenience mount releases only its own Runtime."
     },
     {
       "name": "etaf-desktop-body-activation-raises-window",
@@ -86,6 +106,11 @@
       "purpose": "Every rendered resize cell updates controlled geometry: side and bottom edges, all four corner cells, while the title row keeps the window move gesture."
     },
     {
+      "name": "etaf-desktop-gesture-clamps-resize-at-desktop-origin",
+      "file": "tests/etaf-desktop-gesture-tests.el",
+      "purpose": "Left and top resize gestures clamp at the desktop origin while preserving each opposite edge."
+    },
+    {
       "name": "etaf-desktop-application-registry-and-lifecycle",
       "file": "tests/etaf-desktop-tests.el",
       "purpose": "An application manifest launches, suspends, restores and closes an isolated instance through public callbacks."
@@ -94,6 +119,11 @@
       "name": "etaf-desktop-direct-window-close-syncs-app-lifecycle",
       "file": "tests/etaf-desktop-tests.el",
       "purpose": "Directly closing owned windows updates application ownership, closes the final instance and focuses the remaining window."
+    },
+    {
+      "name": "etaf-desktop-instance-status-follows-visible-focus",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "Application status follows visible focus across minimization, empty workspaces, restoration and closing."
     },
     {
       "name": "etaf-desktop-launch-cleans-partial-window-creation",
@@ -141,6 +171,21 @@
       "purpose": "The mounted Floating/Tiled control remains live and rerenders its label after both directions of a toggle."
     },
     {
+      "name": "etaf-desktop-mode-switch-reveals-tiles-after-maximize",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "The mounted layout control exits floating maximization and publishes both tiled window bodies."
+    },
+    {
+      "name": "etaf-desktop-close-tiled-window-keeps-other-workspace-isolated",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "Closing a tile and revisiting another workspace leaves only same-workspace content visible while an error placeholder remains isolated."
+    },
+    {
+      "name": "etaf-desktop-tiled-error-window-keeps-title-visible",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "An error placeholder joining a tiled workspace keeps its title row outside the divider gap."
+    },
+    {
       "name": "etaf-desktop-shell-controls-and-live-tiling-refresh",
       "file": "tests/etaf-desktop-tests.el",
       "purpose": "The mounted shell exposes launcher and switcher controls and applies tiling to a newly opened window."
@@ -154,6 +199,11 @@
       "name": "etaf-desktop-tiling-layout-and-split-resize",
       "file": "tests/etaf-desktop-layout-tests.el",
       "purpose": "Tiling assigns non-overlapping rectangles and applies an adjustable split ratio."
+    },
+    {
+      "name": "etaf-desktop-nested-splitters-occupy-reserved-gaps",
+      "file": "tests/etaf-desktop-layout-tests.el",
+      "purpose": "Nested split dividers occupy allocated gaps and drag changes only the selected subtree ratio."
     },
     {
       "name": "etaf-desktop-layout-floating-and-untile",

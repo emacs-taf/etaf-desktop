@@ -52,6 +52,80 @@
                                          (plist-get window :width)
                                          (plist-get window :height)))))))
 
+(ert-deftest etaf-desktop-minimize-and-workspace-removal-preserve-focus ()
+  "Minimizing or removing the active workspace selects a visible replacement."
+  (let ((desktop (etaf-desktop-create :name " *desktop-focus-fallback*"
+                                      :workspaces '(main second)
+                                      :canvas-width 100 :canvas-height 20)))
+    (unwind-protect
+        (progn
+          (etaf-desktop-open-window desktop 'one :workspace 'main)
+          (etaf-desktop-open-window desktop 'two :workspace 'second)
+          (etaf-desktop-switch-workspace desktop 'main)
+          (etaf-desktop-minimize-window desktop 'one)
+          (should-not (etaf-desktop-active-window desktop))
+          (etaf-desktop-restore-window desktop 'one)
+          (etaf-desktop-open-window desktop 'three :workspace 'main)
+          (etaf-desktop-minimize-window desktop 'three)
+          (should (eq 'one (etaf-desktop-active-window desktop)))
+          (etaf-desktop-restore-window desktop 'three)
+          (etaf-desktop-switch-workspace desktop 'second)
+          (etaf-desktop-remove-workspace desktop 'second)
+          (should (eq 'main (etaf-desktop-active-workspace desktop)))
+          (should (etaf-desktop-active-window desktop)))
+      (etaf-desktop-close desktop))))
+
+(ert-deftest etaf-desktop-tiling-minimize-reflows-visible-leaves ()
+  "A minimized tiled window leaves no blank tile until it is restored."
+  (let ((desktop (etaf-desktop-create :name " *desktop-minimized-tile*"
+                                      :canvas-width 100 :canvas-height 20)))
+    (unwind-protect
+        (progn
+          (etaf-desktop-open-window desktop 'one :min-width 10 :min-height 2)
+          (etaf-desktop-open-window desktop 'two :min-width 10 :min-height 2)
+          (etaf-desktop-set-layout-mode desktop 'tiling)
+          (etaf-desktop-minimize-window desktop 'two)
+          (should-not (member 'two
+                              (flatten-tree (etaf-desktop-layout-tree desktop))))
+          (should (= 20 (plist-get (etaf-desktop-window-state desktop 'one)
+                                   :height)))
+          (etaf-desktop-restore-window desktop 'two)
+          (should (member 'two
+                          (flatten-tree (etaf-desktop-layout-tree desktop)))))
+      (etaf-desktop-close desktop))))
+
+(ert-deftest etaf-desktop-maximize-in-tiling-keeps-full-geometry ()
+  "Maximizing a tiled window keeps the canvas rectangle until restore."
+  (let ((desktop (etaf-desktop-create :name " *desktop-maximize-tile*"
+                                      :canvas-width 100 :canvas-height 20)))
+    (unwind-protect
+        (progn
+          (etaf-desktop-open-window desktop 'one :min-width 10 :min-height 2)
+          (etaf-desktop-open-window desktop 'two :min-width 10 :min-height 2)
+          (etaf-desktop-set-layout-mode desktop 'tiling)
+          (etaf-desktop-maximize-window desktop 'two)
+          (let ((state (etaf-desktop-window-state desktop 'two)))
+            (should (plist-get state :maximized))
+            (should (= 100 (plist-get state :width)))
+            (should (= 20 (plist-get state :height))))
+          (etaf-desktop-open-window desktop 'three
+                                    :min-width 10 :min-height 2)
+          (should (member 'three
+                          (flatten-tree (etaf-desktop-layout-tree desktop))))
+          (should (equal '(two 0 0 100 20)
+                         (assq 'two (etaf-desktop-layout-apply desktop))))
+          (should (= 100 (plist-get (etaf-desktop-window-state desktop 'two)
+                                    :width)))
+          (etaf-desktop-restore-window desktop 'two)
+          (should-not (plist-get (etaf-desktop-window-state desktop 'two)
+                                 :maximized))
+          (etaf-desktop-set-layout-mode desktop 'master-stack)
+          (etaf-desktop-maximize-window desktop 'one)
+          (should (= 100 (plist-get (etaf-desktop-window-state desktop 'one)
+                                    :width)))
+          (etaf-desktop-restore-window desktop 'one))
+      (etaf-desktop-close desktop))))
+
 (ert-deftest etaf-desktop-workspace-policy ()
   "Workspace selection and removal preserve window ownership."
   (let ((desktop (etaf-desktop-create :workspaces '(main second))))
@@ -160,6 +234,36 @@
         (etaf-unmount runtime))
       (when (buffer-live-p target) (kill-buffer target))
       (etaf-desktop-close desktop))))
+
+(ert-deftest etaf-desktop-close-preserves-caller-owned-runtime-and-buffer ()
+  "Closing a direct View does not unmount its caller's Runtime or buffer."
+  (let* ((desktop (etaf-desktop-create :name " *desktop-owned-buffer*"))
+         (buffer (get-buffer-create " *desktop-caller-buffer*")))
+    (unwind-protect
+        (progn
+          (etaf-desktop-open-window desktop 'notes :x 2 :y 1)
+          (etaf-mount buffer (etaf-desktop-view desktop))
+          (let ((runtime (etaf-runtime-for-buffer buffer)))
+            (etaf-desktop-close desktop)
+            (should (buffer-live-p buffer))
+            (should (eq runtime (etaf-runtime-for-buffer buffer)))
+            (etaf-dispatch-event runtime 'etaf-desktop-chrome-notes 'drag
+                                 '(:phase start :delta (0 . 0)) t)
+            (etaf-dispatch-event runtime 'etaf-desktop-chrome-notes 'drag
+                                 '(:phase end :delta (8 . 1)) t)
+            (should (= 10 (plist-get
+                           (etaf-desktop-window-state desktop 'notes) :x)))
+            (etaf-unmount runtime)
+            (should-not (etaf-runtime-for-buffer buffer)))
+          ;; A convenience mount also borrows an existing caller buffer while
+          ;; owning the Runtime it creates there.
+          (etaf-desktop-mount desktop buffer)
+          (etaf-desktop-close desktop)
+          (should (buffer-live-p buffer))
+          (should-not (etaf-runtime-for-buffer buffer)))
+      (when-let* ((runtime (etaf-runtime-for-buffer buffer)))
+        (etaf-unmount runtime))
+      (when (buffer-live-p buffer) (kill-buffer buffer)))))
 
 (ert-deftest etaf-desktop-body-activation-raises-window ()
   "Pressing application content focuses and raises that window."
@@ -341,6 +445,46 @@
             (should (eq 'closed (plist-get (etaf-desktop-instance desktop id)
                                            :status)))
             (should (equal (list id 'window-close) closed))))
+      (etaf-desktop-unregister-app app t)
+      (etaf-desktop-close desktop))))
+
+(ert-deftest etaf-desktop-instance-status-follows-visible-focus ()
+  "An app with windows elsewhere is inactive when focus leaves its workspace."
+  (let* ((app 'etaf-desktop-test-focus-status)
+         (desktop (etaf-desktop-create :name " *desktop-app-focus*"
+                                       :workspaces '(main dev empty))))
+    (unwind-protect
+        (progn
+          (etaf-desktop-register-app
+           app :title "Focus status"
+           :open (lambda (_context)
+                   (list :windows
+                         (list (list :id 'main :workspace 'main :title "Main")
+                               (list :id 'dev :workspace 'dev :title "Dev")))))
+          (let* ((instance (etaf-desktop-launch desktop app))
+                 (id (plist-get instance :id))
+                 (main-window (car (plist-get instance :windows))))
+            (etaf-desktop-switch-workspace desktop 'main)
+            (should (eq 'active
+                        (plist-get (etaf-desktop-instance desktop id) :status)))
+            (etaf-desktop-minimize-window desktop main-window)
+            (should-not (etaf-desktop-active-window desktop))
+            (should (eq 'inactive
+                        (plist-get (etaf-desktop-instance desktop id) :status)))
+            (etaf-desktop-switch-workspace desktop 'dev)
+            (should (eq 'active
+                        (plist-get (etaf-desktop-instance desktop id) :status)))
+            (etaf-desktop-switch-workspace desktop 'empty)
+            (should-not (etaf-desktop-active-window desktop))
+            (should (eq 'inactive
+                        (plist-get (etaf-desktop-instance desktop id) :status)))
+            (etaf-desktop-restore-window desktop main-window)
+            (should (eq 'active
+                        (plist-get (etaf-desktop-instance desktop id) :status)))
+            (etaf-desktop-close-window desktop main-window)
+            (should-not (etaf-desktop-active-window desktop))
+            (should (eq 'inactive
+                        (plist-get (etaf-desktop-instance desktop id) :status)))))
       (etaf-desktop-unregister-app app t)
       (etaf-desktop-close desktop))))
 
@@ -602,7 +746,7 @@ row wider than the window.
           ;; Other modes return to floating through the same control.
           (etaf-desktop-set-layout-mode desktop 'master-stack)
           (etaf-desktop-toggle-layout-mode desktop)
-          (should (eq 'floating (etaf-desktop-layout-mode desktop))))
+          (should (eq 'tiling (etaf-desktop-layout-mode desktop))))
       (etaf-desktop-close desktop))))
 
 (ert-deftest etaf-desktop-mounted-layout-toggle-rerenders-both-directions ()
@@ -622,6 +766,125 @@ row wider than the window.
             (should (eq 'floating (etaf-desktop-layout-mode desktop)))
             (with-current-buffer buffer
               (should (string-match-p "Floating" (buffer-string))))))
+      (etaf-desktop-close desktop))))
+
+(ert-deftest etaf-desktop-mode-switch-reveals-tiles-after-maximize ()
+  "Switching from a maximized floating view reveals every tiled window."
+  (let ((desktop (etaf-desktop-create :name " *desktop-maximized-toggle*"
+                                      :canvas-width 360 :canvas-height 16)))
+    (unwind-protect
+        (progn
+          (etaf-desktop-open-window desktop 'one :title "One"
+                                    :view (etaf-view (text "First tile body"))
+                                    :min-width 10 :min-height 2)
+          (etaf-desktop-open-window desktop 'two :title "Two"
+                                    :view (etaf-view (text "Second tile body"))
+                                    :min-width 10 :min-height 2)
+          (let* ((buffer (etaf-desktop-mount desktop))
+                 (runtime (etaf-runtime-for-buffer buffer)))
+            (etaf-desktop-maximize-window desktop 'two)
+            (etaf-dispatch-event runtime 'etaf-workspace-layout 'press)
+            (should (eq 'tiling (etaf-desktop-layout-mode desktop)))
+            (should-not (etaf-desktop-window-maximized-p desktop 'two))
+            (with-current-buffer buffer
+              (should (string-match-p "First tile body" (buffer-string)))
+              (should (string-match-p "Second tile body" (buffer-string))))))
+      (etaf-desktop-close desktop))))
+
+(ert-deftest etaf-desktop-close-tiled-window-keeps-other-workspace-isolated ()
+  "Closing a tile cannot show an error placeholder from another workspace."
+  (let* ((app 'etaf-desktop-test-isolated-error)
+         (desktop (etaf-desktop-create :name " *desktop-isolated-tile*"
+                                       :canvas-width 360 :canvas-height 16
+                                       :workspaces '(main dev))))
+    (unwind-protect
+        (progn
+          (etaf-desktop-open-window desktop 'notes :title "Notes"
+                                    :view (etaf-view (text "Notes body"))
+                                    :min-width 10 :min-height 2)
+          (etaf-desktop-open-window desktop 'files :title "Files"
+                                    :view (etaf-view (text "Files body"))
+                                    :min-width 10 :min-height 2)
+          (etaf-desktop-open-window desktop 'chat :title "Chat"
+                                    :view (etaf-view (text "Chat body"))
+                                    :workspace 'dev :min-width 10 :min-height 2)
+          (etaf-desktop-register-app
+           app :title "Broken"
+           :open (lambda (_context) (error "isolated launch failure")))
+          (let* ((buffer (etaf-desktop-mount desktop))
+                 (instance (progn
+                             (etaf-desktop-switch-workspace desktop 'dev)
+                             (etaf-desktop-launch desktop app)))
+                 (error-window (car (plist-get instance :windows))))
+            (should (eq 'dev (plist-get
+                              (etaf-desktop-window-state desktop error-window)
+                              :workspace)))
+            (etaf-desktop-switch-workspace desktop 'main)
+            (etaf-desktop-maximize-window desktop 'notes)
+            (etaf-desktop-set-layout-mode desktop 'tiling)
+            (etaf-desktop-layout-resize-split desktop nil 0.6)
+            (etaf-desktop-focus-window desktop 'files)
+            (etaf-desktop-toggle-layout-mode desktop)
+            (etaf-desktop-toggle-layout-mode desktop)
+            (etaf-desktop-focus-window desktop 'notes)
+            (etaf-desktop-close-window desktop 'notes)
+            (should (eq 'main (etaf-desktop-active-workspace desktop)))
+            (should (equal 'files (etaf-desktop-active-window desktop)))
+            (should (equal '(:leaf files)
+                           (etaf-desktop-layout-tree desktop)))
+            (with-current-buffer buffer
+              (should (string-match-p "Files body" (buffer-string)))
+              (should-not (string-match-p "Notes body" (buffer-string)))
+              (should-not (string-match-p "isolated launch failure"
+                                          (buffer-string))))
+            (etaf-desktop-switch-workspace desktop 'dev)
+            (with-current-buffer buffer
+              (should (string-match-p "isolated launch failure"
+                                      (buffer-string)))
+              (should-not (string-match-p "Files body" (buffer-string))))
+            (etaf-desktop-switch-workspace desktop 'main)
+            (with-current-buffer buffer
+              (should (string-match-p "Files body" (buffer-string)))
+              (should-not (string-match-p "isolated launch failure"
+                                          (buffer-string))))))
+      (etaf-desktop-unregister-app app t)
+      (etaf-desktop-close desktop))))
+
+(ert-deftest etaf-desktop-tiled-error-window-keeps-title-visible ()
+  "An error placeholder joining a tiled workspace keeps its title row."
+  (let* ((app 'etaf-desktop-test-tiled-error)
+         (desktop (etaf-desktop-create :name " *desktop-tiled-error*"
+                                       :canvas-width 600 :canvas-height 20)))
+    (unwind-protect
+        (progn
+          (etaf-desktop-open-window desktop 'files :title "Files"
+                                    :view (etaf-view (text "Files body"))
+                                    :min-width 10 :min-height 2)
+          (etaf-desktop-register-app
+           app :title "Broken"
+           :open (lambda (_context) (error "visible failure body")))
+          (let* ((buffer (etaf-desktop-mount desktop))
+                 (runtime (etaf-runtime-for-buffer buffer)))
+            (etaf-desktop-set-layout-mode desktop 'tiling)
+            (let* ((instance (etaf-desktop-launch desktop app))
+                   (id (car (plist-get instance :windows)))
+                   (files (etaf-desktop-window-state desktop 'files))
+                   (error-window (etaf-desktop-window-state desktop id))
+                   (chrome (intern (format "etaf-desktop-chrome-%s" id)))
+                   (position (etaf-host-ref-position runtime chrome)))
+              (should (= (1+ (+ (plist-get files :y)
+                                (plist-get files :height)))
+                         (plist-get error-window :y)))
+              (should position)
+              (with-current-buffer buffer
+                (should (string-match-p "visible failure body" (buffer-string)))
+                (save-excursion
+                  (goto-char position)
+                  (should (string-match-p
+                           "ETAF app error"
+                           (buffer-substring-no-properties
+                            (line-beginning-position) (line-end-position)))))))))
+      (etaf-desktop-unregister-app app t)
       (etaf-desktop-close desktop))))
 
 (ert-deftest etaf-desktop-shell-controls-and-live-tiling-refresh ()

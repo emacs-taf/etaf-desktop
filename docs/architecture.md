@@ -23,6 +23,12 @@ Host refs are derived from that ID only for Ebox/ETAF target retention; they are
 not a second state store. Playground packages may demonstrate this package but
 do not own any of its policies.
 
+The component records its enclosing Runtime for event dispatch, but ownership
+follows the mount entry: `etaf-desktop-mount` owns the Runtime it creates;
+`etaf-desktop-view` embedded in another application borrows that Runtime. The
+caller unmounts the enclosing application. An existing target buffer remains
+caller-owned in either case.
+
 ## Application host boundary
 
 The application registry is a separate policy layer above window geometry.
@@ -69,6 +75,14 @@ remains the explicit public save/restore workflow. Keyboard callbacks are
 installed in the mounted Desktop buffer through its local overriding map;
 they do not become global Emacs bindings.
 
-Tiling geometry reserves no extra vertical row. The retained splitter overlay
-owns the single visible divider row, while window records remain authoritative
-for their rectangles.
+The layout allocator partitions each split into two pane rectangles and one
+divider rectangle. Horizontal splits reserve three pixels; vertical splits
+reserve one text row. The same partition feeds window geometry and the reusable
+ETAF UI splitter's `:overlay-rect`. Nested dividers render as separate canvas
+overlays, each limited to its subtree. Window records remain authoritative for
+their rectangles; the splitter owns only presentation and gestures.
+
+A layout mode transition updates policy and window geometry in one Desktop
+state publication. It clears temporary maximization before allocating the new
+rectangles; ordinary tiling refreshes preserve a maximized window's full canvas
+view while continuing to maintain the other layout leaves.

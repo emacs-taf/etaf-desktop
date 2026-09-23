@@ -235,7 +235,14 @@ workspace is synchronized.  Return DESKTOP."
            (etaf-desktop--layout-state-workspaces layout)))
     (dolist (name targets)
       (let* ((policy (etaf-desktop--layout-ensure-workspace desktop name))
-             (known (etaf-desktop--layout-workspace-ids state name))
+             (known
+              (cl-remove-if-not
+               (lambda (id)
+                 (let ((window (etaf-desktop--window-for state id)))
+                   (and window
+                        (etaf-desktop--window-visible window)
+                        (not (etaf-desktop--window-minimized window)))))
+               (etaf-desktop--layout-workspace-ids state name)))
              (tree-ids (etaf-desktop--layout-tree-leaves
                         (etaf-desktop--layout-workspace-tree policy)))
              (floating (etaf-desktop--layout-workspace-floating policy))
@@ -407,6 +414,12 @@ stack whose ratios make each leaf the same height."
           (etaf-desktop--layout-split-node
            'horizontal 0.6 master (stack-tree stack)))))))
 
+(defconst etaf-desktop--layout-divider-px 3
+  "Pixel width reserved for a left/right split divider.")
+
+(defconst etaf-desktop--layout-divider-rows 1
+  "Text rows reserved for a top/bottom split divider.")
+
 (defun etaf-desktop--layout-window (state id)
   "Return ID's internal window from STATE or signal an error."
   (or (etaf-desktop--window-for state id)
@@ -419,17 +432,15 @@ stack whose ratios make each leaf the same height."
         (if (eq axis 'width)
             (etaf-desktop--window-min-width window)
           (etaf-desktop--window-min-height window)))
-    (let ((orientation (nth 1 node))
-          (first (nth 3 node))
-          (second (nth 4 node)))
-      (if (and (eq axis 'width) (eq orientation 'horizontal))
-          (+ (etaf-desktop--layout-min-size state first axis)
-             (etaf-desktop--layout-min-size state second axis))
-        (if (and (eq axis 'height) (eq orientation 'vertical))
-            (+ (etaf-desktop--layout-min-size state first axis)
-               (etaf-desktop--layout-min-size state second axis))
-          (max (etaf-desktop--layout-min-size state first axis)
-               (etaf-desktop--layout-min-size state second axis)))))))
+    (let* ((orientation (nth 1 node))
+           (first (etaf-desktop--layout-min-size state (nth 3 node) axis))
+           (second (etaf-desktop--layout-min-size state (nth 4 node) axis))
+           (split-axis (if (eq orientation 'horizontal) 'width 'height)))
+      (if (eq axis split-axis)
+          (+ first second (if (eq axis 'width)
+                              etaf-desktop--layout-divider-px
+                            etaf-desktop--layout-divider-rows))
+        (max first second)))))
 
 (defun etaf-desktop--layout-max-size (state node axis)
   "Return maximum size for NODE along AXIS, or nil when unbounded."
@@ -442,16 +453,19 @@ stack whose ratios make each leaf the same height."
            (first (etaf-desktop--layout-max-size state (nth 3 node) axis))
            (second (etaf-desktop--layout-max-size state (nth 4 node) axis)))
       (if (eq axis (if (eq orientation 'horizontal) 'width 'height))
-          (and first second (+ first second))
+          (and first second
+               (+ first second (if (eq axis 'width)
+                                   etaf-desktop--layout-divider-px
+                                 etaf-desktop--layout-divider-rows)))
         (cond
          ((and first second) (max first second))
          (first first)
          (second second)
          (t nil))))))
 
-(defun etaf-desktop--layout-split-pixel
+(defun etaf-desktop--layout-split-size
     (total ratio first-min second-min first-max second-max)
-  "Return first integer split of TOTAL according to RATIO and bounds."
+  "Return the first pane size within TOTAL according to RATIO and bounds."
   (let* ((ideal (round (* (float total) ratio)))
          (low (max 1 first-min))
          (high (min (1- total) (- total (max 1 second-min)))))
@@ -461,62 +475,68 @@ stack whose ratios make each leaf the same height."
         (max 1 (min (1- total) ideal))
       (max low (min high ideal)))))
 
-(defconst etaf-desktop--layout-divider-px 3
-  "Divider width reserved beside a left/right tile (see `etaf-splitter').")
-
-(defconst etaf-desktop--layout-divider-rows 0
-  "Deprecated vertical divider reservation.
-
-The retained splitter overlay owns the one visible divider row, so the layout
-tree must not reserve a second empty row for it.")
+(defun etaf-desktop--layout-partition (state node x y width height)
+  "Return first, divider and second rectangles for split NODE.
+Each rectangle is `(X Y WIDTH HEIGHT)'.  Window and divider geometry share
+this allocation so the overlay cannot cover a pane's title row."
+  (let* ((orientation (nth 1 node))
+         (ratio (nth 2 node))
+         (first (nth 3 node))
+         (second (nth 4 node)))
+    (if (eq orientation 'horizontal)
+        (let* ((gap (min etaf-desktop--layout-divider-px
+                         (max 0 (- width 2))))
+               (available (- width gap))
+               (first-width
+                (etaf-desktop--layout-split-size
+                 available ratio
+                 (etaf-desktop--layout-min-size state first 'width)
+                 (etaf-desktop--layout-min-size state second 'width)
+                 (etaf-desktop--layout-max-size state first 'width)
+                 (etaf-desktop--layout-max-size state second 'width))))
+          (list (list x y first-width height)
+                (list (+ x first-width) y gap height)
+                (list (+ x first-width gap) y
+                      (max 1 (- available first-width)) height)))
+      (let* ((gap (min etaf-desktop--layout-divider-rows
+                       (max 0 (- height 2))))
+             (available (- height gap))
+             (first-height
+              (etaf-desktop--layout-split-size
+               available ratio
+               (etaf-desktop--layout-min-size state first 'height)
+               (etaf-desktop--layout-min-size state second 'height)
+               (etaf-desktop--layout-max-size state first 'height)
+               (etaf-desktop--layout-max-size state second 'height))))
+        (list (list x y width first-height)
+              (list x (+ y first-height) width gap)
+              (list x (+ y first-height gap) width
+                    (max 1 (- available first-height))))))))
 
 (defun etaf-desktop--layout-rectangles (state node x y width height)
   "Return `(ID X Y WIDTH HEIGHT)' rectangles for NODE.
-
-Horizontal splits reserve the splitter's pixel column. Vertical splits leave
-the row to the retained splitter overlay, so no second empty row is created."
+The shared partition reserves each divider's exact pixel column or text row."
   (if (etaf-desktop--layout-leaf-p node)
       (list (list (nth 1 node) x y (max 1 width) (max 1 height)))
-    (let* ((orientation (nth 1 node))
-           (ratio (nth 2 node))
-           (first (nth 3 node))
-           (second (nth 4 node)))
-      (if (eq orientation 'horizontal)
-           (let* ((first-width
-                  (etaf-desktop--layout-split-pixel
-                   width ratio
-                   (etaf-desktop--layout-min-size state first 'width)
-                   (etaf-desktop--layout-min-size state second 'width)
-                   (etaf-desktop--layout-max-size state first 'width)
-                   (etaf-desktop--layout-max-size state second 'width))))
-            (append
-             (etaf-desktop--layout-rectangles
-              state first x y first-width height)
-             (etaf-desktop--layout-rectangles
-              state second (+ x first-width etaf-desktop--layout-divider-px) y
-              (max 1 (- width first-width etaf-desktop--layout-divider-px))
-              height)))
-        (let* ((first-height
-                (etaf-desktop--layout-split-pixel
-                 height ratio
-                 (etaf-desktop--layout-min-size state first 'height)
-                 (etaf-desktop--layout-min-size state second 'height)
-                 (etaf-desktop--layout-max-size state first 'height)
-                 (etaf-desktop--layout-max-size state second 'height))))
-          (append
-           (etaf-desktop--layout-rectangles
-            state first x y width first-height)
-           (etaf-desktop--layout-rectangles
-            state second x (+ y first-height etaf-desktop--layout-divider-rows) width
-            (max 1 (- height first-height etaf-desktop--layout-divider-rows)))))))))
+    (pcase-let ((`(,first-rect ,_divider-rect ,second-rect)
+                 (etaf-desktop--layout-partition
+                  state node x y width height)))
+      (append
+       (apply #'etaf-desktop--layout-rectangles
+              state (nth 3 node) first-rect)
+       (apply #'etaf-desktop--layout-rectangles
+              state (nth 4 node) second-rect)))))
 
-(defun etaf-desktop-layout-apply (desktop &optional workspace)
-  "Apply DESKTOP's current layout to WORKSPACE and return its rectangles.
+(defun etaf-desktop--layout-apply
+    (desktop workspace reset-maximized force-publication)
+  "Apply DESKTOP's WORKSPACE layout and return its rectangles.
 
 Tiling layouts fill the desktop canvas while respecting each window's minimum
 size.  Floating windows retain their own rectangles.  Monocle lays every leaf
 over the canvas and raises the active window, giving a single-window view while
-retaining the tree for instant return to tiling."
+retaining the tree for instant return to tiling.  RESET-MAXIMIZED ends a
+temporary maximized view during a mode transition; FORCE-PUBLICATION makes the
+new mode visible even if every rectangle stays equal."
   (let* ((desktop (etaf-desktop--controller desktop))
          (state (etaf-desktop--state desktop))
          (workspace (or workspace (etaf-desktop--state-active-workspace state))))
@@ -536,14 +556,33 @@ retaining the tree for instant return to tiling."
                       (etaf-desktop--layout-tree-leaves tree)))
              (t (and tree (etaf-desktop--layout-rectangles
                            state tree 0 0 canvas-width canvas-height)))))
-           (result rectangles))
+           (result
+            (mapcar
+             (lambda (rectangle)
+               (let ((window (etaf-desktop--window-for state (car rectangle))))
+                 (if (and (not reset-maximized) window
+                          (etaf-desktop--window-maximized window))
+                     (list (car rectangle) 0 0 canvas-width canvas-height)
+                   rectangle)))
+             rectangles)))
       (etaf-desktop--update
        desktop
        (lambda (next-state)
+         (when reset-maximized
+           (dolist (window (etaf-desktop--state-windows next-state))
+             (when (and (equal workspace (etaf-desktop--window-workspace window))
+                        (etaf-desktop--window-maximized window))
+               (pcase-let ((`(,x ,y ,width ,height)
+                            (etaf-desktop--window-normal-geometry window)))
+                 (setf (etaf-desktop--window-x window) x
+                       (etaf-desktop--window-y window) y
+                       (etaf-desktop--window-width window) width
+                       (etaf-desktop--window-height window) height
+                       (etaf-desktop--window-maximized window) nil)))))
          (dolist (rectangle rectangles)
            (pcase-let ((`(,id ,x ,y ,width ,height) rectangle))
              (let ((window (etaf-desktop--window-for next-state id)))
-               (when window
+               (when (and window (not (etaf-desktop--window-maximized window)))
                  (setf (etaf-desktop--window-x window) x
                        (etaf-desktop--window-y window) y
                        (etaf-desktop--window-width window) width
@@ -557,8 +596,16 @@ retaining the tree for instant return to tiling."
                (setf (etaf-desktop--window-z-index window)
                      (etaf-desktop--state-next-z next-state)
                      (etaf-desktop--state-next-z next-state)
-                     (1+ (etaf-desktop--state-next-z next-state)))))
-         result))))))
+                     (1+ (etaf-desktop--state-next-z next-state))))))
+         result)
+       force-publication))))
+
+(defun etaf-desktop-layout-apply (desktop &optional workspace)
+  "Apply DESKTOP's current layout to WORKSPACE and return its rectangles.
+Floating windows retain their rectangles; tiling and monocle fill the canvas.
+An explicitly maximized window retains its full canvas view until restored or
+until the workspace layout mode changes."
+  (etaf-desktop--layout-apply desktop workspace nil nil))
 
 (defun etaf-desktop-toggle-layout-mode (desktop &optional workspace)
   "Switch DESKTOP's WORKSPACE between `floating' and `tiling'.
@@ -567,7 +614,10 @@ so the trailing workspace control always has one predictable meaning."
   (let* ((desktop (etaf-desktop--controller desktop))
          (current (etaf-desktop-layout-mode desktop workspace)))
     (etaf-desktop-set-layout-mode
-     desktop (if (eq current 'floating) 'tiling 'floating) workspace)
+     desktop (cond ((eq current 'floating) 'tiling)
+                   ((eq current 'tiling) 'floating)
+                   (t 'tiling))
+     workspace)
     desktop))
 
 (defun etaf-desktop-set-layout-mode (desktop mode &optional workspace)
@@ -577,7 +627,8 @@ MODE must be `floating', `tiling', `master-stack' or `monocle'.  Switching to
 tiling makes all visible non-minimized windows leaves in insertion order;
 `master-stack' gives the first window a wide master region and stacks the rest
 vertically.  Switching to floating preserves the tree and current rectangles
-for a later return."
+for a later return.  A mode change exits temporary maximization before the
+new rectangles are published."
   (unless (etaf-desktop--layout-valid-mode-p mode)
     (etaf-desktop--fail "Unknown desktop layout mode: %S" mode))
   (let* ((desktop (etaf-desktop--controller desktop))
@@ -588,7 +639,8 @@ for a later return."
     (let* ((policy (etaf-desktop--layout-ensure-workspace desktop workspace))
            (tree (etaf-desktop--layout-workspace-tree policy))
            (ids (etaf-desktop--layout-all-visible-ids state workspace))
-           (leaves (etaf-desktop--layout-tree-leaves tree)))
+           (leaves (etaf-desktop--layout-tree-leaves tree))
+           (previous-mode (etaf-desktop--layout-workspace-mode policy)))
       (when (memq mode '(tiling master-stack monocle))
         (dolist (id ids)
           (unless (member id leaves)
@@ -603,15 +655,12 @@ for a later return."
               (etaf-desktop--layout-workspace-floating policy) nil
               (etaf-desktop--layout-workspace-pending policy) nil))
       (setf (etaf-desktop--layout-workspace-mode policy) mode)
-      (etaf-desktop-layout-apply desktop workspace)
-      ;; Layout policy lives beside the window state.  Even when applying the
-      ;; new mode leaves every rectangle unchanged, the retained shell must
-      ;; rerender its mode label and keep the layout button's action current.
-      ;; Publish a fresh structural state after the policy mutation so a
-      ;; second Floating/Tiled click is observable through the UI.
-      (etaf-set-value
-       (etaf-desktop--controller-state-ref desktop)
-       (etaf-desktop--copy-state (etaf-desktop--state desktop)))
+      ;; The policy and its visible rectangles commit in one ETAF publication.
+      ;; A mode change exits a temporary maximized view before tiling is
+      ;; applied, so that view cannot cover the newly allocated tiles.
+      (etaf-desktop--layout-apply desktop workspace
+                                  (not (eq previous-mode mode))
+                                  (not (eq previous-mode mode)))
       mode)))
 
 (defun etaf-desktop-layout-tile-window (desktop id &optional workspace)

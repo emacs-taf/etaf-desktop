@@ -106,17 +106,22 @@
 ;;
 ;; Function: etaf-desktop-view (desktop)
 ;;;###autoload (autoload 'etaf-desktop-view "etaf-desktop" nil nil)
-;; Return the root View for DESKTOP without mounting it.
+;; Return the root View for DESKTOP without mounting it.  A caller that mounts
+;; this View owns the enclosing ETAF Runtime and buffer and must unmount them.
 ;;
 ;; Function: etaf-desktop-mount (desktop &optional buffer-or-name)
 ;;;###autoload (autoload 'etaf-desktop-mount "etaf-desktop" nil nil)
 ;; Mount DESKTOP and return its buffer.  A desktop may have one mounted Runtime.
+;; This call owns the Runtime it creates; an existing target buffer remains
+;; caller-owned.
 ;; Mutations publish through ETAF's reactive path and retain Ebox's committed
 ;; target and incremental display semantics.
 ;;
 ;; Function: etaf-desktop-close (desktop)
 ;;;###autoload (autoload 'etaf-desktop-close "etaf-desktop" nil nil)
-;; Unmount and kill DESKTOP's owned buffer.  Repeated calls are harmless.
+;; Unmount the Runtime created by `etaf-desktop-mount' and kill its newly
+;; created buffer.  A caller-mounted View and an existing target buffer remain
+;; caller-owned.  Repeated calls are harmless.
 ;;
 ;; Function: etaf-desktop-open (&optional desktop buffer-or-name)
 ;;;###autoload (autoload 'etaf-desktop-open "etaf-desktop" nil t)
@@ -202,7 +207,8 @@
 ;; Set and apply a workspace layout mode.  Tiling fills the canvas using its
 ;; layout tree; master-stack gives the first window a wide master region and
 ;; stacks the rest; monocle fills it with every tree leaf and raises the active
-;; window; floating preserves each window's own rectangle.
+;; window; floating preserves each window's own rectangle.  A mode change exits
+;; a temporary maximized view so it cannot cover the new layout.
 ;;
 ;; Function: etaf-desktop-layout-tree (desktop &optional workspace)
 ;;;###autoload (autoload 'etaf-desktop-layout-tree "etaf-desktop" nil nil)
@@ -223,7 +229,9 @@
 ;;;###autoload (autoload 'etaf-desktop-layout-apply "etaf-desktop" nil nil)
 ;; Apply the current workspace layout and return the calculated rectangle list.
 ;; Horizontal splits divide width (left/right); vertical splits divide height
-;; (top/bottom), and minimum dimensions are respected where possible.
+;; (top/bottom).  The allocator reserves a three-pixel or one-row divider gap
+;; and respects minimum dimensions where possible.  A maximized window keeps
+;; its full canvas view until restored or the mode changes.
 ;;
 ;; Function: etaf-desktop-layout-tile-window (desktop id &optional workspace)
 ;;;###autoload (autoload 'etaf-desktop-layout-tile-window "etaf-desktop" nil nil)
