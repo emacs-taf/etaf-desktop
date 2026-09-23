@@ -163,7 +163,7 @@
     {
       "name": "etaf-desktop-toggle-layout-mode-switches-the-workspace",
       "file": "tests/etaf-desktop-tests.el",
-      "purpose": "The workspace layout control switches between floating and tiling, restoring floating rectangles and returning master-stack to floating."
+      "purpose": "The workspace layout control switches between floating and tiling, preserves the last rectangles when floating and returns other modes to tiling."
     },
     {
       "name": "etaf-desktop-mounted-layout-toggle-rerenders-both-directions",
@@ -203,7 +203,7 @@
     {
       "name": "etaf-desktop-nested-splitters-occupy-reserved-gaps",
       "file": "tests/etaf-desktop-layout-tests.el",
-      "purpose": "Nested split dividers occupy allocated gaps and drag changes only the selected subtree ratio."
+      "purpose": "Nested divider handles center in custom inner gaps and drag changes only the selected subtree ratio."
     },
     {
       "name": "etaf-desktop-layout-floating-and-untile",
@@ -218,12 +218,92 @@
     {
       "name": "etaf-desktop-layout-monocle-and-close-sync",
       "file": "tests/etaf-desktop-layout-tests.el",
-      "purpose": "Monocle fills the canvas and closing a window removes its layout leaf."
+      "purpose": "Monocle fills the inset canvas and closing a window removes its layout leaf."
     },
     {
       "name": "etaf-desktop-layout-master-stack-reflows-new-windows",
       "file": "tests/etaf-desktop-layout-tests.el",
       "purpose": "Master-stack gives the first window a master region and reflows newly opened stack windows."
+    },
+    {
+      "name": "etaf-desktop-tile-spacing-defaults-and-reset",
+      "file": "tests/etaf-desktop-spacing-tests.el",
+      "purpose": "New and reset settings use detached one-cell outer and inner gap preferences and inset tiled geometry."
+    },
+    {
+      "name": "etaf-desktop-tile-spacing-custom-gaps",
+      "file": "tests/etaf-desktop-spacing-tests.el",
+      "purpose": "Zero and custom outer margins and nested inner gaps use character widths horizontally and text rows vertically, retaining the minimum horizontal divider width."
+    },
+    {
+      "name": "etaf-desktop-tile-spacing-reflows-active-workspace",
+      "file": "tests/etaf-desktop-spacing-tests.el",
+      "purpose": "Spacing changes immediately reflow active tiles without changing topology, ratios, focus or floating rectangles."
+    },
+    {
+      "name": "etaf-desktop-tile-spacing-validates-without-mutation",
+      "file": "tests/etaf-desktop-spacing-tests.el",
+      "purpose": "Spacing accepts all supported integers and rejects invalid types and bounds without changing settings, layout or geometry."
+    },
+    {
+      "name": "etaf-desktop-tile-spacing-outer-gaps-yield-to-minimums",
+      "file": "tests/etaf-desktop-spacing-tests.el",
+      "purpose": "Outer margins shrink independently on both axes to preserve pane minimum sizes and inner gaps on a tight canvas."
+    },
+    {
+      "name": "etaf-desktop-tile-spacing-monocle-preserves-outer-gap",
+      "file": "tests/etaf-desktop-spacing-tests.el",
+      "purpose": "Monocle preserves its outer margin whenever each overlaid pane fits, independently of the retained split tree's summed minimum sizes and inner gap."
+    },
+    {
+      "name": "etaf-desktop-tile-spacing-preserves-maximum-size",
+      "file": "tests/etaf-desktop-spacing-tests.el",
+      "purpose": "Custom inner gaps keep constrained panes within maximum width or height while their neighbors fill the remaining canvas."
+    },
+    {
+      "name": "etaf-desktop-tile-spacing-small-canvas-keeps-panes-inside",
+      "file": "tests/etaf-desktop-spacing-tests.el",
+      "purpose": "On a small canvas, nested panes remain positive, non-overlapping and in bounds as inner gaps shrink without changing saved preferences."
+    },
+    {
+      "name": "etaf-desktop-tile-spacing-applies-on-workspace-switch",
+      "file": "tests/etaf-desktop-spacing-tests.el",
+      "purpose": "Gap changes leave inactive workspace geometry untouched until selection applies the current global gap preferences."
+    },
+    {
+      "name": "etaf-desktop-tile-spacing-keeps-maximized-window-full-size",
+      "file": "tests/etaf-desktop-spacing-tests.el",
+      "purpose": "Changing tile gaps preserves full-canvas maximization and restoration returns the window to the current split geometry."
+    },
+    {
+      "name": "etaf-desktop-tile-spacing-settings-controls-reflow-live-tiles",
+      "file": "tests/etaf-desktop-spacing-tests.el",
+      "purpose": "Mounted settings tabs change tile spacing immediately, retain values across tab switches, reset defaults and close through Done."
+    },
+    {
+      "name": "etaf-desktop-tile-spacing-session-roundtrip",
+      "file": "tests/etaf-desktop-spacing-tests.el",
+      "purpose": "A saved session restores custom spacing, split topology and tiled and floating geometry over existing gap preferences."
+    },
+    {
+      "name": "etaf-desktop-tile-spacing-session-rejects-invalid-gaps",
+      "file": "tests/etaf-desktop-spacing-tests.el",
+      "purpose": "Session restore rejects persisted gaps outside the public integer ranges."
+    },
+    {
+      "name": "etaf-desktop-session-restores-fixed-floating-window",
+      "file": "tests/etaf-desktop-spacing-tests.el",
+      "purpose": "A non-resizable, non-movable floating window restores its saved rectangle and flags without aborting the rest of the session."
+    },
+    {
+      "name": "etaf-desktop-session-restores-floating-geometry-with-retained-tree",
+      "file": "tests/etaf-desktop-spacing-tests.el",
+      "purpose": "A workspace switched from tiling to floating restores manually edited window geometry while preserving its retained split tree and spacing."
+    },
+    {
+      "name": "etaf-desktop-session-retains-panes-smaller-than-minimums",
+      "file": "tests/etaf-desktop-spacing-tests.el",
+      "purpose": "A saved small-canvas layout restores every pane and its minimum-size policy even when the allocated tile dimensions are below those minimums."
     }
   ]
 }

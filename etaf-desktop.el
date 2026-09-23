@@ -154,17 +154,23 @@
 
 ;; Function: etaf-desktop-settings (desktop)
 ;;;###autoload (autoload 'etaf-desktop-settings "etaf-desktop" nil nil)
-;; Return detached user settings for DESKTOP: theme, layout mode, title/content
-;; font sizes, optional font family and tiling keybindings.
+;; Return detached user settings for DESKTOP, including theme, layout mode,
+;; tile spacing, title/content font sizes, optional font family and keybindings.
 
 ;; Function: etaf-desktop-set-setting (desktop key value)
 ;;;###autoload (autoload 'etaf-desktop-set-setting "etaf-desktop" nil nil)
-;; Validate and set one user setting.  `:layout-mode' applies immediately to
-;; the active workspace; the other values are projected by the retained shell.
+;; Validate and set one user setting, returning the detached settings plist.
+;; `:tile-outer-gap' accepts integers 0..4 and `:tile-inner-gap' accepts integers
+;; 1..4; both default to 1.  Gap units and allocation are described under
+;; `etaf-desktop-layout-apply'.  Layout mode and tile spacing changes apply
+;; immediately to the active workspace; the other values are projected by the
+;; retained shell.  Invalid settings signal `etaf-desktop-error' without
+;; changing settings or window geometry.  Settings persist in session state.
 
 ;; Function: etaf-desktop-reset-settings (desktop)
 ;;;###autoload (autoload 'etaf-desktop-reset-settings "etaf-desktop" nil nil)
-;; Restore the default Desktop settings and return the detached plist.
+;; Restore the default Desktop settings, including one-cell tile gaps, and
+;; return the detached plist.  The active workspace returns to floating mode.
 
 ;; Function: etaf-desktop-settings-open-p (desktop)
 ;;;###autoload (autoload 'etaf-desktop-settings-open-p "etaf-desktop" nil nil)
@@ -187,8 +193,8 @@
 ;;
 ;; Function: etaf-desktop-layout-refresh (desktop &optional workspace)
 ;;;###autoload (autoload 'etaf-desktop-layout-refresh "etaf-desktop" nil nil)
-;; Synchronize membership and apply `tiling' or `monocle' policy in one guarded
-;; publication.  This is the integration hook for desktop mutation paths.
+;; Synchronize membership and apply `tiling', `master-stack' or `monocle' policy
+;; in one guarded publication.  This is the desktop mutation integration hook.
 ;;
 ;; Function: etaf-desktop-layout-mode (desktop &optional workspace)
 ;;;###autoload (autoload 'etaf-desktop-layout-mode "etaf-desktop" nil nil)
@@ -204,8 +210,8 @@
 ;;
 ;; Function: etaf-desktop-set-layout-mode (desktop mode &optional workspace)
 ;;;###autoload (autoload 'etaf-desktop-set-layout-mode "etaf-desktop" nil nil)
-;; Set and apply a workspace layout mode.  Tiling fills the canvas using its
-;; layout tree; master-stack gives the first window a wide master region and
+;; Set and apply a workspace layout mode.  Tiling fills the inset canvas using
+;; its layout tree; master-stack gives the first window a wide master region and
 ;; stacks the rest; monocle fills it with every tree leaf and raises the active
 ;; window; floating preserves each window's own rectangle.  A mode change exits
 ;; a temporary maximized view so it cannot cover the new layout.
@@ -229,9 +235,16 @@
 ;;;###autoload (autoload 'etaf-desktop-layout-apply "etaf-desktop" nil nil)
 ;; Apply the current workspace layout and return the calculated rectangle list.
 ;; Horizontal splits divide width (left/right); vertical splits divide height
-;; (top/bottom).  The allocator reserves a three-pixel or one-row divider gap
-;; and respects minimum dimensions where possible.  A maximized window keeps
-;; its full canvas view until restored or the mode changes.
+;; (top/bottom).  Tile spacing uses one frame character width per horizontal
+;; cell and one text row per vertical cell.  Outer gaps inset the canvas and
+;; shrink as needed to preserve pane minimum sizes.  Inner gaps separate panes;
+;; their horizontal width is normally at least three pixels.  When pane
+;; minimums cannot fit, inner gaps and pane sizes shrink to fit the canvas
+;; where possible.  Divider handles are centered and confined to their gaps;
+;; a zero-width gap has no handle.  Monocle uses the inset canvas for every leaf
+;; and ignores inner gaps when deciding how much outer margin fits.
+;; A maximized window keeps its full canvas view until restored or the mode
+;; changes; floating windows keep their own rectangles.
 ;;
 ;; Function: etaf-desktop-layout-tile-window (desktop id &optional workspace)
 ;;;###autoload (autoload 'etaf-desktop-layout-tile-window "etaf-desktop" nil nil)
@@ -316,7 +329,8 @@
 
 ;; Function: etaf-desktop-session-state (desktop)
 ;;;###autoload (autoload 'etaf-desktop-session-state "etaf-desktop" nil nil)
-;; Return a serializable desktop and application session plist.
+;; Return a serializable desktop and application session plist, including
+;; settings, tile spacing and per-workspace layout policies.
 
 ;; Function: etaf-desktop-save-session (desktop file)
 ;;;###autoload (autoload 'etaf-desktop-save-session "etaf-desktop" nil nil)

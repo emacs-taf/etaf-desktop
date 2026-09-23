@@ -291,9 +291,23 @@ When WORKSPACE is non-nil it fills a missing spec workspace."
                       (plist-get state :width) 400))
            (height (or (and (listp normal) (nth 3 normal))
                        (plist-get state :height) 12)))
-      (etaf-desktop-move-window desktop id x y)
-      (etaf-desktop-resize-window desktop id
-                                  width height)
+      ;; Restore is host policy, not a user's move/resize gesture.  Fixed
+      ;; windows and tiles compressed below their requested minimums are
+      ;; legitimate saved rectangles too.
+      (etaf-desktop--number x "saved x" 0)
+      (etaf-desktop--number y "saved y" 0)
+      (etaf-desktop--number width "saved width" 1)
+      (etaf-desktop--number height "saved height" 1)
+      (etaf-desktop--update
+       desktop
+       (lambda (next)
+         (let ((window (etaf-desktop--window-for next id)))
+           (setf (etaf-desktop--window-x window) x
+                 (etaf-desktop--window-y window) y
+                 (etaf-desktop--window-width window) width
+                 (etaf-desktop--window-height window) height
+                 (etaf-desktop--window-normal-geometry window)
+                 (list x y width height)))))
       (when maximized (etaf-desktop-maximize-window desktop id))
       (when minimized (etaf-desktop-minimize-window desktop id)))))
 
@@ -642,7 +656,8 @@ other applications continue restoring."
     ;; Settings are part of the serializable desktop value.  Apply them
     ;; through the public validator so an invalid preference cannot poison the
     ;; restored controller or bypass the layout policy.
-    (dolist (key '(:theme :accent-color :layout-mode :title-font-size
+    (dolist (key '(:theme :accent-color :layout-mode
+                   :tile-outer-gap :tile-inner-gap :title-font-size
                    :content-font-size :font-family :drag-lock-modifier
                    :resize-enabled :confirm-close :taskbar-grouping
                    :keybindings))
@@ -701,8 +716,10 @@ other applications continue restoring."
                                       (format "%s" id)))))
                :x (or (plist-get saved-window :x) 0)
                :y (or (plist-get saved-window :y) 0)
-               :width (or (plist-get saved-window :width) 400)
-               :height (or (plist-get saved-window :height) 12)
+               :width (max (or (plist-get saved-window :width) 400)
+                           (or (plist-get saved-window :min-width) 160))
+               :height (max (or (plist-get saved-window :height) 12)
+                            (or (plist-get saved-window :min-height) 3))
                :min-width (or (plist-get saved-window :min-width) 160)
                :min-height (or (plist-get saved-window :min-height) 3)
                :max-width (plist-get saved-window :max-width)
@@ -716,6 +733,16 @@ other applications continue restoring."
                               (plist-get saved-window :resizable) t))
               (etaf-desktop--restore-window-state desktop id saved-window))))))
     (etaf-desktop--restore-layouts desktop saved-layouts)
+    ;; Restoring the policy can temporarily tile every recreated window.  Once
+    ;; membership is final, restore the saved floating and maximized geometry;
+    ;; ordinary tiles continue to use the allocator's current canvas.
+    (dolist (window (plist-get saved-desktop :windows))
+      (let ((id (plist-get window :id))
+            (workspace (plist-get window :workspace)))
+        (when (or (eq (etaf-desktop-layout-mode desktop workspace) 'floating)
+                  (plist-get window :maximized)
+                  (member id (etaf-desktop-layout-floating-windows desktop workspace)))
+          (etaf-desktop--restore-window-state desktop id window))))
     (etaf-desktop-switch-workspace desktop (or (plist-get saved-desktop :active-workspace)
                                                (car (plist-get saved-desktop :workspaces))))
     (let ((saved-active (plist-get saved-desktop :active-window)))

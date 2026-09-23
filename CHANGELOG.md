@@ -6,6 +6,16 @@ All notable changes to ETAF Desktop are documented here.
 
 ### Changed
 
+- Tiled workspaces now default to one cell of outer and inner spacing.
+  Configure `:tile-outer-gap` (0–4 cells) and `:tile-inner-gap` (1–4 cells)
+  through Desktop Settings or `etaf-desktop-set-setting`; changes reflow the
+  active workspace immediately and persist in saved sessions. Set the outer
+  gap to zero for tiles flush with the canvas. Divider handles stay centered
+  within inner gaps, and outer gaps shrink to preserve pane minimum sizes.
+
+- Desktop Settings now groups appearance, layout, behavior and shortcuts into
+  tabs in a compact panel, with Done and Reset settings actions.
+
 - Session snapshots now persist each workspace's layout mode, split tree and
   floating membership, so restore keeps tiling topology and ratios.
 
@@ -15,6 +25,9 @@ All notable changes to ETAF Desktop are documented here.
   recorded instance.
 
 ### Fixed
+
+- Session restore preserves floating rectangles, fixed-size windows and tiles
+  compressed below their preferred minimum dimensions on small canvases.
 
 - Closing an embedded Desktop View no longer unmounts its host application or
   kills the caller's buffer. Direct mounts and Playground cleanup now share the

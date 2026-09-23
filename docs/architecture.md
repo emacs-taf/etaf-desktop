@@ -65,22 +65,34 @@ through ETAF UI Components: the workspace bar exposes a settings action and
 `etaf-dialog` renders the form as a retained root-layer panel. Desktop chooses
 the unpainted modal variant so the underlying application windows remain
 visible; the reusable UI component retains its normal painted backdrop for
-other modal callers. Font changes set the positioned window host to the larger
-of the title and content sizes, preserving Ebox's shared line-height invariant.
+other modal callers. The form groups controls into Appearance, Layout,
+Behavior and Shortcuts tabs within a compact panel. Font changes set the
+positioned window host to the larger of the title and content sizes,
+preserving Ebox's shared line-height invariant.
 
 The settings form owns only policies already supported by the application:
-theme/accent presentation, typography, resize and locked-drag behavior,
-taskbar grouping, close confirmation, and keyboard actions. Session restore
-remains the explicit public save/restore workflow. Keyboard callbacks are
+theme/accent presentation, typography, tile spacing, resize and locked-drag
+behavior, taskbar grouping, close confirmation, and keyboard actions. Session
+restore remains the explicit public save/restore workflow. Keyboard callbacks are
 installed in the mounted Desktop buffer through its local overriding map;
 they do not become global Emacs bindings.
 
-The layout allocator partitions each split into two pane rectangles and one
-divider rectangle. Horizontal splits reserve three pixels; vertical splits
-reserve one text row. The same partition feeds window geometry and the reusable
-ETAF UI splitter's `:overlay-rect`. Nested dividers render as separate canvas
-overlays, each limited to its subtree. Window records remain authoritative for
-their rectangles; the splitter owns only presentation and gestures.
+The layout allocator converts the controller's cell-based spacing settings to
+horizontal pixel widths and vertical text rows. It first insets the canvas by
+the outer gap, reducing that inset where pane minimum sizes need the space.
+Each split then allocates two pane rectangles and an inner gap, with a minimum
+horizontal gap target sufficient for the three-pixel divider. An undersized
+subtree reduces gaps and pane sizes while reserving space for its descendant
+panes where the canvas permits. The same partition feeds window geometry and
+the reusable ETAF UI splitter's `:overlay-rect`; three-pixel or one-row handles
+are centered inside their allocated gaps, shrink with the gap and disappear
+when it reaches zero. Nested dividers render as separate canvas overlays, each
+limited to its subtree. Monocle computes its inset from the largest leaf
+minimums on each axis because retained splits consume no space in that mode.
+Spacing changes refresh the active workspace through the existing layout
+publication path and persist in the settings snapshot. Window records remain
+authoritative for their rectangles; the splitter owns only presentation and
+gestures.
 
 A layout mode transition updates policy and window geometry in one Desktop
 state publication. It clears temporary maximization before allocating the new

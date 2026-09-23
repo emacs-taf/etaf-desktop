@@ -420,12 +420,26 @@ stack whose ratios make each leaf the same height."
 (defconst etaf-desktop--layout-divider-rows 1
   "Text rows reserved for a top/bottom split divider.")
 
+(defun etaf-desktop--layout-spacing (desktop)
+  "Return DESKTOP's allocated outer and inner gaps in geometry units.
+One configured cell is one character width horizontally and one text row
+vertically.  Divider handles fit inside the inner gap."
+  (let* ((settings (etaf-desktop--settings desktop))
+         (cell-width (max 1 (frame-char-width)))
+         (outer (or (plist-get settings :tile-outer-gap) 1))
+         (inner (or (plist-get settings :tile-inner-gap) 1)))
+    (list :outer-x (* outer cell-width)
+          :outer-y outer
+          :inner-x (max etaf-desktop--layout-divider-px
+                        (* inner cell-width))
+          :inner-y (max etaf-desktop--layout-divider-rows inner))))
+
 (defun etaf-desktop--layout-window (state id)
   "Return ID's internal window from STATE or signal an error."
   (or (etaf-desktop--window-for state id)
       (etaf-desktop--fail "Unknown desktop window: %S" id)))
 
-(defun etaf-desktop--layout-min-size (state node axis)
+(defun etaf-desktop--layout-min-size (state node axis spacing)
   "Return minimum size for NODE along AXIS (`width' or `height')."
   (if (etaf-desktop--layout-leaf-p node)
       (let ((window (etaf-desktop--layout-window state (nth 1 node))))
@@ -433,16 +447,17 @@ stack whose ratios make each leaf the same height."
             (etaf-desktop--window-min-width window)
           (etaf-desktop--window-min-height window)))
     (let* ((orientation (nth 1 node))
-           (first (etaf-desktop--layout-min-size state (nth 3 node) axis))
-           (second (etaf-desktop--layout-min-size state (nth 4 node) axis))
+           (first (etaf-desktop--layout-min-size
+                   state (nth 3 node) axis spacing))
+           (second (etaf-desktop--layout-min-size
+                    state (nth 4 node) axis spacing))
            (split-axis (if (eq orientation 'horizontal) 'width 'height)))
       (if (eq axis split-axis)
-          (+ first second (if (eq axis 'width)
-                              etaf-desktop--layout-divider-px
-                            etaf-desktop--layout-divider-rows))
+          (+ first second (plist-get spacing
+                                    (if (eq axis 'width) :inner-x :inner-y)))
         (max first second)))))
 
-(defun etaf-desktop--layout-max-size (state node axis)
+(defun etaf-desktop--layout-max-size (state node axis spacing)
   "Return maximum size for NODE along AXIS, or nil when unbounded."
   (if (etaf-desktop--layout-leaf-p node)
       (let ((window (etaf-desktop--layout-window state (nth 1 node))))
@@ -450,13 +465,15 @@ stack whose ratios make each leaf the same height."
             (etaf-desktop--window-max-width window)
           (etaf-desktop--window-max-height window)))
     (let* ((orientation (nth 1 node))
-           (first (etaf-desktop--layout-max-size state (nth 3 node) axis))
-           (second (etaf-desktop--layout-max-size state (nth 4 node) axis)))
+           (first (etaf-desktop--layout-max-size
+                   state (nth 3 node) axis spacing))
+           (second (etaf-desktop--layout-max-size
+                    state (nth 4 node) axis spacing)))
       (if (eq axis (if (eq orientation 'horizontal) 'width 'height))
           (and first second
-               (+ first second (if (eq axis 'width)
-                                   etaf-desktop--layout-divider-px
-                                 etaf-desktop--layout-divider-rows)))
+               (+ first second
+                  (plist-get spacing
+                             (if (eq axis 'width) :inner-x :inner-y))))
         (cond
          ((and first second) (max first second))
          (first first)
@@ -475,57 +492,112 @@ stack whose ratios make each leaf the same height."
         (max 1 (min (1- total) ideal))
       (max low (min high ideal)))))
 
-(defun etaf-desktop--layout-partition (state node x y width height)
+(defun etaf-desktop--layout-smallest-span (node axis)
+  "Return NODE's smallest nonoverlapping span along AXIS, without gaps."
+  (if (etaf-desktop--layout-leaf-p node)
+      1
+    (let ((first (etaf-desktop--layout-smallest-span (nth 3 node) axis))
+          (second (etaf-desktop--layout-smallest-span (nth 4 node) axis)))
+      (if (eq (nth 1 node) (if (eq axis 'width) 'horizontal 'vertical))
+          (+ first second)
+        (max first second)))))
+
+(defun etaf-desktop--layout-partition (state node spacing x y width height)
   "Return first, divider and second rectangles for split NODE.
 Each rectangle is `(X Y WIDTH HEIGHT)'.  Window and divider geometry share
-this allocation so the overlay cannot cover a pane's title row."
+this allocation so the overlay cannot cover a pane's title row.  SPACING owns
+the desired inner gap; an undersized subtree reduces it before panes overlap."
   (let* ((orientation (nth 1 node))
          (ratio (nth 2 node))
          (first (nth 3 node))
          (second (nth 4 node)))
     (if (eq orientation 'horizontal)
-        (let* ((gap (min etaf-desktop--layout-divider-px
-                         (max 0 (- width 2))))
+        (let* ((first-floor (etaf-desktop--layout-smallest-span first 'width))
+               (second-floor (etaf-desktop--layout-smallest-span second 'width))
+               (gap (min (plist-get spacing :inner-x)
+                         (max 0 (- width first-floor second-floor))))
                (available (- width gap))
                (first-width
                 (etaf-desktop--layout-split-size
                  available ratio
-                 (etaf-desktop--layout-min-size state first 'width)
-                 (etaf-desktop--layout-min-size state second 'width)
-                 (etaf-desktop--layout-max-size state first 'width)
-                 (etaf-desktop--layout-max-size state second 'width))))
+                 (etaf-desktop--layout-min-size state first 'width spacing)
+                 (etaf-desktop--layout-min-size state second 'width spacing)
+                 (etaf-desktop--layout-max-size state first 'width spacing)
+                 (etaf-desktop--layout-max-size state second 'width spacing))))
+          (when (>= available (+ first-floor second-floor))
+            (setq first-width (max first-floor
+                                   (min (- available second-floor) first-width))))
           (list (list x y first-width height)
                 (list (+ x first-width) y gap height)
                 (list (+ x first-width gap) y
                       (max 1 (- available first-width)) height)))
-      (let* ((gap (min etaf-desktop--layout-divider-rows
-                       (max 0 (- height 2))))
+      (let* ((first-floor (etaf-desktop--layout-smallest-span first 'height))
+             (second-floor (etaf-desktop--layout-smallest-span second 'height))
+             (gap (min (plist-get spacing :inner-y)
+                       (max 0 (- height first-floor second-floor))))
              (available (- height gap))
              (first-height
               (etaf-desktop--layout-split-size
                available ratio
-               (etaf-desktop--layout-min-size state first 'height)
-               (etaf-desktop--layout-min-size state second 'height)
-               (etaf-desktop--layout-max-size state first 'height)
-               (etaf-desktop--layout-max-size state second 'height))))
+               (etaf-desktop--layout-min-size state first 'height spacing)
+               (etaf-desktop--layout-min-size state second 'height spacing)
+               (etaf-desktop--layout-max-size state first 'height spacing)
+               (etaf-desktop--layout-max-size state second 'height spacing))))
+        (when (>= available (+ first-floor second-floor))
+          (setq first-height (max first-floor
+                                  (min (- available second-floor) first-height))))
         (list (list x y width first-height)
               (list x (+ y first-height) width gap)
               (list x (+ y first-height gap) width
                     (max 1 (- available first-height))))))))
 
-(defun etaf-desktop--layout-rectangles (state node x y width height)
+(defun etaf-desktop--layout-canvas-rect (desktop state tree spacing mode)
+  "Return the usable tiled canvas rectangle for TREE in DESKTOP.
+Outer gaps shrink when the canvas cannot fit TREE's minimum size."
+  (let* ((width (etaf-desktop--canvas-width-value desktop))
+         (height (etaf-desktop--canvas-height-value desktop))
+         (monocle (eq mode 'monocle))
+         (minimum-width (if (and tree monocle)
+                            (apply #'max
+                                   (mapcar (lambda (id)
+                                             (etaf-desktop--layout-min-size
+                                              state (list :leaf id) 'width spacing))
+                                           (etaf-desktop--layout-tree-leaves tree)))
+                          (if tree
+                            (etaf-desktop--layout-min-size
+                             state tree 'width spacing)
+                            1)))
+         (minimum-height (if (and tree monocle)
+                             (apply #'max
+                                    (mapcar (lambda (id)
+                                              (etaf-desktop--layout-min-size
+                                               state (list :leaf id) 'height spacing))
+                                            (etaf-desktop--layout-tree-leaves tree)))
+                           (if tree
+                             (etaf-desktop--layout-min-size
+                              state tree 'height spacing)
+                             1)))
+         (outer-x (min (plist-get spacing :outer-x)
+                       (max 0 (floor (/ (- width minimum-width) 2)))))
+         (outer-y (min (plist-get spacing :outer-y)
+                       (max 0 (floor (/ (- height minimum-height) 2))))))
+    (list outer-x outer-y
+          (max 1 (- width (* 2 outer-x)))
+          (max 1 (- height (* 2 outer-y))))))
+
+(defun etaf-desktop--layout-rectangles (state node spacing x y width height)
   "Return `(ID X Y WIDTH HEIGHT)' rectangles for NODE.
 The shared partition reserves each divider's exact pixel column or text row."
   (if (etaf-desktop--layout-leaf-p node)
       (list (list (nth 1 node) x y (max 1 width) (max 1 height)))
     (pcase-let ((`(,first-rect ,_divider-rect ,second-rect)
                  (etaf-desktop--layout-partition
-                  state node x y width height)))
+                  state node spacing x y width height)))
       (append
        (apply #'etaf-desktop--layout-rectangles
-              state (nth 3 node) first-rect)
+              state (nth 3 node) spacing first-rect)
        (apply #'etaf-desktop--layout-rectangles
-              state (nth 4 node) second-rect)))))
+              state (nth 4 node) spacing second-rect)))))
 
 (defun etaf-desktop--layout-apply
     (desktop workspace reset-maximized force-publication)
@@ -547,15 +619,18 @@ new mode visible even if every rectangle stays equal."
            (tree (etaf-desktop--layout-workspace-tree policy))
            (canvas-width (etaf-desktop--canvas-width-value desktop))
            (canvas-height (etaf-desktop--canvas-height-value desktop))
+           (spacing (etaf-desktop--layout-spacing desktop))
+           (canvas-rect
+            (etaf-desktop--layout-canvas-rect desktop state tree spacing mode))
            (active (etaf-desktop--state-active-window state))
            (rectangles
             (cond
              ((eq mode 'floating) nil)
              ((eq mode 'monocle)
-              (mapcar (lambda (id) (list id 0 0 canvas-width canvas-height))
+              (mapcar (lambda (id) (cons id canvas-rect))
                       (etaf-desktop--layout-tree-leaves tree)))
-             (t (and tree (etaf-desktop--layout-rectangles
-                           state tree 0 0 canvas-width canvas-height)))))
+             (t (and tree (apply #'etaf-desktop--layout-rectangles
+                                 state tree spacing canvas-rect)))))
            (result
             (mapcar
              (lambda (rectangle)

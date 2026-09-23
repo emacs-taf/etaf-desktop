@@ -51,14 +51,14 @@ to a remaining workspace and the final workspace cannot be removed.
 The workspace bar's Settings action opens an in-buffer ETAF UI dialog as a
 root-layer projection, so the existing desktop remains visible underneath.
 On a graphical Emacs viewport the panel is centered, limited to the visible
-canvas and scrollable; the compact form uses two columns and keeps controls at
-the standard line height. The form groups settings into appearance, window
-behavior, workspace/session, and keyboard shortcuts. It includes theme mode,
-accent color, font family and sizes, drag-lock modifier, resize availability,
-close policy and taskbar grouping; session restore remains an explicit
-`etaf-desktop-save-session`/`etaf-desktop-restore-session` workflow. It also
-provides focus traversal, launcher,
-switcher, layout, split, swap, maximize, minimize and close bindings.
+canvas and scrollable. Appearance, Layout, Behavior and Shortcuts tabs keep
+the controls in a compact panel. Appearance controls theme, accent and fonts;
+Layout controls layout mode and tile spacing; Behavior controls drag locking,
+resize availability, close confirmation and taskbar grouping. Shortcuts
+configures focus traversal, launcher, switcher, layout, split, swap, maximize,
+minimize and close bindings. Done closes the panel; Reset settings restores
+defaults. Session restore remains an explicit
+`etaf-desktop-save-session`/`etaf-desktop-restore-session` workflow.
 
 `etaf-desktop-settings` returns a detached plist. Use
 `etaf-desktop-set-setting` for validated changes or
@@ -120,14 +120,14 @@ placeholder so the remaining desktop can continue operating.
 return detached state snapshots.
 
 `etaf-desktop-session-state` excludes View and Runtime objects. It records
-desktop geometry, workspaces, instance options, application-owned data from
-`:serialize`, and every workspace's layout mode/tree/split ratios and floating
-membership. `etaf-desktop-save-session` writes this plist, and
-`etaf-desktop-restore-session` invokes the registered `:restore` callback,
-reapplies saved window state, then restores the saved layout policy. If an
-application is no longer registered, its instance is restored as an error
-placeholder instead of aborting the session. Sessions written before layout
-records were introduced remain readable.
+desktop geometry, settings (including tile spacing), workspaces, instance
+options, application-owned data from `:serialize`, and every workspace's layout
+mode/tree/split ratios and floating membership. `etaf-desktop-save-session`
+writes this plist. `etaf-desktop-restore-session` invokes the registered
+`:restore` callback, reapplies saved window state, then restores the saved
+layout policy. If an application is no longer registered, its instance is
+restored as an error placeholder instead of aborting the session. Sessions
+written before layout records were introduced remain readable.
 
 ## Workspace layout policy
 
@@ -145,14 +145,35 @@ whose leaves are window IDs and whose split nodes have an orientation and ratio:
 height from top to bottom. The allocator observes each window's minimum and
 maximum dimensions where the canvas permits. `master-stack` gives the first
 visible window a wide master region and stacks the remaining leaves vertically.
-`monocle` keeps the tree but gives every leaf the canvas rectangle and raises
-the focused window, allowing a quick return to tiling.
+`monocle` keeps the tree but gives every leaf the inset canvas rectangle and
+raises the focused window, allowing a quick return to tiling.
 
-Each split reserves one visible divider gap: three pixels between left/right
-panes or one text row between top/bottom panes. The divider stays inside that
-gap, including in nested trees, so the following window's title bar remains
-visible and clickable. Splitter gestures change the ratio within that split's
-own span.
+Tile spacing defaults to one cell around the canvas and between panes. A cell
+is one frame character width horizontally and one text row vertically; a
+horizontal inner gap normally reserves at least three pixels for its divider.
+Outer gaps shrink when the canvas needs that space for pane minimum sizes.
+If those minimums still cannot fit, the allocator reduces pane sizes and inner
+gaps as needed to keep panes inside the canvas where possible. Divider handles
+stay centered and confined to their gaps, including in nested trees; a gap
+reduced to zero has no handle. Splitter gestures change the ratio within that
+split's own span. Monocle uses the same outer spacing without reserving inner
+gaps for its retained split tree.
+
+Use Desktop Settings or the public settings API to adjust spacing. For example,
+this removes the outer margin and leaves two cells between tiled panes:
+
+```elisp
+(etaf-desktop-set-setting desktop :tile-outer-gap 0)
+(etaf-desktop-set-setting desktop :tile-inner-gap 2)
+```
+
+Each change immediately reflows the active tiled workspace, preserving its
+split tree and ratios. Other workspaces apply the current gaps when selected.
+Floating windows retain their rectangles, and maximized windows retain the
+full canvas until restored. Gap preferences are saved and restored with the
+session settings. The [public API inventory](../etaf-desktop.el) specifies the
+accepted integer ranges and error behavior; invalid values are rejected without
+changing the setting or geometry.
 
 `etaf-desktop-layout-tile-window` and `etaf-desktop-layout-untile-window`
 control individual leaves. An explicitly untiled window remains a floating

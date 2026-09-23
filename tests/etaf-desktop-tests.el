@@ -87,8 +87,9 @@
           (etaf-desktop-minimize-window desktop 'two)
           (should-not (member 'two
                               (flatten-tree (etaf-desktop-layout-tree desktop))))
-          (should (= 20 (plist-get (etaf-desktop-window-state desktop 'one)
-                                   :height)))
+          (let ((window (etaf-desktop-window-state desktop 'one)))
+            (should (= 1 (plist-get window :y)))
+            (should (= 18 (plist-get window :height))))
           (etaf-desktop-restore-window desktop 'two)
           (should (member 'two
                           (flatten-tree (etaf-desktop-layout-tree desktop)))))
@@ -731,19 +732,21 @@ row wider than the window.
           (should (eq 'floating (etaf-desktop-layout-mode desktop)))
           (etaf-desktop-toggle-layout-mode desktop)
           (should (eq 'tiling (etaf-desktop-layout-mode desktop)))
-          ;; Tiling reflows the tree across the canvas.
-          (should (= 90 (plist-get (etaf-desktop-window-state desktop 'one) :width)))
+          ;; Tiling reflows the tree inside the default outer margin.
+          (should (= (- 90 (* 2 (frame-char-width)))
+                     (plist-get (etaf-desktop-window-state desktop 'one) :width)))
           (etaf-desktop-toggle-layout-mode desktop)
           (should (eq 'floating (etaf-desktop-layout-mode desktop)))
           ;; Floating keeps the rectangles the layout last applied, and a move
           ;; now persists because the layout no longer reflows the window.
-          (should (= 90 (plist-get (etaf-desktop-window-state desktop 'one) :width)))
+          (should (= (- 90 (* 2 (frame-char-width)))
+                     (plist-get (etaf-desktop-window-state desktop 'one) :width)))
           (etaf-desktop-move-window desktop 'one 7 5)
           (etaf-desktop-layout-refresh desktop)
           (let ((state (etaf-desktop-window-state desktop 'one)))
             (should (= 7 (plist-get state :x)))
             (should (= 5 (plist-get state :y))))
-          ;; Other modes return to floating through the same control.
+          ;; Other modes return to tiling through the same control.
           (etaf-desktop-set-layout-mode desktop 'master-stack)
           (etaf-desktop-toggle-layout-mode desktop)
           (should (eq 'tiling (etaf-desktop-layout-mode desktop))))
@@ -916,8 +919,10 @@ row wider than the window.
                        props)))
             (etaf-desktop-open-window desktop 'three :title "Three"
                                       :width 20 :height 4 :min-width 5 :min-height 2)
-            (should (= 80 (plist-get (etaf-desktop-window-state desktop 'three)
-                                     :width)))
+            (let ((window (etaf-desktop-window-state desktop 'three)))
+              (should (= (frame-char-width) (plist-get window :x)))
+              (should (= (- 80 (* 2 (frame-char-width)))
+                         (plist-get window :width))))
             (should (> (plist-get (etaf-desktop-window-state desktop 'three) :y)
                        (plist-get (etaf-desktop-window-state desktop 'two) :y)))))
       (etaf-desktop-close desktop))))
