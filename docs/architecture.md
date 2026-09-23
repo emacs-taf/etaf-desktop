@@ -12,11 +12,37 @@ ETAF Desktop is the top application layer in the ETAF ecosystem.
 - **ETAF Desktop** owns window records, workspaces, focus and z-order policy,
   restore rectangles, taskbar projection and the mounted application surface.
 
-Window mutations create a copied state value and publish it through one ETAF ref.
-The View projects the current state into controlled UI props. Consequently a
-failed render leaves the previous committed Ebox target active while application
-state remains explicit and queryable. No Ebox node, private ETAF Runtime table,
-or private ETAF UI module is used by consumers.
+Window membership, workspace selection and lifecycle metadata are published
+through a structural ETAF ref. Each retained window owns authoritative refs
+for its position, size and z-index; active window identity has its own ref.
+The window record stores those sources, and public queries derive detached
+numeric snapshots from them. There is no second geometry cache to reconcile.
+The saved normal rectangle is separate lifecycle state for maximization.
+
+Structural operations validate detached candidates, retain the existing
+windows' scalar sources and publish the resulting membership and scalar
+changes through ETAF's public batch boundary. Ordinary floating moves and
+resizes write the existing scalar sources directly after validating geometry
+and bounds. They do not copy the complete desktop or rerun layout allocation.
+Structural publications prepare reusable geometry and focus writers with
+private invocation storage. Floating mutations reuse those writers and the
+record's normal rectangle; public snapshots still return detached copies.
+ETAF batches the coordinated fields so observers see the completed geometry
+and focus change. A publication failure leaves application writes queryable
+and the previous committed Ebox target active.
+
+The desktop View depends on structural membership and workspace selection.
+Window geometry sources pass directly through the public `etaf-window` props
+to their Host property bindings. Ebox's z-index owns paint order, so moving or
+raising a window does not require sorting and rebuilding the Component tree.
+Workspace controls, taskbar and switcher project focus in separate Components;
+each window's traffic lights consume a derived focus value. No Ebox node,
+private ETAF Runtime table or private ETAF UI module is used by consumers.
+
+The retained taskbar and workspace Components derive selection and status as
+computed values and pass them directly to ETAF UI's Host property and Text
+bindings. Membership, grouping and lifecycle changes construct the bar items
+and callbacks; changing window focus keeps those items and callbacks retained.
 
 A desktop window's public identity is its stable application ID. The rendered
 Host refs are derived from that ID only for Ebox/ETAF target retention; they are

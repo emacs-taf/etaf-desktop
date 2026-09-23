@@ -46,6 +46,11 @@
       "purpose": "A mounted window remains in the retained application tree while its body is hidden and returns through taskbar restore."
     },
     {
+      "name": "etaf-desktop-bars-follow-focus-and-membership",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "Window focus, minimization, taskbar activation and closing preserve bar selection, status and native targets."
+    },
+    {
       "name": "etaf-desktop-mounted-buffer-uses-configured-local-shortcuts",
       "file": "tests/etaf-desktop-tests.el",
       "purpose": "Mounted Desktop buffers dispatch configured single-letter actions and update the local map when bindings change."
@@ -304,6 +309,16 @@
       "name": "etaf-desktop-session-retains-panes-smaller-than-minimums",
       "file": "tests/etaf-desktop-spacing-tests.el",
       "purpose": "A saved small-canvas layout restores every pane and its minimum-size policy even when the allocated tile dimensions are below those minimums."
+    },
+    {
+      "name": "etaf-desktop-geometry-queries-stay-reactive-and-atomic",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "Public reactive snapshots observe complete floating geometry and focus mutations, and invalid coordinates leave the previous snapshot intact."
+    },
+    {
+      "name": "etaf-desktop-mounted-geometry-survives-membership-and-settings",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "Mounted window geometry remains live across membership and settings changes while nested input and detached prior snapshots retain their behavior."
     }
   ]
 }

@@ -169,6 +169,52 @@
       (etaf-desktop-close desktop))
     (etaf-desktop-close desktop)))
 
+(ert-deftest etaf-desktop-bars-follow-focus-and-membership ()
+  "Focus updates bar selection and status across window lifecycle changes."
+  (let ((desktop (etaf-desktop-create :name " *desktop-bar-focus*"
+                                      :canvas-width 400 :canvas-height 12)))
+    (unwind-protect
+        (progn
+          (etaf-desktop-open-window desktop 'notes :title "Notes")
+          (etaf-desktop-open-window desktop 'files :title "Files")
+          (let* ((buffer (etaf-desktop-mount desktop))
+                 (runtime (etaf-runtime-for-buffer buffer))
+                 (notes
+                  (car (cl-find-if
+                        (lambda (entry)
+                          (and (equal "Notes" (plist-get (cdr entry) :aria-label))
+                               (string-match-p "etaf-taskbar-item"
+                                               (or (plist-get (cdr entry) :class) ""))))
+                        (etaf-runtime-host-props-entries runtime)))))
+            (should notes)
+            (etaf-desktop-focus-window desktop 'notes)
+            (should (string-match-p
+                     "active" (plist-get (etaf-runtime-host-props-for runtime notes) :class)))
+            (with-current-buffer buffer
+              (save-excursion
+                (goto-char (point-min))
+                (should (string-match-p
+                         "Notes" (buffer-substring-no-properties (point) (line-end-position))))))
+            (etaf-desktop-focus-window desktop 'files)
+            (should-not (string-match-p
+                         "active" (plist-get (etaf-runtime-host-props-for runtime notes) :class)))
+            (with-current-buffer buffer
+              (save-excursion
+                (goto-char (point-min))
+                (should (string-match-p
+                         "Files" (buffer-substring-no-properties (point) (line-end-position))))))
+            (etaf-desktop-minimize-window desktop 'notes)
+            (should (string-match-p
+                     "minimized" (plist-get (etaf-runtime-host-props-for runtime notes) :class)))
+            (etaf-dispatch-event runtime notes 'press)
+            (should (eq 'notes (etaf-desktop-active-window desktop)))
+            (should-not (plist-get (etaf-desktop-window-state desktop 'notes) :minimized))
+            (etaf-desktop-close-window desktop 'files)
+            (should (etaf-host-ref-position runtime notes))
+            (should (string-match-p
+                     "active" (plist-get (etaf-runtime-host-props-for runtime notes) :class)))))
+      (etaf-desktop-close desktop))))
+
 (ert-deftest etaf-desktop-mounted-buffer-uses-configured-local-shortcuts ()
   "Mounted Desktop buffers dispatch configured single-letter actions locally."
   (let ((desktop (etaf-desktop-create :name " *desktop-keymap-test*"
@@ -954,6 +1000,80 @@ row wider than the window.
                   (etaf-desktop-close-settings desktop)
                   (should-not (etaf-desktop-settings-open-p desktop))))
       (etaf-desktop-close desktop)))))
+
+(ert-deftest etaf-desktop-geometry-queries-stay-reactive-and-atomic ()
+  "Public snapshots observe complete geometry and focus after floating mutations."
+  (let ((desktop (etaf-desktop-create :canvas-width 240 :canvas-height 24))
+        (scope (etaf-effect-scope :detached t))
+        observed)
+    (unwind-protect
+        (progn
+          (dolist (id '(one two))
+            (etaf-desktop-open-window desktop id :width 40 :height 6
+                                      :min-width 10 :min-height 2))
+          (etaf-scope-run
+           scope
+           (lambda ()
+             (etaf-watch
+              (lambda ()
+                (let ((window (etaf-desktop-window-state desktop 'one)))
+                  (list (plist-get window :x) (plist-get window :y)
+                        (plist-get window :width) (plist-get window :height)
+                        (etaf-desktop-active-window desktop))))
+              (lambda (next _previous) (push next observed))
+              :flush 'sync)))
+          (etaf-desktop-move-window desktop 'one 7 3)
+          (should observed)
+          (should (cl-every (lambda (value) (equal '(7 3 40 6 one) value)) observed))
+          (setq observed nil)
+          (etaf-desktop-resize-window desktop 'one 60 9)
+          (should observed)
+          (should (cl-every (lambda (value) (equal '(7 3 60 9 one) value)) observed))
+          (let ((snapshot (etaf-desktop-window-state desktop 'one)))
+            (should-error (etaf-desktop-move-window desktop 'one -1 2)
+                          :type 'etaf-desktop-error)
+            (should (equal snapshot (etaf-desktop-window-state desktop 'one)))))
+      (etaf-scope-stop scope)
+      (etaf-desktop-close desktop))))
+
+(ert-deftest etaf-desktop-mounted-geometry-survives-membership-and-settings ()
+  "Live geometry and nested input remain usable across structural publications."
+  (let ((desktop (etaf-desktop-create :name " *desktop-live-geometry*"
+                                      :canvas-width 400 :canvas-height 24))
+        (draft (etaf-ref "initial")))
+    (unwind-protect
+        (progn
+          (etaf-desktop-open-window
+           desktop 'editor :width 180 :height 8 :min-width 20 :min-height 3
+           :view (etaf-view (etaf-text-input :ref 'editor-input
+                                           :label "Draft" :bind draft)))
+          (let* ((buffer (etaf-desktop-mount desktop))
+                 (runtime (etaf-runtime-for-buffer buffer))
+                 (before (etaf-desktop-window-state desktop 'editor)))
+            (dolist (position '((5 2) (9 4)))
+              (etaf-desktop-move-window desktop 'editor (car position) (cadr position))
+              (etaf-desktop-resize-window desktop 'editor 200 10)
+              (let ((props (etaf-runtime-host-props-for
+                            runtime 'etaf-desktop-window-editor)))
+                (should (equal (list 'px (car position)) (plist-get props :left)))
+                (should (equal (list 'lh (cadr position)) (plist-get props :top)))
+                (should (equal '(px 200) (plist-get props :width)))
+                (should (equal '(lh 10) (plist-get props :height))))
+              (etaf-desktop-open-window desktop 'peer :min-width 10 :min-height 2)
+              (etaf-desktop-close-window desktop 'peer)
+              (etaf-desktop-set-setting desktop :theme 'dark))
+            (cl-letf (((symbol-function 'read-string) (lambda (&rest _) "edited")))
+              (etaf-dispatch-event runtime 'editor-input 'press))
+            (should (equal "edited" (etaf-value draft)))
+            (should (etaf-host-ref-position runtime 'editor-input))
+            (should (= 0 (plist-get before :x) (plist-get before :y)))
+            (should (= 180 (plist-get before :width)))
+            (should (= 8 (plist-get before :height)))
+            (should (equal '(0 0 180 8) (plist-get before :normal-geometry)))
+            (should (equal '(9 4 200 10)
+                           (plist-get (etaf-desktop-window-state desktop 'editor)
+                                      :normal-geometry)))))
+      (etaf-desktop-close desktop))))
 
 (provide 'etaf-desktop-tests)
 ;;; etaf-desktop-tests.el ends here

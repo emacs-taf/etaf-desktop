@@ -6,8 +6,11 @@
 ;; performs one real public operation; its precondition is restored and flushed
 ;; before timing, and its publication is flushed inside the timed operation.
 ;; Geometry alternates direction so long sample sets never reach size limits.
-;; Version 2 separates individual actions and replaces the smaller version 1
-;; fixtures.  Results from those workloads are not comparable.
+;; Native GUI sequences use real rendered targets and prequeued Emacs mouse
+;; events: eight motions for a sequence and 130 for a burst.  The distinct
+;; release endpoint must be published after all pending motions are consumed.
+;; These synthetic sequences do not measure paced hardware input or physical
+;; pointer-to-presentation latency.
 
 ;;; Code:
 
@@ -55,6 +58,50 @@
     (not (null (string-match-p (regexp-quote (format "Content %s" id))
                                (buffer-string))))))
 
+(defun etaf-desktop-benchmark--native-events (runtime ref window delta count)
+  "Prepare COUNT native motions and a distinct release for RUNTIME's REF.
+WINDOW must display REF.  DELTA is the release displacement in physical
+pixels.  Construct every event before timing; execution uses Emacs's native
+keymap route with no replacement reader or direct gesture phase dispatch."
+  (unless (and (window-live-p window)
+               (display-graphic-p (window-frame window))
+               (eq window (selected-window))
+               (eq (window-buffer window) (etaf-runtime-buffer runtime)))
+    (error "Native Desktop workload needs its selected graphical target window"))
+  (redisplay t)
+  (let* ((position (etaf-host-ref-position runtime ref))
+         (start (and position (pos-visible-in-window-p position window)
+                     (posn-at-point position window)))
+         (xy (and start (posn-x-y start)))
+         (press (and start (list 'down-mouse-1 start)))
+         (width (window-body-width window t))
+         (height (window-body-height window t))
+         motions last-delta)
+    (unless (and (consp xy) (numberp (car xy)) (numberp (cdr xy))
+                 (commandp (key-binding (vector press) nil nil position)))
+      (error "Native Desktop drag target is not visibly bound: %s" ref))
+    (cl-labels
+        ((point-data (offset timestamp)
+           (let ((x (+ (car xy) (car offset)))
+                 (y (+ (cdr xy) (cdr offset))))
+             (unless (and (<= 0 x) (< x width) (<= 0 y) (< y height))
+               (error "Native Desktop pointer endpoint leaves its text window"))
+             (list window position (cons x y) timestamp)))
+         (progress (value index)
+           (* (if (< value 0) -1 1)
+              (/ (* (abs value) index) (1+ count)))))
+      (dotimes (index count)
+        (setq last-delta (cons (progress (car delta) (1+ index))
+                              (progress (cdr delta) (1+ index))))
+        (push (list 'mouse-movement (point-data last-delta (1+ index))) motions))
+      (when (equal last-delta delta)
+        (error "Native Desktop release must differ from its last motion"))
+      (list :events (vconcat (list press) (nreverse motions)
+                            (list (list 'drag-mouse-1 start
+                                        (point-data delta (+ count 2)))))
+            :start (copy-sequence xy) :last-motion last-delta
+            :release (copy-sequence delta)))))
+
 (defun etaf-desktop-benchmark--fixture (operation)
   "Create a four-window workload for public OPERATION."
   (let* ((buffer (generate-new-buffer " *ETAF Desktop benchmark*"))
@@ -70,8 +117,17 @@
          (before nil)
          (expected nil)
          (delta nil)
-         (edge (and (string-prefix-p "resize-" (symbol-name operation))
-                    (substring (symbol-name operation) 7)))
+         (native (memq operation '(native-move-sequence native-move-burst
+                                  native-resize-bottom-right-sequence
+                                  native-resize-bottom-right-burst)))
+         (moving (memq operation '(move native-move-sequence native-move-burst)))
+         (motion-count (and native (if (string-suffix-p "-burst" (symbol-name operation))
+                                       130 8)))
+         (native-plan nil)
+         (native-ref nil)
+         (edge (cond ((string-prefix-p "resize-" (symbol-name operation))
+                      (substring (symbol-name operation) 7))
+                     ((and native (not moving)) "bottom-right")))
          (shell (cond ((string-prefix-p "launcher-" (symbol-name operation)) 'launcher)
                       ((string-prefix-p "switcher-" (symbol-name operation)) 'switcher)
                       ((string-prefix-p "settings-" (symbol-name operation)) 'settings)))
@@ -116,7 +172,11 @@
        :environment (lambda ()
                       (list :operation (symbol-name operation)
                             :canvas-width 900 :canvas-height 30
-                            :workspace-window-count 4))
+                            :workspace-window-count 4
+                            :input-route (if native "native-keymap" "public-api")
+                            :motion-queue (and native "prequeued")
+                            :motion-count motion-count
+                            :physical-pointer-latency-certified :false))
        :prepare
        (lambda ()
          (cl-incf step)
@@ -149,13 +209,13 @@
                               'tiling 'floating))))
          (flush)
          (setq before (etaf-desktop-windows desktop)
-               generation (etaf-runtime-current-generation runtime)
+               generation (etaf-runtime-generation runtime)
                event-window (get-buffer-window buffer t))
-         (when (or edge (eq operation 'move))
+         (when (or edge moving)
            (let* ((direction (if (cl-evenp (/ (1- step) 4)) 1 -1))
-                  (dx (if (or (eq operation 'move)
+                  (dx (if (or moving
                               (string-match-p "left\\|right" edge)) (* direction 8) 0))
-                  (dy (if (or (eq operation 'move)
+                  (dy (if (or moving
                               (string-match-p "top\\|bottom" edge)) direction 0))
                   (rectangle (etaf-desktop-benchmark--rectangle (state)))
                   (left (and edge (string-match-p "left" edge)))
@@ -164,15 +224,25 @@
                                            (frame-char-height (window-frame event-window))
                                          1)))
                    expected
-                   (list (+ (nth 0 rectangle) (if (or left (eq operation 'move)) dx 0))
-                         (+ (nth 1 rectangle) (if (or top (eq operation 'move)) dy 0))
+                   (list (+ (nth 0 rectangle) (if (or left moving) dx 0))
+                         (+ (nth 1 rectangle) (if (or top moving) dy 0))
                          (+ (nth 2 rectangle) (if edge (if left (- dx) dx) 0))
-                         (+ (nth 3 rectangle) (if edge (if top (- dy) dy) 0)))))))
+                         (+ (nth 3 rectangle) (if edge (if top (- dy) dy) 0))))))
+         (when native
+           (setq native-ref
+                 (intern (if edge
+                             (format "etaf-desktop-resize-%s-%s" target edge)
+                           (format "etaf-desktop-chrome-%s" target)))
+                 native-plan
+                 (etaf-desktop-benchmark--native-events
+                  runtime native-ref event-window delta motion-count))))
        :invoke
        (lambda (_sample)
          (cond
           (shell (if shell-open (open-shell) (close-shell)))
-          ((or edge (eq operation 'move))
+          (native
+           (execute-kbd-macro (plist-get native-plan :events)))
+          ((or edge moving)
            (let ((ref (intern (if edge
                                   (format "etaf-desktop-resize-%s-%s" target edge)
                                 (format "etaf-desktop-chrome-%s" target)))))
@@ -194,16 +264,24 @@
              ('layout-ratio (etaf-desktop-layout-resize-split desktop nil expected 'main))
              ('layout-mode (etaf-desktop-set-layout-mode desktop expected 'main)))))
          (flush))
-       :settled (lambda () (not (eq (etaf-runtime-current-generation runtime) generation)))
+       :settled (lambda () (> (etaf-runtime-generation runtime) generation))
        :verify
        (lambda ()
          (or
           (cond
            (shell (eq (not (null (shell-visible-p))) shell-open))
-           ((or edge (eq operation 'move))
+           ((or edge moving)
             (and (equal expected (etaf-desktop-benchmark--rectangle (state)))
+                 (> (etaf-runtime-generation runtime) generation)
                  (etaf-desktop-benchmark--focused-p desktop target)
                  (etaf-desktop-benchmark--content-p buffer target)
+                 (or (not native)
+                     (and (eq event-window (selected-window))
+                          (eq buffer (window-buffer event-window))
+                          (etaf-host-ref-position runtime native-ref)
+                          (not (ebox-selector-query-buffer buffer ":active"))
+                          (cl-every (lambda (id)
+                                      (etaf-desktop-benchmark--content-p buffer id)) ids)))
                  (cl-every
                   (lambda (old)
                     (or (equal target (plist-get old :id))
@@ -261,6 +339,22 @@
                  :workspace (format "%s" (etaf-desktop-active-workspace desktop))
                  :layout (format "%s" (etaf-desktop-layout-mode desktop 'main))
                  :rectangle (and window (vconcat (etaf-desktop-benchmark--rectangle window)))
+                 :publication-before generation
+                 :publication-after (etaf-runtime-generation runtime)
+                 :native-input
+                 (when native
+                   (list :route "execute-kbd-macro" :queue "prequeued"
+                         :motion-count motion-count
+                         :target-ref (symbol-name native-ref)
+                         :press-pixels (vector (car (plist-get native-plan :start))
+                                               (cdr (plist-get native-plan :start)))
+                         :last-motion-delta-pixels
+                         (vector (car (plist-get native-plan :last-motion))
+                                 (cdr (plist-get native-plan :last-motion)))
+                         :release-delta-pixels (vector (car delta) (cdr delta))
+                         :expected-rectangle (vconcat expected)
+                         :held-targets-cleared
+                         (if (ebox-selector-query-buffer buffer ":active") :false t)))
                  :shell-open (and shell (if (shell-visible-p) t :false)))))
        :observe (lambda (sink)
                   (ebox-buffer-set-observer buffer sink)
@@ -280,9 +374,19 @@
            (if (or (eq operation 'move)
                    (string-prefix-p "resize-" (symbol-name operation))) "geometry" "policy")
            operation)
-   :version 2 :modes '(batch gui) :isolation 'series :required-providers '(ebox)
+   :version 3 :modes '(batch gui) :isolation 'series :required-providers '(ebox)
    :budget-ms 10 :impact 'mixed
    :description (format "Four-window Desktop %s with completed publication" operation)
+   :setup (let ((selected-operation operation))
+            (lambda (_mode) (etaf-desktop-benchmark--fixture selected-operation)))))
+
+(dolist (operation '(native-move-sequence native-move-burst
+                    native-resize-bottom-right-sequence native-resize-bottom-right-burst))
+  (taf-benchmark-register
+   (format "etaf-desktop.geometry.%s" operation)
+   :version 3 :modes '(gui) :isolation 'series :required-providers '(ebox)
+   :budget-ms 10 :impact 'mixed
+   :description (format "Four-window %s with prequeued native motions and exact release" operation)
    :setup (let ((selected-operation operation))
             (lambda (_mode) (etaf-desktop-benchmark--fixture selected-operation)))))
 

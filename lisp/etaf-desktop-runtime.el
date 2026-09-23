@@ -13,6 +13,9 @@
 (defvar etaf-desktop--layout-divider-rows)
 (declare-function etaf-desktop-layout-mode "etaf-desktop-layout"
                   (desktop &optional workspace))
+(declare-function etaf-desktop--layout-ensure-workspace "etaf-desktop-layout"
+                  (desktop workspace))
+(declare-function etaf-desktop--layout-workspace-mode "etaf-desktop-layout" (workspace))
 (declare-function etaf-desktop-set-layout-mode "etaf-desktop-layout"
                   (desktop mode &optional workspace))
 (declare-function etaf-desktop-layout-tree "etaf-desktop-layout"
@@ -36,12 +39,62 @@
 
 (cl-defstruct (etaf-desktop--window
                (:constructor etaf-desktop--window-create))
-  id title view x y width height min-width min-height max-width max-height
-  visible minimized maximized workspace normal-geometry z-index movable resizable)
+  id title view x-source y-source width-source height-source
+  min-width min-height max-width max-height
+  visible minimized maximized workspace normal-geometry z-index-source movable resizable
+  geometry-input geometry-writer focus-writer)
 
 (cl-defstruct (etaf-desktop--state
                (:constructor etaf-desktop--state-create))
-  windows workspaces active-workspace active-window next-z)
+  windows workspaces active-workspace active-window-source next-z)
+
+(defmacro etaf-desktop--define-state-field (record field &optional unit)
+  "Define FIELD access on RECORD with one authoritative reactive cell.
+Detached mutation candidates store scalars; retained records store refs.
+UNIT describes the canonical value supplied directly to UI geometry props."
+  (let ((reader (intern (format "etaf-desktop--%s-%s" record field)))
+        (writer (intern (format "etaf-desktop--set-%s-%s" record field)))
+        (source (intern (format "etaf-desktop--%s-%s-source" record field)))
+        (retain (intern (format "etaf-desktop--retain-%s-%s" record field))))
+    `(progn
+       (defun ,reader (record)
+         ,(format "Read %s from RECORD without exposing its reactive cell." field)
+         (let ((source (,source record)))
+           (if (etaf-ref-p source)
+               ,(if unit '(cadr (etaf-value source)) '(etaf-value source))
+             source)))
+       (defun ,writer (record value)
+         ,(format "Write %s VALUE to RECORD's scalar or retained cell." field)
+         (let ((source (,source record)))
+           (if (etaf-ref-p source)
+               ,(if unit
+                    `(let ((current (etaf-value source)))
+                       (etaf-set-value source
+                                       (if (equal (cadr current) value)
+                                           current
+                                         (list ',unit value))))
+                  '(etaf-set-value source value))
+             (setf (,source record) value)))
+         value)
+       (gv-define-simple-setter ,reader ,writer)
+       (defun ,retain (record previous)
+         ,(format "Retain %s's authoritative source in RECORD from PREVIOUS." field)
+         (let* ((value (,reader record))
+                (source (and previous (,source previous))))
+           (if (etaf-ref-p source)
+               (progn
+                 (setf (,source record) source)
+                 (,writer record value))
+             (setf (,source record)
+                   (etaf-ref ,(if unit `(list ',unit value) 'value)
+                             :test #'equal))))))))
+
+(etaf-desktop--define-state-field window x px)
+(etaf-desktop--define-state-field window y lh)
+(etaf-desktop--define-state-field window width px)
+(etaf-desktop--define-state-field window height lh)
+(etaf-desktop--define-state-field window z-index)
+(etaf-desktop--define-state-field state active-window)
 
 (cl-defstruct (etaf-desktop--controller
                (:constructor etaf-desktop--controller-create))
@@ -427,10 +480,10 @@ desktop hides buffer chrome, so no extra padding row is needed at the bottom."
    :id (etaf-desktop--window-id window)
    :title (etaf-desktop--window-title window)
    :view (etaf-desktop--window-view window)
-   :x (etaf-desktop--window-x window)
-   :y (etaf-desktop--window-y window)
-   :width (etaf-desktop--window-width window)
-   :height (etaf-desktop--window-height window)
+   :x-source (etaf-desktop--window-x window)
+   :y-source (etaf-desktop--window-y window)
+   :width-source (etaf-desktop--window-width window)
+   :height-source (etaf-desktop--window-height window)
    :min-width (etaf-desktop--window-min-width window)
    :min-height (etaf-desktop--window-min-height window)
    :max-width (etaf-desktop--window-max-width window)
@@ -440,7 +493,7 @@ desktop hides buffer chrome, so no extra padding row is needed at the bottom."
    :maximized (etaf-desktop--window-maximized window)
    :workspace (etaf-desktop--window-workspace window)
    :normal-geometry (copy-sequence (etaf-desktop--window-normal-geometry window))
-   :z-index (etaf-desktop--window-z-index window)
+   :z-index-source (etaf-desktop--window-z-index window)
    :movable (etaf-desktop--window-movable window)
    :resizable (etaf-desktop--window-resizable window)))
 
@@ -451,7 +504,7 @@ desktop hides buffer chrome, so no extra padding row is needed at the bottom."
                     (etaf-desktop--state-windows state))
    :workspaces (copy-sequence (etaf-desktop--state-workspaces state))
    :active-workspace (etaf-desktop--state-active-workspace state)
-   :active-window (etaf-desktop--state-active-window state)
+   :active-window-source (etaf-desktop--state-active-window state)
    :next-z (etaf-desktop--state-next-z state)))
 
 (defun etaf-desktop--state-signature (state)
@@ -510,15 +563,76 @@ terminal event from rebuilding the retained Runtime tree a second time."
                         name minimum value))
   value)
 
+(defun etaf-desktop--prepare-window-writers (state window)
+  "Prepare reusable scalar writers for WINDOW in retained STATE.
+INPUT is invocation storage, never queried as desktop state.  Geometry refs
+remain authoritative; NORMAL belongs to this record and public snapshots
+copy it before returning it to callers."
+  (let ((input (vector 0 0 0 0))
+        (normal (etaf-desktop--window-normal-geometry window)))
+    (setf (etaf-desktop--window-geometry-input window) input
+          (etaf-desktop--window-geometry-writer window)
+          (lambda ()
+            (let ((x (aref input 0)) (y (aref input 1))
+                  (width (aref input 2)) (height (aref input 3)))
+              (setf (etaf-desktop--window-x window) x
+                    (etaf-desktop--window-y window) y
+                    (etaf-desktop--window-width window) width
+                    (etaf-desktop--window-height window) height)
+              (setcar normal x)
+              (setcar (cdr normal) y)
+              (setcar (cddr normal) width)
+              (setcar (cdddr normal) height)
+              (etaf-desktop--raise state window)))
+          (etaf-desktop--window-focus-writer window)
+          (lambda ()
+            (etaf-desktop--raise state window)
+            (etaf-desktop--window-id window)))))
+
 (defun etaf-desktop--publish (desktop state)
-  "Publish STATE through DESKTOP's reactive state ref."
-  (etaf-set-value (etaf-desktop--controller-state-ref desktop) state)
+  "Publish a detached structural STATE while retaining live scalar sources."
+  (let ((previous (etaf-desktop--state desktop)))
+    (etaf-call-with-batch
+     (lambda ()
+       (dolist (window (etaf-desktop--state-windows state))
+         (let ((old (etaf-desktop--window-for
+                     previous (etaf-desktop--window-id window))))
+           (etaf-desktop--retain-window-x window old)
+           (etaf-desktop--retain-window-y window old)
+           (etaf-desktop--retain-window-width window old)
+           (etaf-desktop--retain-window-height window old)
+           (etaf-desktop--retain-window-z-index window old)
+           (etaf-desktop--prepare-window-writers state window)))
+       (etaf-desktop--retain-state-active-window state previous)
+       (etaf-set-value (etaf-desktop--controller-state-ref desktop) state))))
   ;; Layout policy is an optional application-layer consumer of the runtime.
   ;; Its guarded refresh applies an active tiling/monocle tree after ordinary
   ;; window mutations, while avoiding a recursive publish during layout apply.
   (when (fboundp 'etaf-desktop-layout-refresh)
     (etaf-desktop-layout-refresh desktop))
   state)
+
+(defun etaf-desktop--floating-window-p (desktop state window)
+  "Return whether WINDOW permits direct scalar changes in current STATE."
+  (and (equal (etaf-desktop--state-active-workspace state)
+              (etaf-desktop--window-workspace window))
+       (not (etaf-desktop--window-maximized window))
+       (eq 'floating
+           (etaf-desktop--layout-workspace-mode
+            (etaf-desktop--layout-ensure-workspace
+             desktop (etaf-desktop--state-active-workspace state))))))
+
+(defun etaf-desktop--write-geometry (window x y width height)
+  "Write WINDOW's known geometry and raise it without rebuilding desktop state.
+The four geometry cells are authoritative.  The normal rectangle is the
+separate lifecycle value used when entering and leaving maximization."
+  (let ((input (etaf-desktop--window-geometry-input window)))
+    (aset input 0 x)
+    (aset input 1 y)
+    (aset input 2 width)
+    (aset input 3 height)
+    (etaf-call-with-batch (etaf-desktop--window-geometry-writer window)))
+  (etaf-desktop--window-plist window))
 
 (defun etaf-desktop--update (desktop function &optional force-publication)
   "Copy DESKTOP state, call FUNCTION with it, and publish the copy.
@@ -542,10 +656,10 @@ FORCE-PUBLICATION also commits a layout policy change when geometry is equal."
                       (etaf-desktop--window-id window))
                (equal (etaf-desktop--state-active-workspace state)
                       (etaf-desktop--window-workspace window))
-               ;; A defensive max check preserves raising if a caller has
-               ;; changed z-order independently of the active-window field.
+               ;; NEXT-Z is the monotone allocation cursor, so its preceding
+               ;; value identifies the highest layer without scanning peers.
                (>= (etaf-desktop--window-z-index window)
-                   (etaf-desktop--windows-max-z state)))
+                   (1- (etaf-desktop--state-next-z state))))
     (setf (etaf-desktop--window-z-index window)
           (etaf-desktop--state-next-z state)
           (etaf-desktop--state-next-z state)
@@ -662,7 +776,11 @@ at this boundary."
 
 (etaf-define-component etaf-desktop--window-surface (&key desktop id)
   "Own one window's gesture Behaviors for its retained Component lifetime."
-  :bindings ((move (etaf-desktop--move-behavior desktop id))
+  :bindings ((active (etaf-computed
+                     (lambda ()
+                       (equal id (etaf-desktop--state-active-window
+                                  (etaf-desktop--state desktop))))))
+             (move (etaf-desktop--move-behavior desktop id))
              (resize-left (etaf-desktop--resize-behavior desktop id 'left))
              (resize-right (etaf-desktop--resize-behavior desktop id 'right))
              (resize-top (etaf-desktop--resize-behavior desktop id 'top))
@@ -674,7 +792,7 @@ at this boundary."
   :render
   (when-let* ((window (etaf-desktop--window-for
                       (etaf-desktop--state desktop) id)))
-    (etaf-desktop--window-shell desktop window move
+    (etaf-desktop--window-shell desktop window active move
                                  resize-left resize-right resize-top resize-bottom
                                  resize-top-left resize-top-right
                                  resize-bottom-left resize-bottom-right)))
@@ -697,7 +815,7 @@ at this boundary."
     (etaf-desktop-close-window desktop id)))
 
 (defun etaf-desktop--window-shell
-    (desktop window move resize-left resize-right resize-top resize-bottom
+    (desktop window active move resize-left resize-right resize-top resize-bottom
              resize-top-left resize-top-right resize-bottom-left resize-bottom-right)
   "Build WINDOW's ETAF UI shell with its retained geometry Behaviors.
 MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
@@ -725,18 +843,17 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
            :chrome-ref (intern (format "etaf-desktop-chrome-%s" id))
            ;; macOS presentation: only the active window shows colored
            ;; traffic lights; every other window renders gray lights.
-           :controls-active
-           (equal id (etaf-desktop--state-active-window (etaf-desktop--state desktop)))
+           :controls-active active
            :title title :mode mode :visible (etaf-desktop--window-visible window)
            :title-font-size (plist-get settings :title-font-size)
            :content-font-size (plist-get settings :content-font-size)
            :font-family (plist-get settings :font-family)
            :drag-lock-modifier (plist-get settings :drag-lock-modifier)
-           :x (list 'px (etaf-desktop--window-x window))
-           :y (list 'lh (etaf-desktop--window-y window))
-           :width (list 'px (etaf-desktop--window-width window))
-           :height (list 'lh (etaf-desktop--window-height window))
-           :z-index (etaf-desktop--window-z-index window)
+           :x (etaf-desktop--window-x-source window)
+           :y (etaf-desktop--window-y-source window)
+           :width (etaf-desktop--window-width-source window)
+           :height (etaf-desktop--window-height-source window)
+           :z-index (etaf-desktop--window-z-index-source window)
            :min-width (list 'px (etaf-desktop--window-min-width window))
            :min-height (list 'lh (etaf-desktop--window-min-height window))
            :max-width (and (etaf-desktop--window-max-width window)
@@ -766,16 +883,22 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
            :on-focus (lambda () (etaf-desktop-focus-window desktop id)))
      (list body))))
 
-(defun etaf-desktop--taskbar-node (desktop state)
-  "Build the taskbar for STATE using the reusable ETAF UI component."
+(defun etaf-desktop--taskbar-key (id grouping)
+  "Return the taskbar key for window ID according to GROUPING."
+  (let ((id (cond ((null id) "")
+                  ((stringp id) id)
+                  ((symbolp id) (symbol-name id))
+                  (t (format "%s" id)))))
+    (if (and (eq grouping 'application)
+             (string-match "\\`\\([^/]+\\)/" id))
+        (match-string 1 id)
+      id)))
+
+(defun etaf-desktop--taskbar-node (desktop state active)
+  "Project STATE's taskbar membership with a live ACTIVE selection source."
   (let* ((settings (etaf-desktop--settings desktop))
          (accent-color (plist-get settings :accent-color))
          (grouping (plist-get settings :taskbar-grouping))
-         (active-id (format "%s" (or (etaf-desktop--state-active-window state) "")))
-         (active-key (if (and (eq grouping 'application)
-                              (string-match "\\`\\([^/]+\\)/" active-id))
-                         (match-string 1 active-id)
-                       active-id))
          (windows (cl-remove-if-not
                    (lambda (window)
                      (equal (etaf-desktop--window-workspace window)
@@ -783,11 +906,8 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
                    (etaf-desktop--state-windows state)))
          (groups nil))
     (dolist (window windows)
-      (let* ((id (format "%s" (etaf-desktop--window-id window)))
-             (key (if (and (eq grouping 'application)
-                           (string-match "\\`\\([^/]+\\)/" id))
-                       (match-string 1 id)
-                     id))
+      (let* ((key (etaf-desktop--taskbar-key
+                   (etaf-desktop--window-id window) grouping))
              (entry (assoc key groups)))
         (if entry
             (setcdr entry (append (cdr entry) (list window)))
@@ -798,11 +918,6 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
               (let* ((key (car group))
                      (members (cdr group))
                      (first (car members))
-                     (active (cl-some
-                              (lambda (window)
-                                (equal (etaf-desktop--window-id window)
-                                       (etaf-desktop--state-active-window state)))
-                              members))
                      (minimized (cl-every #'etaf-desktop--window-minimized members))
                      (label (if (eq grouping 'application)
                                 (or (ignore-errors
@@ -812,15 +927,13 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
                 (list :key key
                       :ref (etaf-desktop--window-ref (format "taskbar-%s" key))
                       :label (format "%s" label)
-                      :state (cond (active 'active)
-                                   (minimized 'minimized)
-                                   (t nil))
+                      :state (and minimized 'minimized)
                       :window-id (etaf-desktop--window-id first))))
             groups)))
     (etaf-node 'etaf-taskbar
                (list :items items
                      :accent-color accent-color
-                      :active active-key
+                     :active active
                      :on-select (lambda (id)
                                   (let ((target (or (plist-get
                                                      (cl-find id items :key (lambda (item)
@@ -834,12 +947,9 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
                                        (etaf-desktop-toggle-launcher desktop))))
                nil))))
 
-(defun etaf-desktop--workspace-node (desktop state)
-  "Build workspace controls for STATE using the reusable ETAF UI component."
-  (let* ((accent-color (plist-get (etaf-desktop--settings desktop) :accent-color))
-         (active-id (etaf-desktop--state-active-window state))
-         (active (and active-id
-                      (etaf-desktop--window-for state active-id))))
+(defun etaf-desktop--workspace-node (desktop state status)
+  "Project STATE's workspace controls with a live focused-window STATUS."
+  (let ((accent-color (plist-get (etaf-desktop--settings desktop) :accent-color)))
     (etaf-node 'etaf-workspace-bar
                (list :workspaces (etaf-desktop--state-workspaces state)
                      :accent-color accent-color
@@ -847,9 +957,7 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
                      ;; The right side reports the focused application and the
                      ;; workspace's window-management mode, which the trailing
                      ;; control switches without leaving the desktop.
-                     :status (and active
-                                  (or (etaf-desktop--window-title active)
-                                      (format "%s" active-id)))
+                     :status status
                      :layout-label
                      (if (eq (etaf-desktop-layout-mode desktop
                                                        (etaf-desktop--state-active-workspace state))
@@ -1170,6 +1278,42 @@ divider rectangles; ETAF UI owns only each divider's presentation and input."
   "Render DESKTOP's settings through its retained section controller."
   (etaf-node 'etaf-desktop--settings-panel (list :desktop desktop) nil))
 
+(etaf-define-component etaf-desktop--workspace-surface (&key desktop)
+  "Keep focus-dependent workspace controls independent of window membership."
+  :bindings
+  ((controller (etaf-prop 'desktop))
+   (status
+    (etaf-computed
+     (lambda ()
+       (let* ((state (etaf-desktop--state (etaf-value controller)))
+              (id (etaf-desktop--state-active-window state))
+              (window (and id (etaf-desktop--window-for state id))))
+         (when window
+           (or (etaf-desktop--window-title window) (format "%s" id)))))
+     :test #'equal)))
+  :render
+  (etaf-desktop--workspace-node desktop (etaf-desktop--state desktop) status))
+
+(etaf-define-component etaf-desktop--taskbar-surface (&key desktop)
+  "Project taskbar selection independently of the desktop canvas."
+  :bindings
+  ((controller (etaf-prop 'desktop))
+   (active
+    (etaf-computed
+     (lambda ()
+       (let ((desktop (etaf-value controller)))
+         (etaf-desktop--taskbar-key
+          (etaf-desktop--state-active-window (etaf-desktop--state desktop))
+          (plist-get (etaf-value (etaf-desktop--controller-settings-ref desktop))
+                     :taskbar-grouping))))
+     :test #'equal)))
+  :render
+  (etaf-desktop--taskbar-node desktop (etaf-desktop--state desktop) active))
+
+(etaf-define-component etaf-desktop--switcher-surface (&key desktop)
+  "Project switcher focus only while the switcher is visible."
+  :render (etaf-desktop--switcher-node desktop (etaf-desktop--state desktop)))
+
 (etaf-define-component etaf-desktop--application (&key desktop)
   "Render DESKTOP as a controlled desktop surface."
   :setup
@@ -1211,15 +1355,13 @@ divider rectangles; ETAF UI owns only each divider's presentation and input."
                                  (memq layout-mode '(tiling master-stack monocle)))
                         (etaf-desktop-layout-tree desktop workspace)))
          (windows
-          (sort (cl-remove-if-not
+          (cl-remove-if-not
                  (lambda (window)
                    ;; Keep minimized windows in the retained Component tree so
                    ;; their child state survives; `etaf-window' projects the
                    ;; controlled hidden/minimized presentation.
                    (equal (etaf-desktop--window-workspace window) workspace))
-                 (copy-sequence (etaf-desktop--state-windows state)))
-                (lambda (a b) (< (etaf-desktop--window-z-index a)
-                                 (etaf-desktop--window-z-index b))))))
+                 (etaf-desktop--state-windows state))))
     (etaf-node
      'column
      ;; The shell width fits the render viewport when one exists: the concrete
@@ -1232,7 +1374,7 @@ divider rectangles; ETAF UI owns only each divider's presentation and input."
            :background-color (plist-get colors :shell-bg)
            :color (plist-get colors :shell-fg))
      (list
-      (etaf-desktop--workspace-node desktop state)
+      (etaf-node 'etaf-desktop--workspace-surface (list :desktop desktop) nil)
       (etaf-node
        'box
        (list :position 'relative
@@ -1253,9 +1395,9 @@ divider rectangles; ETAF UI owns only each divider's presentation and input."
             (apply #'etaf-desktop--splitter-overlays
                    desktop state layout-tree workspace spacing
                    canvas-rect)))))
-      (etaf-desktop--taskbar-node desktop state)
+      (etaf-node 'etaf-desktop--taskbar-surface (list :desktop desktop) nil)
       (etaf-desktop--launcher-node desktop)
-      (etaf-desktop--switcher-node desktop state)
+      (etaf-node 'etaf-desktop--switcher-surface (list :desktop desktop) nil)
       (etaf-desktop--settings-node desktop)))))
 
 (cl-defun etaf-desktop-create
@@ -1280,7 +1422,8 @@ owns its reactive state and does not mount a buffer until `etaf-desktop-mount'."
           (etaf-ref
            (etaf-desktop--state-create
             :windows nil :workspaces (copy-sequence workspaces)
-           :active-workspace (car workspaces) :active-window nil :next-z 1)
+           :active-workspace (car workspaces)
+            :active-window-source (etaf-ref nil :name 'etaf-desktop-focus) :next-z 1)
            :name 'etaf-desktop-state)
           (etaf-desktop--controller-launcher-ref controller)
           (etaf-ref nil :name 'etaf-desktop-launcher-open)
@@ -1393,12 +1536,13 @@ WORKSPACE defaults to the active workspace."
          (etaf-desktop--assert-workspace state workspace)
          (let ((window
                 (etaf-desktop--window-create
-                 :id id :title title :view view :x x :y y :width width :height height
+                 :id id :title title :view view :x-source x :y-source y
+                 :width-source width :height-source height
                  :min-width min-width :min-height min-height :max-width max-width
                  :max-height max-height :visible visible :minimized nil
                  :maximized nil :workspace workspace
                  :normal-geometry (list x y width height)
-                 :z-index (etaf-desktop--state-next-z state)
+                 :z-index-source (etaf-desktop--state-next-z state)
                  :movable movable :resizable resizable)))
            (push window (etaf-desktop--state-windows state))
            (setf (etaf-desktop--state-next-z state)
@@ -1457,16 +1601,24 @@ a focused target while other windows remain available."
 
 (defun etaf-desktop-focus-window (desktop id)
   "Focus and raise window ID, switching to its workspace."
-  (let ((result
-         (etaf-desktop--update
-          desktop
-          (lambda (state)
-            (let ((window (etaf-desktop--window-for state id)))
-              (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
-              (setf (etaf-desktop--window-minimized window) nil
-                    (etaf-desktop--window-visible window) t)
-              (etaf-desktop--raise state window)
-              id)))))
+  (let* ((desktop (etaf-desktop--controller desktop))
+         (state (etaf-desktop--state desktop))
+         (window (etaf-desktop--window-for state id))
+         (result
+          (if (and window
+                   (etaf-desktop--floating-window-p desktop state window)
+                   (etaf-desktop--window-visible window)
+                   (not (etaf-desktop--window-minimized window)))
+              (etaf-call-with-batch (etaf-desktop--window-focus-writer window))
+            (etaf-desktop--update
+             desktop
+             (lambda (state)
+               (let ((window (etaf-desktop--window-for state id)))
+                 (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
+                 (setf (etaf-desktop--window-minimized window) nil
+                       (etaf-desktop--window-visible window) t)
+                 (etaf-desktop--raise state window)
+                 id))))))
     (etaf-desktop--notify-window-event desktop id 'focused)
     result))
 
@@ -1474,23 +1626,31 @@ a focused target while other windows remain available."
   "Move window ID to X and Y, returning its public state plist."
   (etaf-desktop--number x "x" 0)
   (etaf-desktop--number y "y" 0)
-  (etaf-desktop--update
-   desktop
-   (lambda (state)
-     (let ((window (etaf-desktop--window-for state id)))
-       (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
-       (when (etaf-desktop--window-maximized window)
-         (setf (etaf-desktop--window-x window) (nth 0 (etaf-desktop--window-normal-geometry window))
-               (etaf-desktop--window-y window) (nth 1 (etaf-desktop--window-normal-geometry window))
-               (etaf-desktop--window-width window) (nth 2 (etaf-desktop--window-normal-geometry window))
-               (etaf-desktop--window-height window) (nth 3 (etaf-desktop--window-normal-geometry window))
-               (etaf-desktop--window-maximized window) nil))
-       (setf (etaf-desktop--window-x window) x
-             (etaf-desktop--window-y window) y
-             (etaf-desktop--window-normal-geometry window)
-             (list x y (etaf-desktop--window-width window) (etaf-desktop--window-height window)))
-       (etaf-desktop--raise state window)
-       (etaf-desktop--window-plist window)))))
+  (let* ((desktop (etaf-desktop--controller desktop))
+         (state (etaf-desktop--state desktop))
+         (window (etaf-desktop--window-for state id)))
+    (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
+    (if (etaf-desktop--floating-window-p desktop state window)
+        (etaf-desktop--write-geometry
+         window x y (etaf-desktop--window-width window)
+         (etaf-desktop--window-height window))
+      (etaf-desktop--update
+       desktop
+       (lambda (state)
+         (let ((window (etaf-desktop--window-for state id)))
+           (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
+           (when (etaf-desktop--window-maximized window)
+             (setf (etaf-desktop--window-x window) (nth 0 (etaf-desktop--window-normal-geometry window))
+                   (etaf-desktop--window-y window) (nth 1 (etaf-desktop--window-normal-geometry window))
+                   (etaf-desktop--window-width window) (nth 2 (etaf-desktop--window-normal-geometry window))
+                   (etaf-desktop--window-height window) (nth 3 (etaf-desktop--window-normal-geometry window))
+                   (etaf-desktop--window-maximized window) nil))
+           (setf (etaf-desktop--window-x window) x
+                 (etaf-desktop--window-y window) y
+                 (etaf-desktop--window-normal-geometry window)
+                 (list x y (etaf-desktop--window-width window) (etaf-desktop--window-height window)))
+           (etaf-desktop--raise state window)
+           (etaf-desktop--window-plist window)))))))
 
 (defun etaf-desktop--set-window-geometry (desktop id x y width height)
   "Commit one atomic geometry update for window ID.
@@ -1509,56 +1669,83 @@ its position and size together."
   (etaf-desktop--number y "y" 0)
   (etaf-desktop--number width "width" 1)
   (etaf-desktop--number height "height" 1)
-  (etaf-desktop--update
-   desktop
-   (lambda (state)
-     (let ((window (etaf-desktop--window-for state id)))
-       (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
-       (unless (etaf-desktop--window-resizable window)
-         (etaf-desktop--fail "Desktop window is not resizable: %S" id))
-       (when (etaf-desktop--window-maximized window)
-         (setf (etaf-desktop--window-maximized window) nil))
-       (setq width (etaf-desktop--clamp width
-                                        (etaf-desktop--window-min-width window)
-                                        (etaf-desktop--window-max-width window))
-             height (etaf-desktop--clamp height
-                                         (etaf-desktop--window-min-height window)
-                                         (etaf-desktop--window-max-height window)))
-       (setf (etaf-desktop--window-x window) x
-             (etaf-desktop--window-y window) y
-             (etaf-desktop--window-width window) width
-             (etaf-desktop--window-height window) height
-             (etaf-desktop--window-normal-geometry window)
-             (list x y width height))
-       (etaf-desktop--raise state window)
-       (etaf-desktop--window-plist window)))))
+  (let* ((desktop (etaf-desktop--controller desktop))
+         (state (etaf-desktop--state desktop))
+         (window (etaf-desktop--window-for state id)))
+    (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
+    (unless (etaf-desktop--window-resizable window)
+      (etaf-desktop--fail "Desktop window is not resizable: %S" id))
+    (if (etaf-desktop--floating-window-p desktop state window)
+        (etaf-desktop--write-geometry
+         window x y
+         (etaf-desktop--clamp width (etaf-desktop--window-min-width window)
+                              (etaf-desktop--window-max-width window))
+         (etaf-desktop--clamp height (etaf-desktop--window-min-height window)
+                              (etaf-desktop--window-max-height window)))
+      (etaf-desktop--update
+       desktop
+       (lambda (state)
+         (let ((window (etaf-desktop--window-for state id)))
+           (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
+           (unless (etaf-desktop--window-resizable window)
+             (etaf-desktop--fail "Desktop window is not resizable: %S" id))
+           (when (etaf-desktop--window-maximized window)
+             (setf (etaf-desktop--window-maximized window) nil))
+           (setq width (etaf-desktop--clamp width
+                                            (etaf-desktop--window-min-width window)
+                                            (etaf-desktop--window-max-width window))
+                 height (etaf-desktop--clamp height
+                                             (etaf-desktop--window-min-height window)
+                                             (etaf-desktop--window-max-height window)))
+           (setf (etaf-desktop--window-x window) x
+                 (etaf-desktop--window-y window) y
+                 (etaf-desktop--window-width window) width
+                 (etaf-desktop--window-height window) height
+                 (etaf-desktop--window-normal-geometry window)
+                 (list x y width height))
+           (etaf-desktop--raise state window)
+           (etaf-desktop--window-plist window)))))))
 
 (defun etaf-desktop-resize-window (desktop id width height)
   "Resize window ID to WIDTH and HEIGHT, respecting its size limits."
-  (etaf-desktop--update
-   desktop
-   (lambda (state)
-     (let ((window (etaf-desktop--window-for state id)))
-       (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
-       (unless (etaf-desktop--window-resizable window)
-         (etaf-desktop--fail "Desktop window is not resizable: %S" id))
-       (when (etaf-desktop--window-maximized window)
-         (setf (etaf-desktop--window-x window) (nth 0 (etaf-desktop--window-normal-geometry window))
-               (etaf-desktop--window-y window) (nth 1 (etaf-desktop--window-normal-geometry window))
-               (etaf-desktop--window-width window) (nth 2 (etaf-desktop--window-normal-geometry window))
-               (etaf-desktop--window-height window) (nth 3 (etaf-desktop--window-normal-geometry window))
-               (etaf-desktop--window-maximized window) nil))
-       (setf width (etaf-desktop--clamp width (etaf-desktop--window-min-width window)
-                                        (etaf-desktop--window-max-width window))
-             height (etaf-desktop--clamp height (etaf-desktop--window-min-height window)
-                                         (etaf-desktop--window-max-height window))
-             (etaf-desktop--window-width window) width
-             (etaf-desktop--window-height window) height
-             (etaf-desktop--window-normal-geometry window)
-             (list (etaf-desktop--window-x window) (etaf-desktop--window-y window)
-                   width height))
-       (etaf-desktop--raise state window)
-       (etaf-desktop--window-plist window)))))
+  (let* ((desktop (etaf-desktop--controller desktop))
+         (state (etaf-desktop--state desktop))
+         (window (etaf-desktop--window-for state id)))
+    (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
+    (unless (etaf-desktop--window-resizable window)
+      (etaf-desktop--fail "Desktop window is not resizable: %S" id))
+    (if (etaf-desktop--floating-window-p desktop state window)
+        (etaf-desktop--write-geometry
+         window (etaf-desktop--window-x window)
+         (etaf-desktop--window-y window)
+         (etaf-desktop--clamp width (etaf-desktop--window-min-width window)
+                              (etaf-desktop--window-max-width window))
+         (etaf-desktop--clamp height (etaf-desktop--window-min-height window)
+                              (etaf-desktop--window-max-height window)))
+      (etaf-desktop--update
+       desktop
+       (lambda (state)
+         (let ((window (etaf-desktop--window-for state id)))
+           (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
+           (unless (etaf-desktop--window-resizable window)
+             (etaf-desktop--fail "Desktop window is not resizable: %S" id))
+           (when (etaf-desktop--window-maximized window)
+             (setf (etaf-desktop--window-x window) (nth 0 (etaf-desktop--window-normal-geometry window))
+                   (etaf-desktop--window-y window) (nth 1 (etaf-desktop--window-normal-geometry window))
+                   (etaf-desktop--window-width window) (nth 2 (etaf-desktop--window-normal-geometry window))
+                   (etaf-desktop--window-height window) (nth 3 (etaf-desktop--window-normal-geometry window))
+                   (etaf-desktop--window-maximized window) nil))
+           (setf width (etaf-desktop--clamp width (etaf-desktop--window-min-width window)
+                                            (etaf-desktop--window-max-width window))
+                 height (etaf-desktop--clamp height (etaf-desktop--window-min-height window)
+                                             (etaf-desktop--window-max-height window))
+                 (etaf-desktop--window-width window) width
+                 (etaf-desktop--window-height window) height
+                 (etaf-desktop--window-normal-geometry window)
+                 (list (etaf-desktop--window-x window) (etaf-desktop--window-y window)
+                       width height))
+           (etaf-desktop--raise state window)
+           (etaf-desktop--window-plist window)))))))
 
 (defun etaf-desktop-maximize-window (desktop id)
   "Maximize window ID to DESKTOP's canvas and remember its geometry."

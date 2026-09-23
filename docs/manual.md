@@ -1,9 +1,10 @@
 # ETAF Desktop manual
 
-ETAF Desktop is a controlled application layer. A desktop controller owns a
-reactive state value; each mutation copies and publishes that state through
-ETAF. The mounted View consumes the state and calls ETAF UI's `etaf-window`,
-which forwards geometry and gestures to Ebox.
+ETAF Desktop is a controlled application layer. A desktop controller owns
+reactive window and workspace state. Public queries return detached snapshots;
+floating moves and resizes publish their geometry and focus changes together
+to ETAF observers. The mounted View supplies that state to ETAF UI's
+`etaf-window`, which forwards geometry and gestures to Ebox.
 
 Create a controller with `etaf-desktop-create`, add windows with
 `etaf-desktop-open-window`, and mount it with `etaf-desktop-mount`. A window's
