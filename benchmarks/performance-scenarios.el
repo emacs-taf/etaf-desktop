@@ -99,8 +99,8 @@ keymap route with no replacement reader or direct gesture phase dispatch."
       (list :events (vconcat (list press) (nreverse motions)
                             (list (list 'drag-mouse-1 start
                                         (point-data delta (+ count 2)))))
-            :start (copy-sequence xy) :last-motion last-delta
-            :release (copy-sequence delta)))))
+            :start (cons (car xy) (cdr xy)) :last-motion last-delta
+            :release (cons (car delta) (cdr delta))))))
 
 (defun etaf-desktop-benchmark--fixture (operation)
   "Create a four-window workload for public OPERATION."
