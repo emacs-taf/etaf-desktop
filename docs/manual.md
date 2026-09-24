@@ -35,10 +35,16 @@ state update paths used by ETAF's controlled geometry Behaviors. Resize is
 clamped to each window's minimum and optional maximum, and Ebox pixel deltas
 are converted to desktop text-row units before application state is changed.
 The built-in shell exposes all four edges and all four corners through the
-reusable ETAF UI shell. A Shift-modified title drag can enter the Ebox locked
-drag lifecycle; the setting is configurable from Desktop Settings.
-The desktop package does not run a second event loop or keep a second geometry
-store.
+reusable ETAF UI shell. The configured drag-lock modifier applies to both
+the title and every resize handle: the first release keeps tracking, and the
+next primary-button press confirms at that press's position. The default is
+Shift; Desktop Settings → Behavior → Drag lock modifier can select Super.
+An explicit Escape cancellation during locked resize, or C-g during resize,
+restores the starting rectangle. Unrelated input or target invalidation keeps
+the last accepted geometry; a replaced window is never restored by an old
+gesture. Generic ETAF Behaviors retain their caller-owned cancel semantics.
+The desktop package uses Ebox's event loop and the existing controlled geometry
+writer; it does not introduce a second input or geometry authority.
 
 `etaf-desktop-maximize-window` saves the normal rectangle and fills the desktop
 canvas. `etaf-desktop-restore-window` returns that rectangle. Minimized windows

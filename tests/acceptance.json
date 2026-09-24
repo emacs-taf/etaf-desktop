@@ -11,6 +11,16 @@
   "support": [],
   "cases": [
     {
+      "name": "etaf-desktop-locked-resize-confirms-controlled-geometry",
+      "file": "tests/etaf-desktop-resize-lock-tests.el",
+      "purpose": "Configured resize gestures preserve the confirming position, focus and content."
+    },
+    {
+      "name": "etaf-desktop-locked-resize-cancel-restores-controlled-geometry",
+      "file": "tests/etaf-desktop-resize-lock-tests.el",
+      "purpose": "Escape restores the original rectangle for all resize handles."
+    },
+    {
       "name": "etaf-desktop-window-lifecycle-and-state-isolation",
       "file": "tests/etaf-desktop-tests.el",
       "purpose": "Window operations preserve identity, raise order and immutable public snapshots."

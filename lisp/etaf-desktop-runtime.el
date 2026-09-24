@@ -749,6 +749,7 @@ at this boundary."
 (defun etaf-desktop--resize-behavior (desktop id edge)
   "Construct a controlled resize Behavior for window ID on EDGE."
   (let ((state (etaf-desktop-window-state desktop id))
+        origin identity
         (edges (pcase edge
                  ('top-left '(left top))
                  ('top-right '(right top))
@@ -772,7 +773,23 @@ at this boundary."
      :min-height (plist-get state :min-height)
      :max-height (plist-get state :max-height)
      :on-start (lambda (_gesture)
-                 (etaf-desktop-focus-window desktop id)))))
+                 (let ((window (etaf-desktop--window-for
+                                (etaf-desktop--state desktop) id)))
+                   (setq origin (etaf-desktop--geometry window)
+                         identity (etaf-desktop--window-x-source window)))
+                 (etaf-desktop-focus-window desktop id))
+     :on-end (lambda (_gesture) (setq origin nil identity nil))
+     :on-cancel
+     (lambda (gesture)
+       (let ((saved origin) (source identity)
+             (window (etaf-desktop--window-for (etaf-desktop--state desktop) id)))
+         (setq origin nil identity nil)
+         ;; Only an explicit user quit rolls back.  A removed/replaced target
+         ;; or an unrelated-input boundary must not mutate another window.
+         (when (and saved window (eq (plist-get gesture :reason) 'quit)
+                    (eq source (etaf-desktop--window-x-source window))
+                    (etaf-desktop--window-resizable window))
+           (apply #'etaf-desktop--set-window-geometry desktop id saved)))))))
 
 (etaf-define-component etaf-desktop--window-surface (&key desktop id)
   "Own one window's gesture Behaviors for its retained Component lifetime."

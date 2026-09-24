@@ -6,6 +6,12 @@ All notable changes to ETAF Desktop are documented here.
 
 ### Changed
 
+- The configured drag-lock modifier now applies to all resize handles as well
+  as the title. Locked resizing confirms at the next press. Explicit user
+  cancellation restores the starting rectangle through the controlled
+  geometry writer; target invalidation and unrelated input retain the last
+  accepted geometry without restoring a replacement window.
+
 - Tiled workspaces now default to one cell of outer and inner spacing.
   Configure `:tile-outer-gap` (0–4 cells) and `:tile-inner-gap` (1–4 cells)
   through Desktop Settings or `etaf-desktop-set-setting`; changes reflow the
