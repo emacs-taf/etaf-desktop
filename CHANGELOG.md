@@ -4,6 +4,13 @@ All notable changes to ETAF Desktop are documented here.
 
 ## Unreleased
 
+### Fixed
+
+- The Applications launcher lists every registered application by title
+  (with its icon when declared) and shows whether it is running and how many
+  windows it owns. The launcher and window switcher open centered over the
+  retained desktop instead of covering it with an opaque backdrop.
+
 ### Changed
 
 - Tiling layouts publish window rectangles and divider positions, labels and

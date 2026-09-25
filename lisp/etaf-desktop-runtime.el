@@ -9,6 +9,10 @@
 (declare-function ebox-viewport-window-width "ebox-viewport" (window))
 (defvar ebox-viewport-width)
 (defvar ebox-viewport-height)
+(declare-function etaf-desktop-apps "etaf-desktop-apps" ())
+(declare-function etaf-desktop-instances "etaf-desktop-apps" (desktop))
+(declare-function etaf-desktop-launch "etaf-desktop-apps"
+                  (desktop app-id &rest options))
 (declare-function etaf-desktop-layout-mode "etaf-desktop-layout"
                   (desktop &optional workspace))
 (declare-function etaf-desktop--layout-ensure-workspace "etaf-desktop-layout"
@@ -1167,26 +1171,41 @@ window covers them."
 
 (defun etaf-desktop--launcher-node (desktop)
   "Build the controlled application launcher for DESKTOP."
-  (when (and (fboundp 'etaf-desktop-launcher-open-p)
-             (etaf-desktop-launcher-open-p desktop))
-    (let ((items
-           (if (fboundp 'etaf-desktop-apps)
-               (mapcar (lambda (app)
-                         (list :key (plist-get app :id)
-                               :ref (intern (format "etaf-desktop-launcher-%s"
-                                                    (plist-get app :id)))
-                               :label (or (plist-get app :title)
-                                          (format "%s" (plist-get app :id)))
-                               :description "ETAF application"))
-                       (etaf-desktop-apps))
-             nil)))
+  (when (etaf-desktop-launcher-open-p desktop)
+    (let* ((instances (etaf-desktop-instances desktop))
+           (items
+            (mapcar
+             (lambda (app)
+               (let* ((id (plist-get app :id))
+                      (title (or (plist-get app :title) (format "%s" id)))
+                      (icon (plist-get app :icon))
+                      (running
+                       (cl-remove-if-not
+                        (lambda (instance)
+                          (and (equal (plist-get instance :app-id) id)
+                               (memq (plist-get instance :status)
+                                     '(active inactive suspended))))
+                        instances))
+                      (windows (apply #'+ (mapcar (lambda (instance)
+                                                    (length (plist-get instance :windows)))
+                                                  running))))
+                 (list :key id
+                       :ref (intern (format "etaf-desktop-launcher-%s" id))
+                       :label (if (and (stringp icon) (not (string-empty-p icon)))
+                                  (concat icon " " title)
+                                title)
+                       :state (and running 'active)
+                       :description
+                       (cond ((null running) "Not running")
+                             ((= windows 1) "Running · 1 window")
+                             (t (format "Running · %d windows" windows))))))
+             (etaf-desktop-apps))))
       (etaf-node 'etaf-launcher
                  (list :open (etaf-desktop--controller-launcher-ref desktop)
-                       :items items
+                       :items items :backdrop nil
                        :on-select
                        (lambda (app-id)
-                         (when (fboundp 'etaf-desktop-launch)
-                           (etaf-desktop-launch desktop app-id))
+                         (etaf-desktop-launch desktop app-id)
                          (etaf-desktop-toggle-launcher desktop nil))
                        :on-close (lambda ()
                                    (etaf-desktop-toggle-launcher desktop nil)))
@@ -1211,7 +1230,7 @@ window covers them."
       (etaf-node 'etaf-switcher
                  (list :open (etaf-desktop--controller-switcher-ref desktop)
                        :selected (etaf-desktop--state-active-window state)
-                       :items items
+                       :items items :backdrop nil
                        :on-select (lambda (id)
                                     (etaf-desktop-focus-window desktop id)
                                     (etaf-desktop-toggle-switcher desktop nil))
