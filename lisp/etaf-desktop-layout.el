@@ -320,12 +320,12 @@ publication callback from recursively publishing forever.  Return DESKTOP."
   "Return DESKTOP's layout mode for WORKSPACE.
 
 WORKSPACE defaults to the active workspace.  Modes are `floating', `tiling',
-`master-stack' and `monocle'."
+`master-stack' and `monocle'.  This is a pure query: it reads no window
+state, so Views may call it during render without depending on membership."
   (let* ((desktop (etaf-desktop--controller desktop))
          (state (etaf-desktop--state desktop))
          (workspace (or workspace (etaf-desktop--state-active-workspace state))))
     (etaf-desktop--assert-workspace state workspace)
-    (etaf-desktop-layout-sync desktop workspace)
     (etaf-desktop--layout-workspace-mode
      (etaf-desktop--layout-ensure-workspace desktop workspace))))
 

@@ -41,7 +41,8 @@
                (:constructor etaf-desktop--window-create))
   id title view x-source y-source width-source height-source
   min-width min-height max-width max-height
-  visible minimized maximized workspace normal-geometry z-index-source movable resizable
+  visible-source minimized-source maximized-source mode-source taskbar-state-source
+  workspace normal-geometry z-index-source movable resizable
   geometry-input geometry-writer focus-writer)
 
 (cl-defstruct (etaf-desktop--state
@@ -94,7 +95,44 @@ UNIT describes the canonical value supplied directly to UI geometry props."
 (etaf-desktop--define-state-field window width px)
 (etaf-desktop--define-state-field window height lh)
 (etaf-desktop--define-state-field window z-index)
+(etaf-desktop--define-state-field window visible)
+(etaf-desktop--define-state-field window minimized)
+(etaf-desktop--define-state-field window maximized)
 (etaf-desktop--define-state-field state active-window)
+
+(defun etaf-desktop--window-mode-value (window)
+  "Return WINDOW's presentation mode from its minimized and maximized facts."
+  (cond ((etaf-desktop--window-minimized window) 'minimized)
+        ((etaf-desktop--window-maximized window) 'maximized)
+        (t 'normal)))
+
+(defun etaf-desktop--retain-window-mode (window previous)
+  "Retain WINDOW's derived mode and taskbar sources, reusing PREVIOUS's.
+The computeds read the retained minimized and maximized cells, so the UI
+shell and taskbar receive stable reactive inputs for the window's lifetime."
+  (let ((minimized (etaf-desktop--window-minimized-source window))
+        (maximized (etaf-desktop--window-maximized-source window)))
+    (setf (etaf-desktop--window-mode-source window)
+          (or (and previous (etaf-desktop--window-mode-source previous))
+              (etaf-computed
+               (lambda ()
+                 (cond ((etaf-value minimized) 'minimized)
+                       ((etaf-value maximized) 'maximized)
+                       (t 'normal)))))
+          (etaf-desktop--window-taskbar-state-source window)
+          (or (and previous (etaf-desktop--window-taskbar-state-source previous))
+              (etaf-computed
+               (lambda () (and (etaf-value minimized) 'minimized)))))))
+
+(defun etaf-desktop--taskbar-state-source (members)
+  "Return the reactive taskbar state for window MEMBERS of one item.
+A single window reuses its retained source; an application group derives a
+minimized state only when every member window is minimized."
+  (if (cdr members)
+      (let ((sources (mapcar #'etaf-desktop--window-minimized-source members)))
+        (etaf-computed
+         (lambda () (and (cl-every #'etaf-value sources) 'minimized))))
+    (etaf-desktop--window-taskbar-state-source (car members))))
 
 (cl-defstruct (etaf-desktop--controller
                (:constructor etaf-desktop--controller-create))
@@ -488,9 +526,9 @@ desktop hides buffer chrome, so no extra padding row is needed at the bottom."
    :min-height (etaf-desktop--window-min-height window)
    :max-width (etaf-desktop--window-max-width window)
    :max-height (etaf-desktop--window-max-height window)
-   :visible (etaf-desktop--window-visible window)
-   :minimized (etaf-desktop--window-minimized window)
-   :maximized (etaf-desktop--window-maximized window)
+   :visible-source (etaf-desktop--window-visible window)
+   :minimized-source (etaf-desktop--window-minimized window)
+   :maximized-source (etaf-desktop--window-maximized window)
    :workspace (etaf-desktop--window-workspace window)
    :normal-geometry (copy-sequence (etaf-desktop--window-normal-geometry window))
    :z-index-source (etaf-desktop--window-z-index window)
@@ -602,6 +640,10 @@ copy it before returning it to callers."
            (etaf-desktop--retain-window-width window old)
            (etaf-desktop--retain-window-height window old)
            (etaf-desktop--retain-window-z-index window old)
+           (etaf-desktop--retain-window-visible window old)
+           (etaf-desktop--retain-window-minimized window old)
+           (etaf-desktop--retain-window-maximized window old)
+           (etaf-desktop--retain-window-mode window old)
            (etaf-desktop--prepare-window-writers state window)))
        (etaf-desktop--retain-state-active-window state previous)
        (etaf-set-value (etaf-desktop--controller-state-ref desktop) state))))
@@ -612,15 +654,40 @@ copy it before returning it to callers."
     (etaf-desktop-layout-refresh desktop))
   state)
 
-(defun etaf-desktop--floating-window-p (desktop state window)
-  "Return whether WINDOW permits direct scalar changes in current STATE."
+(defun etaf-desktop--floating-workspace-p (desktop state window)
+  "Return whether WINDOW sits in STATE's active workspace under floating layout."
   (and (equal (etaf-desktop--state-active-workspace state)
               (etaf-desktop--window-workspace window))
-       (not (etaf-desktop--window-maximized window))
        (eq 'floating
            (etaf-desktop--layout-workspace-mode
             (etaf-desktop--layout-ensure-workspace
              desktop (etaf-desktop--state-active-workspace state))))))
+
+(defun etaf-desktop--floating-window-p (desktop state window)
+  "Return whether WINDOW permits direct scalar changes in current STATE."
+  (and (etaf-desktop--floating-workspace-p desktop state window)
+       (not (etaf-desktop--window-maximized window))))
+
+(defun etaf-desktop--store-normal-geometry (window x y width height)
+  "Record WINDOW's normal rectangle in place for the retained geometry writer."
+  (let ((normal (etaf-desktop--window-normal-geometry window)))
+    (setcar normal x)
+    (setcar (cdr normal) y)
+    (setcar (cddr normal) width)
+    (setcar (cdddr normal) height)
+    normal))
+
+(defun etaf-desktop--write-mode (desktop state window function)
+  "Apply FUNCTION's mode and geometry writes to retained WINDOW in one batch.
+WINDOW's mode, visibility, geometry and stacking cells are authoritative, so
+the shell, taskbar and focus presentation follow through retained bindings
+without rebuilding DESKTOP's Component tree.  Floating layout membership is
+resynchronized afterwards."
+  (etaf-call-with-batch function)
+  (when (fboundp 'etaf-desktop-layout-refresh)
+    (etaf-desktop-layout-refresh
+     desktop (etaf-desktop--state-active-workspace state)))
+  (etaf-desktop--window-plist window))
 
 (defun etaf-desktop--write-geometry (window x y width height)
   "Write WINDOW's known geometry and raise it without rebuilding desktop state.
@@ -842,9 +909,7 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
          (body (or (etaf-desktop--window-view window)
                    (etaf-node 'text nil (list title))))
          (resize-enabled (plist-get settings :resize-enabled))
-         (mode (cond ((etaf-desktop--window-minimized window) 'minimized)
-                     ((etaf-desktop--window-maximized window) 'maximized)
-                     (t 'normal)))
+         (mode (etaf-desktop--window-mode-source window))
          (move (and (etaf-desktop--window-movable window) move))
          (resize-left (and resize-enabled (etaf-desktop--window-resizable window) resize-left))
          (resize-right (and resize-enabled (etaf-desktop--window-resizable window) resize-right))
@@ -861,7 +926,7 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
            ;; macOS presentation: only the active window shows colored
            ;; traffic lights; every other window renders gray lights.
            :controls-active active
-           :title title :mode mode :visible (etaf-desktop--window-visible window)
+           :title title :mode mode :visible (etaf-desktop--window-visible-source window)
            :title-font-size (plist-get settings :title-font-size)
            :content-font-size (plist-get settings :content-font-size)
            :font-family (plist-get settings :font-family)
@@ -935,7 +1000,6 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
               (let* ((key (car group))
                      (members (cdr group))
                      (first (car members))
-                     (minimized (cl-every #'etaf-desktop--window-minimized members))
                      (label (if (eq grouping 'application)
                                 (or (ignore-errors
                                       (plist-get (etaf-desktop-app key) :title))
@@ -944,7 +1008,7 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
                 (list :key key
                       :ref (etaf-desktop--window-ref (format "taskbar-%s" key))
                       :label (format "%s" label)
-                      :state (and minimized 'minimized)
+                      :state (etaf-desktop--taskbar-state-source members)
                       :window-id (etaf-desktop--window-id first))))
             groups)))
     (etaf-node 'etaf-taskbar
@@ -1556,8 +1620,8 @@ WORKSPACE defaults to the active workspace."
                  :id id :title title :view view :x-source x :y-source y
                  :width-source width :height-source height
                  :min-width min-width :min-height min-height :max-width max-width
-                 :max-height max-height :visible visible :minimized nil
-                 :maximized nil :workspace workspace
+                 :max-height max-height :visible-source visible
+                 :minimized-source nil :maximized-source nil :workspace workspace
                  :normal-geometry (list x y width height)
                  :z-index-source (etaf-desktop--state-next-z state)
                  :movable movable :resizable resizable)))
@@ -1764,48 +1828,69 @@ its position and size together."
            (etaf-desktop--raise state window)
            (etaf-desktop--window-plist window)))))))
 
+(defun etaf-desktop--maximize-window (desktop state window)
+  "Maximize retained or detached WINDOW of STATE onto DESKTOP's canvas."
+  (unless (etaf-desktop--window-maximized window)
+    (apply #'etaf-desktop--store-normal-geometry window
+           (etaf-desktop--geometry window)))
+  (setf (etaf-desktop--window-x window) 0
+        (etaf-desktop--window-y window) 0
+        (etaf-desktop--window-width window)
+        (etaf-desktop--canvas-width-value desktop)
+        (etaf-desktop--window-height window)
+        (etaf-desktop--canvas-height-value desktop)
+        (etaf-desktop--window-minimized window) nil
+        (etaf-desktop--window-visible window) t
+        (etaf-desktop--window-maximized window) t)
+  (etaf-desktop--raise state window))
+
 (defun etaf-desktop-maximize-window (desktop id)
   "Maximize window ID to DESKTOP's canvas and remember its geometry."
-  (etaf-desktop--update
-   desktop
-   (lambda (state)
-     (let ((window (etaf-desktop--window-for state id)))
-       (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
-       (unless (etaf-desktop--window-maximized window)
-         (setf (etaf-desktop--window-normal-geometry window)
-               (etaf-desktop--geometry window)))
-       (setf (etaf-desktop--window-x window) 0
-             (etaf-desktop--window-y window) 0
-             (etaf-desktop--window-width window)
-             (etaf-desktop--canvas-width-value desktop)
-             (etaf-desktop--window-height window)
-             (etaf-desktop--canvas-height-value desktop)
-             (etaf-desktop--window-minimized window) nil
-             (etaf-desktop--window-visible window) t
-             (etaf-desktop--window-maximized window) t)
-       (etaf-desktop--raise state window)
-       (etaf-desktop--window-plist window)))))
+  (let* ((desktop (etaf-desktop--controller desktop))
+         (state (etaf-desktop--state desktop))
+         (window (etaf-desktop--window-for state id)))
+    (if (and window (etaf-desktop--floating-workspace-p desktop state window))
+        (etaf-desktop--write-mode
+         desktop state window
+         (lambda () (etaf-desktop--maximize-window desktop state window)))
+      (etaf-desktop--update
+       desktop
+       (lambda (state)
+         (let ((window (etaf-desktop--window-for state id)))
+           (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
+           (etaf-desktop--maximize-window desktop state window)
+           (etaf-desktop--window-plist window)))))))
+
+(defun etaf-desktop--minimize-window (state window)
+  "Minimize WINDOW of STATE and pass focus to the highest remaining window."
+  (setf (etaf-desktop--window-minimized window) t
+        (etaf-desktop--window-visible window) nil)
+  (when (equal (etaf-desktop--window-id window)
+               (etaf-desktop--state-active-window state))
+    (let ((replacement
+           (etaf-desktop--highest-visible-window
+            state (etaf-desktop--window-workspace window))))
+      (setf (etaf-desktop--state-active-window state)
+            (and replacement (etaf-desktop--window-id replacement))))))
 
 (defun etaf-desktop-minimize-window (desktop id)
   "Minimize window ID into DESKTOP's taskbar."
   (let* ((desktop (etaf-desktop--controller desktop))
          (was-active (equal id (etaf-desktop-active-window desktop)))
+         (state (etaf-desktop--state desktop))
+         (window (etaf-desktop--window-for state id))
          (result
-         (etaf-desktop--update
-          desktop
-          (lambda (state)
-            (let ((window (etaf-desktop--window-for state id)))
-              (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
-              (setf (etaf-desktop--window-minimized window) t
-                    (etaf-desktop--window-visible window) nil)
-              (when (equal id (etaf-desktop--state-active-window state))
-                (let ((replacement
-                       (etaf-desktop--highest-visible-window
-                        state (etaf-desktop--window-workspace window))))
-                  (setf (etaf-desktop--state-active-window state)
-                        (and replacement
-                             (etaf-desktop--window-id replacement)))))
-              (etaf-desktop--window-plist window))))))
+          (if (and window (etaf-desktop--floating-workspace-p desktop state window))
+              (etaf-desktop--write-mode
+               desktop state window
+               (lambda () (etaf-desktop--minimize-window state window)))
+            (etaf-desktop--update
+             desktop
+             (lambda (state)
+               (let ((window (etaf-desktop--window-for state id)))
+                 (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
+                 (etaf-desktop--minimize-window state window)
+                 (etaf-desktop--window-plist window)))))))
     (etaf-desktop--notify-window-event desktop id 'minimized)
     (when was-active
       (if-let* ((replacement-id (etaf-desktop-active-window desktop)))
@@ -1813,26 +1898,37 @@ its position and size together."
         (etaf-desktop--notify-window-event desktop nil 'focus-cleared)))
     result))
 
+(defun etaf-desktop--restore-window (state window)
+  "Restore WINDOW of STATE from its minimized or maximized presentation."
+  (when (etaf-desktop--window-maximized window)
+    (pcase-let ((`(,x ,y ,width ,height)
+                 (etaf-desktop--window-normal-geometry window)))
+      (setf (etaf-desktop--window-x window) x
+            (etaf-desktop--window-y window) y
+            (etaf-desktop--window-width window) width
+            (etaf-desktop--window-height window) height)))
+  (setf (etaf-desktop--window-maximized window) nil
+        (etaf-desktop--window-minimized window) nil
+        (etaf-desktop--window-visible window) t)
+  (etaf-desktop--raise state window))
+
 (defun etaf-desktop-restore-window (desktop id)
   "Restore minimized or maximized window ID and focus it."
-  (let ((result
-         (etaf-desktop--update
-          desktop
-          (lambda (state)
-            (let ((window (etaf-desktop--window-for state id)))
-              (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
-              (when (etaf-desktop--window-maximized window)
-                (pcase-let ((`(,x ,y ,width ,height)
-                             (etaf-desktop--window-normal-geometry window)))
-                  (setf (etaf-desktop--window-x window) x
-                        (etaf-desktop--window-y window) y
-                        (etaf-desktop--window-width window) width
-                        (etaf-desktop--window-height window) height)))
-              (setf (etaf-desktop--window-maximized window) nil
-                    (etaf-desktop--window-minimized window) nil
-                    (etaf-desktop--window-visible window) t)
-              (etaf-desktop--raise state window)
-              (etaf-desktop--window-plist window))))))
+  (let* ((desktop (etaf-desktop--controller desktop))
+         (state (etaf-desktop--state desktop))
+         (window (etaf-desktop--window-for state id))
+         (result
+          (if (and window (etaf-desktop--floating-workspace-p desktop state window))
+              (etaf-desktop--write-mode
+               desktop state window
+               (lambda () (etaf-desktop--restore-window state window)))
+            (etaf-desktop--update
+             desktop
+             (lambda (state)
+               (let ((window (etaf-desktop--window-for state id)))
+                 (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
+                 (etaf-desktop--restore-window state window)
+                 (etaf-desktop--window-plist window)))))))
     (etaf-desktop--notify-window-event desktop id 'restored)
     result))
 

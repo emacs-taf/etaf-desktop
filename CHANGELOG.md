@@ -6,6 +6,13 @@ All notable changes to ETAF Desktop are documented here.
 
 ### Changed
 
+- Window shells and taskbar items receive each window's mode, visibility and
+  taskbar state as retained reactive sources, so maximizing, minimizing or
+  restoring a window publishes through prepared Host bindings instead of
+  rebuilding the desktop tree. `etaf-desktop-layout-mode` is now a pure
+  query that no longer resynchronizes layout membership; mutation entry
+  points still call `etaf-desktop-layout-refresh`.
+
 - The configured drag-lock modifier now applies to all resize handles as well
   as the title. Locked resizing confirms at the next press. Explicit user
   cancellation restores the starting rectangle through the controlled
