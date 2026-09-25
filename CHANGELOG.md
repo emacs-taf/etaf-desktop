@@ -25,6 +25,11 @@ All notable changes to ETAF Desktop are documented here.
 
 ### Fixed
 
+- Dragging a tiling divider follows the pointer one row or pixel at a time.
+  The split allocation rounded half values to even, so on an odd span every
+  other step produced the same pane size and the divider stuck for one step
+  and then jumped two.
+
 - The Applications launcher lists every registered application by title
   (with its icon when declared) and shows whether it is running and how many
   windows it owns. The launcher and window switcher open centered over the

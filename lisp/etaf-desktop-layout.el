@@ -606,8 +606,12 @@ vertically.  Divider handles fit inside the inner gap."
 
 (defun etaf-desktop--layout-split-size
     (total ratio first-min second-min first-max second-max)
-  "Return the first pane size within TOTAL according to RATIO and bounds."
-  (let* ((ideal (round (* (float total) ratio)))
+  "Return the first pane size within TOTAL according to RATIO and bounds.
+Halves round up: a drag that moves the divider one unit at a time produces
+consecutive half values on an odd TOTAL, and round-half-to-even would map
+each pair onto one size so the divider stuck for one step and jumped two.
+The epsilon absorbs the representation error of such half values."
+  (let* ((ideal (floor (+ (* (float total) ratio) 0.5 1e-6)))
          (low (max 1 first-min))
          (high (min (1- total) (- total (max 1 second-min)))))
     (setq low (max low (if second-max (- total second-max) 1)))

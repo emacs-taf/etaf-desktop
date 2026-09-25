@@ -109,9 +109,10 @@
                 (floating (etaf-desktop-test-spacing-rectangle desktop 'overlay)))
             ;; No refresh or apply call intervenes between settings and reads.
             (etaf-desktop-set-setting desktop :tile-outer-gap 3)
-            (should (equal (list (* 3 cell) 3 (* 94 cell) 8)
+            ;; 17 available rows split at 0.5 round the half row up to `one'.
+            (should (equal (list (* 3 cell) 3 (* 94 cell) 9)
                            (etaf-desktop-test-spacing-rectangle desktop 'one)))
-            (should (equal (list (* 3 cell) 12 (* 94 cell) 9)
+            (should (equal (list (* 3 cell) 13 (* 94 cell) 8)
                            (etaf-desktop-test-spacing-rectangle desktop 'two)))
             (etaf-desktop-set-setting desktop :tile-inner-gap 4)
             (should (equal (list (* 3 cell) 3 (* 94 cell) 7)

@@ -164,6 +164,30 @@
     (let ((left (etaf-desktop-window-state desktop 'left)))
       (should (= 30 (plist-get left :width))))))
 
+(ert-deftest etaf-desktop-layout-vertical-split-moves-one-row-per-step ()
+  "Consecutive ratio steps of one row each move the split by exactly one row.
+The divider gesture adds ROWS/SPAN to the start ratio, so an odd span yields
+half-row ideals on every step; the allocation must not merge step pairs."
+  (let* ((outer 1) (inner 1) (span 43)
+         (desktop (etaf-desktop-create :canvas-width 200
+                                       :canvas-height (+ span inner (* 2 outer)))))
+    (etaf-desktop-open-window desktop 'top :width 50 :height 4
+                              :min-width 10 :min-height 2)
+    (etaf-desktop-open-window desktop 'bottom :width 50 :height 4
+                              :min-width 10 :min-height 2)
+    (etaf-desktop-layout-split desktop 'top 'bottom 'vertical 0.5)
+    (let ((start (plist-get (etaf-desktop-window-state desktop 'top) :height))
+          (previous nil))
+      (dotimes (rows 6)
+        (etaf-desktop-layout-resize-split desktop nil (+ 0.5 (/ (float rows) span)))
+        (let ((height (plist-get (etaf-desktop-window-state desktop 'top) :height))
+              (bottom (etaf-desktop-window-state desktop 'bottom)))
+          (should (= height (+ start rows)))
+          (when previous (should (= 1 (- height previous))))
+          (should (= (plist-get bottom :y)
+                     (+ outer height inner)))
+          (setq previous height))))))
+
 (ert-deftest etaf-desktop-layout-monocle-and-close-sync ()
   "Monocle fills the inset canvas and closing a leaf removes it from the tree."
   (let ((desktop (etaf-desktop-create :canvas-width 90 :canvas-height 18)))

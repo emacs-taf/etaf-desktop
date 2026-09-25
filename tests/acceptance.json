@@ -241,6 +241,11 @@
       "purpose": "Untiling preserves a floating overlay and retile restores it to the tree."
     },
     {
+      "name": "etaf-desktop-layout-vertical-split-moves-one-row-per-step",
+      "file": "tests/etaf-desktop-layout-tests.el",
+      "purpose": "Resizing a vertical split by consecutive one-row ratio steps on an odd span moves the first pane and the second pane's origin by exactly one row per step, so a divider drag follows the pointer without sticking and jumping."
+    },
+    {
       "name": "etaf-desktop-layout-horizontal-split-and-minimums",
       "file": "tests/etaf-desktop-layout-tests.el",
       "purpose": "Horizontal tiling respects minimum widths and preserves the split ratio."
