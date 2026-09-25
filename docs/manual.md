@@ -117,6 +117,12 @@ opens the switcher, `o` opens Settings, `l` toggles layout, `s` splits, `x`
 swaps, `m` maximizes, `r` restores, `i` minimizes, and `q` closes the active
 window. A modal or native input surface temporarily takes precedence.
 
+The launcher, switcher and settings dialog are unpainted modals: the shell
+stays visible and dimmed behind them, and they close on Escape, on their
+close control, or on any press outside their panel, including window
+content, bar controls and shell background. A taskbar control that opens a
+different modal closes the current one in the same press.
+
 Read-only queries return detached plists: `etaf-desktop-state`,
 `etaf-desktop-windows`, `etaf-desktop-window-state`,
 `etaf-desktop-active-window` and `etaf-desktop-active-workspace`. Callers must

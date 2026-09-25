@@ -25,6 +25,13 @@ All notable changes to ETAF Desktop are documented here.
 
 ### Fixed
 
+- Pressing anywhere outside the launcher, switcher or settings dialog closes
+  it: window content, window controls, bar controls and shell background all
+  dismiss the open modal, and a taskbar control that opens another modal
+  swaps them in one press. Pressing the shell background no longer sets the
+  mark through `mouse-drag-region`. The modals' own close requests close
+  unambiguously instead of toggling, so a second dismissal in the same press
+  cannot reopen them.
 - Floating windows can be dragged past the left, right and bottom canvas
   edges again. `etaf-desktop-move-window` and the shell's move and resize
   gestures accept any integer position and keep at least 48 pixels of the

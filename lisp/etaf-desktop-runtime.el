@@ -1287,9 +1287,9 @@ window covers them."
                        :on-select
                        (lambda (app-id)
                          (etaf-desktop-launch desktop app-id)
-                         (etaf-desktop-toggle-launcher desktop nil))
+                         (etaf-desktop-close-launcher desktop))
                        :on-close (lambda ()
-                                   (etaf-desktop-toggle-launcher desktop nil)))
+                                   (etaf-desktop-close-launcher desktop)))
                  nil))))
 
 (defun etaf-desktop--switcher-node (desktop state)
@@ -1314,9 +1314,9 @@ window covers them."
                        :items items :backdrop nil
                        :on-select (lambda (id)
                                     (etaf-desktop-focus-window desktop id)
-                                    (etaf-desktop-toggle-switcher desktop nil))
+                                    (etaf-desktop-close-switcher desktop))
                        :on-close (lambda ()
-                                   (etaf-desktop-toggle-switcher desktop nil)))
+                                   (etaf-desktop-close-switcher desktop)))
                  nil))))
 
 (defun etaf-desktop--theme-token (key &optional transform)
@@ -1540,6 +1540,12 @@ of re-rendering the desktop tree."
    :height (list 'lh (+ (etaf-desktop--canvas-height-value desktop) 2))
    :background-color (etaf-desktop--theme-token :ui-shell-bg)
    :color (etaf-desktop--theme-token :ui-shell-fg)
+   ;; Presses on shell background and, through capture, on any control close
+   ;; the launcher, switcher or settings dialog the press landed outside of.
+   ;; Claiming the background press also keeps `mouse-drag-region' from
+   ;; setting the mark on the canvas.
+   :on-press #'etaf-ui-dismiss-outside-press
+   :on-press-capture #'etaf-ui-dismiss-outside-press
    (slot :name 'workspace-bar)
    (box :position 'relative
         :width (etaf-desktop--canvas-box-width desktop)

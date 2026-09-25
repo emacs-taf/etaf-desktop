@@ -226,6 +226,11 @@
       "purpose": "The mounted shell exposes launcher and switcher controls and applies tiling to a newly opened window."
     },
     {
+      "name": "etaf-desktop-presses-outside-a-modal-dismiss-it",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "Pressing a window control while the launcher, switcher or settings dialog is open closes it, and a taskbar press that opens another modal closes the current one in the same press."
+    },
+    {
       "name": "etaf-desktop-settings-modal-overlays-live-shell",
       "file": "tests/etaf-desktop-tests.el",
       "purpose": "Settings persist as desktop state and open as a modal over the retained window surface."

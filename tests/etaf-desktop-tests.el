@@ -1175,6 +1175,40 @@ shell without a structural re-render."
                        (plist-get (etaf-desktop-window-state desktop 'two) :y)))))
       (etaf-desktop-close desktop))))
 
+(ert-deftest etaf-desktop-presses-outside-a-modal-dismiss-it ()
+  "Pressing a window control or the shell closes the open modal; the taskbar swaps it."
+  (let ((desktop (etaf-desktop-create :name " *desktop-outside-press*"
+                                      :canvas-width 240 :canvas-height 16))
+        (pressed 0))
+    (unwind-protect
+        (progn
+          (etaf-desktop-open-window
+           desktop 'one :title "One"
+           :view (etaf-view (etaf-button :ref 'probe :label "Probe"
+                                         :on-press (lambda () (cl-incf pressed))))
+           :width 60 :height 6 :min-width 10 :min-height 2)
+          (let* ((buffer (etaf-desktop-mount desktop))
+                 (runtime (etaf-runtime-for-buffer buffer)))
+            (etaf-desktop-toggle-launcher desktop t)
+            (should (etaf-desktop-launcher-open-p desktop))
+            (etaf-dispatch-event runtime 'probe 'press)
+            (should (= pressed 1))
+            (should-not (etaf-desktop-launcher-open-p desktop))
+            (etaf-desktop-toggle-settings desktop t)
+            (should (etaf-desktop-settings-open-p desktop))
+            (etaf-dispatch-event runtime 'etaf-taskbar-launcher 'press)
+            (should-not (etaf-desktop-settings-open-p desktop))
+            (should (etaf-desktop-launcher-open-p desktop))
+            (etaf-dispatch-event runtime 'etaf-taskbar-launcher 'press)
+            (should-not (etaf-desktop-launcher-open-p desktop))
+            (etaf-desktop-toggle-switcher desktop t)
+            (etaf-dispatch-event runtime 'probe 'press)
+            (should (= pressed 2))
+            (should-not (etaf-desktop-switcher-open-p desktop))
+            (with-current-buffer buffer
+              (should-not (string-match-p "Switch application" (buffer-string))))))
+      (etaf-desktop-close desktop))))
+
 (ert-deftest etaf-desktop-settings-modal-overlays-live-shell ()
   "Settings remain application state and open as a retained modal over windows."
   (let ((desktop (etaf-desktop-create :name " *desktop-settings*"
