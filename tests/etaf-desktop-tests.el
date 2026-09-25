@@ -52,6 +52,44 @@
                                          (plist-get window :width)
                                          (plist-get window :height)))))))
 
+(ert-deftest etaf-desktop-floating-window-overflows-canvas-but-stays-reachable ()
+  "A floating window may cross the left, right and bottom canvas edges.
+The canvas clips the overflow while part of the window and its title row stay
+inside, so a drag past an edge continues instead of failing and the window
+can always be grabbed again."
+  (let ((desktop (etaf-desktop-create :name " *desktop-overflow*"
+                                      :canvas-width 300 :canvas-height 20)))
+    (unwind-protect
+        (progn
+          (etaf-desktop-open-window desktop 'notes :x 10 :y 2 :width 200 :height 6
+                                    :min-width 40 :min-height 2)
+          (let ((moved (etaf-desktop-move-window desktop 'notes -120 3)))
+            (should (= -120 (plist-get moved :x)))
+            (should (= 3 (plist-get moved :y))))
+          ;; The window never leaves the canvas entirely.
+          (let ((moved (etaf-desktop-move-window desktop 'notes -190 60)))
+            (should (= -152 (plist-get moved :x)))
+            (should (= 19 (plist-get moved :y))))
+          (let ((moved (etaf-desktop-move-window desktop 'notes 400 -5)))
+            (should (= 252 (plist-get moved :x)))
+            (should (= 0 (plist-get moved :y))))
+          (should-error (etaf-desktop-move-window desktop 'notes 1.5 0)
+                        :type 'etaf-desktop-error)
+          ;; The clipped window still renders inside the canvas rows.
+          (let ((buffer (etaf-desktop-mount desktop)))
+            (unwind-protect
+                (progn
+                  (etaf-desktop-move-window desktop 'notes -100 2)
+                  (with-current-buffer buffer
+                    (should (string-match-p "notes" (buffer-string)))
+                    (should (= 22 (count-lines (point-min) (point-max)))))
+                  (etaf-desktop-move-window desktop 'notes 250 15)
+                  (with-current-buffer buffer
+                    (should (= 22 (count-lines (point-min) (point-max))))))
+              (when-let* ((runtime (etaf-runtime-for-buffer buffer)))
+                (etaf-unmount runtime)))))
+      (etaf-desktop-close desktop))))
+
 (ert-deftest etaf-desktop-minimize-and-workspace-removal-preserve-focus ()
   "Minimizing or removing the active workspace selects a visible replacement."
   (let ((desktop (etaf-desktop-create :name " *desktop-focus-fallback*"
@@ -831,8 +869,9 @@ shell without a structural re-render."
                           (let ((one (etaf-desktop-window-state desktop 'one)))
                             (should (<= (+ (plist-get one :y) (plist-get one :height))
                                         small)))
-                          ;; A floating window beyond the new canvas is pulled
-                          ;; back inside it when its workspace becomes active.
+                          ;; A floating window whose title row lies beyond the
+                          ;; new canvas is pulled back onto it when its
+                          ;; workspace becomes active; overflow below stays.
                           (etaf-desktop-switch-workspace desktop 'float)
                           (delete-window other)
                           (should (etaf-desktop-fit-canvas desktop))
@@ -840,9 +879,7 @@ shell without a structural re-render."
                                                      :canvas-height)))
                           (should (= (+ full 2) (length (funcall lines))))
                           (let ((float (etaf-desktop-window-state desktop 'float)))
-                            (should (<= (+ (plist-get float :y)
-                                           (plist-get float :height))
-                                        full))
+                            (should (< (plist-get float :y) full))
                             (should (= 4 (plist-get float :height)))))
                       (when (window-live-p other) (delete-window other)))))
               (when-let* ((runtime (etaf-runtime-for-buffer buffer)))
@@ -1195,7 +1232,7 @@ shell without a structural re-render."
           (should observed)
           (should (cl-every (lambda (value) (equal '(7 3 60 9 one) value)) observed))
           (let ((snapshot (etaf-desktop-window-state desktop 'one)))
-            (should-error (etaf-desktop-move-window desktop 'one -1 2)
+            (should-error (etaf-desktop-move-window desktop 'one 1.5 2)
                           :type 'etaf-desktop-error)
             (should (equal snapshot (etaf-desktop-window-state desktop 'one)))))
       (etaf-scope-stop scope)

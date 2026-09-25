@@ -31,6 +31,11 @@
       "purpose": "Size limits and maximize/minimize/restore preserve a normal rectangle."
     },
     {
+      "name": "etaf-desktop-floating-window-overflows-canvas-but-stays-reachable",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "Floating windows cross the left, right and bottom canvas edges, are clipped and keep part of their title row reachable."
+    },
+    {
       "name": "etaf-desktop-minimize-and-workspace-removal-preserve-focus",
       "file": "tests/etaf-desktop-tests.el",
       "purpose": "Minimizing or removing the active workspace selects a visible replacement window."
@@ -123,7 +128,7 @@
     {
       "name": "etaf-desktop-gesture-clamps-resize-at-desktop-origin",
       "file": "tests/etaf-desktop-gesture-tests.el",
-      "purpose": "Left and top resize gestures clamp at the desktop origin while preserving each opposite edge."
+      "purpose": "A left resize gesture overflows the canvas and a top one stops at its origin, each preserving its opposite edge."
     },
     {
       "name": "etaf-desktop-gesture-divider-tracks-cumulative-displacement",

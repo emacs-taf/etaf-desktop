@@ -25,6 +25,12 @@ All notable changes to ETAF Desktop are documented here.
 
 ### Fixed
 
+- Floating windows can be dragged past the left, right and bottom canvas
+  edges again. `etaf-desktop-move-window` and the shell's move and resize
+  gestures accept any integer position and keep at least 48 pixels of the
+  window and its title row inside the canvas instead of signalling an error
+  at the first negative coordinate, which aborted the drag and left the window
+  wherever the pointer had last been tracked.
 - Dragging a tiling divider follows the pointer one row or pixel at a time.
   The split allocation rounded half values to even, so on an odd span every
   other step produced the same pane size and the divider stuck for one step

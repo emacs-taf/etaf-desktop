@@ -177,7 +177,10 @@ written before layout records were introduced remain readable.
 ## Workspace layout policy
 
 Each workspace can use `floating`, `tiling`, `master-stack` or `monocle` mode.
-Floating windows keep their own rectangles. Tiling uses a detached layout tree
+Floating windows keep their own rectangles and may be dragged past the left,
+right and bottom canvas edges; the canvas clips the overflow while at least
+48 pixels of the window and its title row stay inside it, so a window can
+always be grabbed again. Tiling uses a detached layout tree
 whose leaves are window IDs and whose split nodes have an orientation and ratio:
 
 ```elisp

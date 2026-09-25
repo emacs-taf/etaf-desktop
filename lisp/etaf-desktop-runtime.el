@@ -857,6 +857,21 @@ follow direct window interactions."
   "Clamp VALUE to MINIMUM and optional MAXIMUM."
   (max minimum (if maximum (min maximum value) value)))
 
+(defconst etaf-desktop--window-reach-width 48
+  "Pixels of a floating window that must stay inside the canvas horizontally.")
+
+(defun etaf-desktop--reachable-position (desktop x y width)
+  "Return `(X . Y)' keeping a WIDTH-wide floating window reachable in DESKTOP.
+A floating window may overflow the canvas' left, right and bottom edges, but
+at least `etaf-desktop--window-reach-width' pixels of its width and its title
+row stay inside the canvas so the pointer can always grab it again."
+  (let* ((canvas-width (etaf-desktop--canvas-width-value desktop))
+         (canvas-height (etaf-desktop--canvas-height-value desktop))
+         (reach (min etaf-desktop--window-reach-width width)))
+    (cons (etaf-desktop--clamp x (- reach width) (max (- reach width)
+                                                     (- canvas-width reach)))
+          (etaf-desktop--clamp y 0 (max 0 (1- canvas-height))))))
+
 (defun etaf-desktop--window-plist (window)
   "Return a detached public state plist for WINDOW."
   (list :id (etaf-desktop--window-id window)
@@ -1843,9 +1858,14 @@ window republishes desktop structure."
     result))
 
 (defun etaf-desktop-move-window (desktop id x y)
-  "Move window ID to X and Y, returning its public state plist."
-  (etaf-desktop--number x "x" 0)
-  (etaf-desktop--number y "y" 0)
+  "Move window ID to X and Y, returning its public state plist.
+X may be negative and X or Y may exceed the canvas: the canvas clips the
+overflow while `etaf-desktop--reachable-position' keeps part of the window
+and its title row inside the canvas, so a drag past an edge never fails."
+  (unless (integerp x)
+    (etaf-desktop--fail "x must be an integer, got %S" x))
+  (unless (integerp y)
+    (etaf-desktop--fail "y must be an integer, got %S" y))
   (let* ((desktop (etaf-desktop--controller desktop))
          (state (etaf-desktop--state desktop))
          (window (etaf-desktop--window-for state id)))
@@ -1854,9 +1874,11 @@ window republishes desktop structure."
      ((etaf-desktop--tiled-window-p desktop window)
       (etaf-desktop--focus-tiled-window desktop state window))
      ((etaf-desktop--floating-window-p desktop state window)
+      (pcase-let ((`(,x . ,y) (etaf-desktop--reachable-position
+                              desktop x y (etaf-desktop--window-width window))))
         (etaf-desktop--write-geometry
          window x y (etaf-desktop--window-width window)
-         (etaf-desktop--window-height window)))
+         (etaf-desktop--window-height window))))
      (t
       (etaf-desktop--update
        desktop
@@ -1869,6 +1891,10 @@ window republishes desktop structure."
                    (etaf-desktop--window-width window) (nth 2 (etaf-desktop--window-normal-geometry window))
                    (etaf-desktop--window-height window) (nth 3 (etaf-desktop--window-normal-geometry window))
                    (etaf-desktop--window-maximized window) nil))
+           (pcase-let ((`(,fit-x . ,fit-y)
+                        (etaf-desktop--reachable-position
+                         desktop x y (etaf-desktop--window-width window))))
+             (setq x fit-x y fit-y))
            (setf (etaf-desktop--window-x window) x
                  (etaf-desktop--window-y window) y
                  (etaf-desktop--window-normal-geometry window)
@@ -1881,15 +1907,14 @@ window republishes desktop structure."
 X, Y, WIDTH and HEIGHT are logical desktop units.  This internal path is used
 by combined edge and corner resize Behaviors so a left/top resize publishes
 its position and size together." 
-  ;; Preserve the opposite edge when a left/top drag crosses the origin.
-  ;; Clamping only X or Y would grow the window past that fixed edge.
-  (when (< x 0)
-    (setq width (+ width x)
-          x 0))
+  ;; A left drag may cross the canvas origin: the window overflows and the
+  ;; canvas clips it.  A top drag stops at the canvas top and preserves the
+  ;; bottom edge, since clamping only Y would grow the window past it.
   (when (< y 0)
     (setq height (+ height y)
           y 0))
-  (etaf-desktop--number x "x" 0)
+  (unless (integerp x)
+    (etaf-desktop--fail "x must be an integer, got %S" x))
   (etaf-desktop--number y "y" 0)
   (etaf-desktop--number width "width" 1)
   (etaf-desktop--number height "height" 1)
@@ -2188,10 +2213,11 @@ republished.  Focus passes to WORKSPACE's highest visible window."
               ((buffer-live-p buffer)))
     (get-buffer-window buffer t)))
 
-(defun etaf-desktop--fit-floating-window (window width height)
-  "Keep floating WINDOW inside a WIDTH by HEIGHT canvas.
-A window larger than the canvas shrinks to its minimum before it is moved;
-its normal rectangle follows so leaving maximization restores a visible one."
+(defun etaf-desktop--fit-floating-window (desktop window width height)
+  "Keep floating WINDOW of DESKTOP reachable on a WIDTH by HEIGHT canvas.
+A window larger than the canvas shrinks to fit it, then its position keeps
+part of the window and its title row inside the canvas; its normal rectangle
+follows so leaving maximization restores a reachable one."
   (let* ((new-width (etaf-desktop--clamp
                      (min (etaf-desktop--window-width window) width)
                      (etaf-desktop--window-min-width window)
@@ -2200,10 +2226,11 @@ its normal rectangle follows so leaving maximization restores a visible one."
                       (min (etaf-desktop--window-height window) height)
                       (etaf-desktop--window-min-height window)
                       (etaf-desktop--window-max-height window)))
-         (new-x (etaf-desktop--clamp (etaf-desktop--window-x window) 0
-                                     (max 0 (- width new-width))))
-         (new-y (etaf-desktop--clamp (etaf-desktop--window-y window) 0
-                                     (max 0 (- height new-height)))))
+         (position (etaf-desktop--reachable-position
+                    desktop (etaf-desktop--window-x window)
+                    (etaf-desktop--window-y window) new-width))
+         (new-x (car position))
+         (new-y (cdr position)))
     (unless (equal (list new-x new-y new-width new-height)
                    (etaf-desktop--geometry window))
       (etaf-desktop--place-window window new-x new-y new-width new-height))))
@@ -2247,7 +2274,7 @@ Emacs."
                              (etaf-desktop--window-height window) height))
                       ((not (etaf-desktop--tiled-window-p desktop window))
                        (etaf-desktop--fit-floating-window
-                        window width height))))))
+                        desktop window width height))))))
                ;; The layout's own batch joins this one, so the frame, the
                ;; windows and the dividers publish in a single projection.
                (when (fboundp 'etaf-desktop-layout-refresh)

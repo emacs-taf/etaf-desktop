@@ -18,7 +18,8 @@
 
 (ert-deftest etaf-desktop-gesture-retains-origin-through-multiple-motions ()
   "A move and resize gesture survives every publication in one gesture."
-  (let ((desktop (etaf-desktop-create :name " *desktop-gesture-retained*")))
+  (let ((desktop (etaf-desktop-create :name " *desktop-gesture-retained*"
+                                      :canvas-width 400 :canvas-height 30)))
     (unwind-protect
         (progn
           (etaf-desktop-open-window desktop 'notes :x 4 :y 2
@@ -156,8 +157,10 @@ two corner cells while the title row's middle stays the window move gesture."
       (etaf-desktop-close desktop))))
 
 (ert-deftest etaf-desktop-gesture-clamps-resize-at-desktop-origin ()
-  "Dragging a left or top edge beyond zero clamps instead of aborting."
-  (let ((desktop (etaf-desktop-create :name " *desktop-gesture-origin*")))
+  "Dragging a left edge past the canvas overflows it; a top edge stops at zero.
+Neither gesture aborts, and each preserves its opposite edge."
+  (let ((desktop (etaf-desktop-create :name " *desktop-gesture-origin*"
+                                      :canvas-width 400 :canvas-height 30)))
     (unwind-protect
         (progn
           (etaf-desktop-open-window desktop 'notes :x 2 :y 2
@@ -172,7 +175,7 @@ two corner cells while the title row's middle stays the window move gesture."
              runtime 'etaf-desktop-resize-notes-top
              '((:phase start :delta (0 . 0)) (:phase end :delta (0 . -20))))
             (let ((state (etaf-desktop-window-state desktop 'notes)))
-              (should (= 0 (plist-get state :x)))
+              (should (= -18 (plist-get state :x)))
               (should (= 0 (plist-get state :y)))
               (should (= 102 (+ (plist-get state :x)
                                 (plist-get state :width))))

@@ -68,12 +68,16 @@
 ;; Function: etaf-desktop-move-window (desktop id x y)
 ;;;###autoload (autoload 'etaf-desktop-move-window "etaf-desktop" nil nil)
 ;; Set ID's top-left position.  Moving a maximized window restores its saved
-;; rectangle first.
+;; rectangle first.  X and Y are integers; a floating window may overflow the
+;; canvas' left, right and bottom edges and the canvas clips it, but the
+;; position is adjusted so at least 48 pixels of its width and its title row
+;; stay inside the canvas.  Non-integer X or Y signals `etaf-desktop-error'.
 ;;
 ;; Function: etaf-desktop-resize-window (desktop id width height)
 ;;;###autoload (autoload 'etaf-desktop-resize-window "etaf-desktop" nil nil)
 ;; Set ID's size, clamped to its minimum and optional maximum.  Resizing a
-;; maximized window restores its saved rectangle first.
+;; maximized window restores its saved rectangle first.  A left or top edge
+;; drag may cross the canvas' left edge; the top edge stops at the canvas top.
 ;;
 ;; Function: etaf-desktop-maximize-window (desktop id)
 ;;;###autoload (autoload 'etaf-desktop-maximize-window "etaf-desktop" nil nil)
@@ -124,7 +128,8 @@
 ;; both `:canvas-width' and `:canvas-height' keeps them.  When the fitted
 ;; `(WIDTH . HEIGHT)' changes, the shell frame follows through retained
 ;; bindings, tiled and monocle workspaces reflow, maximized windows refill the
-;; canvas and floating windows stay inside it in one batch.  Return the new
+;; canvas and floating windows shrink to it and keep their title row and part
+;; of their width reachable, in one batch.  Return the new
 ;; size, or nil when nothing changed.  A mounted desktop calls this itself
 ;; from Emacs' window size hooks; call it after resizing a window outside the
 ;; redisplay cycle, such as in batch Emacs.
