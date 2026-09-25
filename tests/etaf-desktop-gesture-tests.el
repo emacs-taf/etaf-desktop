@@ -180,5 +180,56 @@ two corner cells while the title row's middle stays the window move gesture."
                                (plist-get state :height)))))))
       (etaf-desktop-close desktop))))
 
+(ert-deftest etaf-desktop-gesture-divider-tracks-cumulative-displacement ()
+  "A tiling divider follows the pointer instead of compounding each motion.
+Ebox reports every motion as the displacement from the press, so the ratio
+after several moves equals the start ratio plus the final displacement, and a
+cancelled gesture restores the ratio it started from."
+  (let ((desktop (etaf-desktop-create :name " *desktop-gesture-divider*"
+                                      :canvas-width 400 :canvas-height 20)))
+    (unwind-protect
+        (progn
+          (dolist (id '(one two))
+            (etaf-desktop-open-window desktop id :title (format "%s" id)
+                                      :width 100 :min-width 10 :min-height 2))
+          (etaf-desktop-set-setting desktop :tile-outer-gap 0)
+          (etaf-desktop-set-setting desktop :tile-inner-gap 2)
+          (etaf-desktop-set-layout-mode desktop 'tiling)
+          (etaf-desktop-layout-set-tree
+           desktop '(:split horizontal 0.5 (:leaf one) (:leaf two)))
+          (let* ((buffer (etaf-desktop-mount desktop))
+                 (runtime (etaf-runtime-for-buffer buffer))
+                 (divider (cl-loop for (ref . props)
+                                   in (etaf-runtime-host-props-entries runtime)
+                                   when (equal "etaf-splitter-divider"
+                                               (plist-get props :class))
+                                   return ref))
+                 (span (- 400 (* 2 (frame-char-width))))
+                 (ratio (lambda ()
+                          (nth 2 (etaf-desktop-layout-tree desktop))))
+                 (right-edge (lambda ()
+                               (let ((one (etaf-desktop-window-state desktop 'one)))
+                                 (+ (plist-get one :x) (plist-get one :width)))))
+                 (edge (funcall right-edge)))
+            (should divider)
+            (etaf-desktop-gesture-test--dispatch
+             runtime divider
+             '((:phase start :delta (0 . 0))
+               (:phase move :delta (40 . 0))
+               (:phase move :delta (80 . 0))
+               (:phase end :delta (80 . 0))))
+            (should (< (abs (- (+ 0.5 (/ 80.0 span)) (funcall ratio)))
+                       0.001))
+            (should (<= (abs (- (funcall right-edge) (+ edge 80))) 1))
+            (etaf-desktop-gesture-test--dispatch
+             runtime divider
+             '((:phase start :delta (0 . 0))
+               (:phase move :delta (-40 . 0))
+               (:phase cancel :delta (-40 . 0))
+               (:phase start :delta (0 . 0))
+               (:phase end :delta (-80 . 0))))
+            (should (< (abs (- 0.5 (funcall ratio))) 0.001))))
+      (etaf-desktop-close desktop))))
+
 (provide 'etaf-desktop-gesture-tests)
 ;;; etaf-desktop-gesture-tests.el ends here

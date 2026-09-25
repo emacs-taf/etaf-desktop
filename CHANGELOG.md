@@ -29,6 +29,10 @@ All notable changes to ETAF Desktop are documented here.
   (with its icon when declared) and shows whether it is running and how many
   windows it owns. The launcher and window switcher open centered over the
   retained desktop instead of covering it with an opaque backdrop.
+- Dragging a tiling divider now follows the pointer one-to-one. Each motion
+  applies the displacement from the press to the ratio the drag started from,
+  so the divider no longer runs ahead of the mouse, and a cancelled drag
+  restores that start ratio.
 
 ### Changed
 

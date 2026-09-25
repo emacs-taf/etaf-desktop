@@ -149,7 +149,7 @@ minimized state only when every member window is minimized."
                (:constructor etaf-desktop--controller-create))
   name canvas-width canvas-height canvas-size-ref state-ref buffer runtime
   launcher-ref switcher-ref settings-ref settings-open-ref owns-runtime-p
-  owns-buffer-p)
+  owns-buffer-p divider-drag-origin)
 
 (defun etaf-desktop--default-settings ()
   "Return the detached default settings for a new Desktop controller."
@@ -1134,19 +1134,38 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
 (defun etaf-desktop--splitter-ratio-change (desktop workspace path divider gesture)
   "Apply one controlled SPLITTER GESTURE to the layout ratio at PATH.
 The gesture remains an ETAF UI input fact; this application callback converts
-its axis delta, using DIVIDER's last allocated ratio and span, into the
-caller-owned layout tree ratio through the public layout API."
-  (when (memq (plist-get gesture :phase) '(move end))
-    (let* ((orientation (etaf-desktop--layout-divider-orientation divider))
-           (ratio (etaf-value (etaf-desktop--layout-divider-ratio divider)))
-           (span (etaf-value (etaf-desktop--layout-divider-span divider)))
-           (delta (etaf-desktop--delta gesture))
-           (offset (if (eq orientation 'horizontal)
-                       (car delta) (cdr delta)))
-           (next (max 0.1 (min 0.9 (+ ratio (/ (float offset)
-                                                (max 1 span)))))))
-      (when (fboundp 'etaf-desktop-layout-resize-split)
-        (etaf-desktop-layout-resize-split desktop path next workspace)))))
+its axis delta, using DIVIDER's ratio and span at the gesture start, into the
+caller-owned layout tree ratio through the public layout API.  Ebox reports
+`:delta' as the displacement from the press, so every move maps that total
+onto the start ratio rather than onto the ratio the previous move produced.
+A cancelled gesture restores the start ratio."
+  (let* ((phase (plist-get gesture :phase))
+         (current (lambda ()
+                    (cons (etaf-value (etaf-desktop--layout-divider-ratio divider))
+                          (etaf-value (etaf-desktop--layout-divider-span divider)))))
+         (stored (etaf-desktop--controller-divider-drag-origin desktop)))
+    (when (eq phase 'start)
+      (setq stored (cons divider (funcall current)))
+      (setf (etaf-desktop--controller-divider-drag-origin desktop) stored))
+    (when (memq phase '(move end))
+      (let* ((orientation (etaf-desktop--layout-divider-orientation divider))
+             (origin (if (eq (car-safe stored) divider)
+                         (cdr stored)
+                       (funcall current)))
+             (delta (etaf-desktop--delta gesture))
+             (offset (if (eq orientation 'horizontal)
+                         (car delta) (cdr delta)))
+             (next (max 0.1 (min 0.9 (+ (car origin)
+                                        (/ (float offset)
+                                           (max 1 (cdr origin))))))))
+        (when (fboundp 'etaf-desktop-layout-resize-split)
+          (etaf-desktop-layout-resize-split desktop path next workspace))))
+    (when (and (eq phase 'cancel)
+               (eq (car-safe stored) divider)
+               (fboundp 'etaf-desktop-layout-resize-split))
+      (etaf-desktop-layout-resize-split desktop path (cadr stored) workspace))
+    (when (memq phase '(end cancel))
+      (setf (etaf-desktop--controller-divider-drag-origin desktop) nil))))
 
 (defun etaf-desktop--splitter-overlays (desktop workspace)
   "Return the divider overlays for every split WORKSPACE has allocated.

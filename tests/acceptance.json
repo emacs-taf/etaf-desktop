@@ -126,6 +126,11 @@
       "purpose": "Left and top resize gestures clamp at the desktop origin while preserving each opposite edge."
     },
     {
+      "name": "etaf-desktop-gesture-divider-tracks-cumulative-displacement",
+      "file": "tests/etaf-desktop-gesture-tests.el",
+      "purpose": "A tiling divider drag follows the pointer displacement from the press and a cancelled drag restores the start ratio."
+    },
+    {
       "name": "etaf-desktop-application-registry-and-lifecycle",
       "file": "tests/etaf-desktop-tests.el",
       "purpose": "An application manifest launches, suspends, restores and closes an isolated instance through public callbacks."
