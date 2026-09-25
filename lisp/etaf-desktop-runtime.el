@@ -148,8 +148,8 @@ minimized state only when every member window is minimized."
 (cl-defstruct (etaf-desktop--controller
                (:constructor etaf-desktop--controller-create))
   name canvas-width canvas-height canvas-size-ref state-ref buffer runtime
-  launcher-ref switcher-ref settings-ref settings-open-ref owns-runtime-p
-  owns-buffer-p divider-drag-origin)
+  launcher-ref switcher-ref settings-ref settings-open-ref layout-label-ref
+  owns-runtime-p owns-buffer-p divider-drag-origin)
 
 (defun etaf-desktop--default-settings ()
   "Return the detached default settings for a new Desktop controller."
@@ -1104,6 +1104,25 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
                                        (etaf-desktop-toggle-launcher desktop))))
                nil))))
 
+(defun etaf-desktop--layout-label (desktop workspace)
+  "Return the workspace bar label for DESKTOP's WORKSPACE layout mode."
+  (if (and (fboundp 'etaf-desktop-layout-mode)
+           (eq (etaf-desktop-layout-mode desktop workspace) 'tiling))
+      "Tiled" "Floating"))
+
+(defun etaf-desktop--sync-layout-label (desktop &optional workspace)
+  "Write the active workspace's layout label into DESKTOP's retained cell.
+WORKSPACE, when given, names the workspace whose mode changed; another
+workspace's change leaves the visible label alone.  The label is a Text
+payload of the workspace bar, so a mode change publishes as a prepared
+update instead of re-rendering the desktop."
+  (let* ((desktop (etaf-desktop--controller desktop))
+         (active (etaf-desktop--state-active-workspace
+                  (etaf-desktop--state desktop))))
+    (when (or (null workspace) (equal workspace active))
+      (etaf-set-value (etaf-desktop--controller-layout-label-ref desktop)
+                      (etaf-desktop--layout-label desktop active)))))
+
 (defun etaf-desktop--workspace-node (desktop state status)
   "Project STATE's workspace controls with a live focused-window STATUS."
   (progn
@@ -1112,13 +1131,10 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
                      :active (etaf-desktop--state-active-workspace state)
                      ;; The right side reports the focused application and the
                      ;; workspace's window-management mode, which the trailing
-                     ;; control switches without leaving the desktop.
+                     ;; control switches without leaving the desktop.  The
+                     ;; label is a retained cell so toggling stays prepared.
                      :status status
-                     :layout-label
-                     (if (eq (etaf-desktop-layout-mode desktop
-                                                       (etaf-desktop--state-active-workspace state))
-                             'tiling)
-                         "Tiled" "Floating")
+                     :layout-label (etaf-desktop--controller-layout-label-ref desktop)
                      :layout-action
                      (lambda ()
                        (etaf-desktop-toggle-layout-mode
@@ -1540,9 +1556,6 @@ of re-rendering the desktop tree."
   :render
   (let* ((state (etaf-desktop--state desktop))
          (workspace (etaf-desktop--state-active-workspace state))
-         (dividers-p (and (fboundp 'etaf-desktop-layout-mode)
-                          (memq (etaf-desktop-layout-mode desktop workspace)
-                                '(tiling master-stack))))
          (windows
           (cl-remove-if-not
                  (lambda (window)
@@ -1568,8 +1581,10 @@ of re-rendering the desktop tree."
              (mapcar (lambda (window) (etaf-desktop--window-node desktop window))
                      windows)
              ;; Tiling dividers are canvas overlays positioned in canvas
-             ;; coordinates; their rectangles are retained layout-policy refs.
-             (when dividers-p
+             ;; coordinates; their rectangles and visibility are retained
+             ;; layout-policy refs, so a floating workspace keeps its hidden
+             ;; divider nodes and a mode toggle publishes without re-render.
+             (when (fboundp 'etaf-desktop--layout-dividers)
                (etaf-desktop--splitter-overlays desktop workspace))))))))
 
 (cl-defun etaf-desktop-create
@@ -1607,7 +1622,9 @@ owns its reactive state and does not mount a buffer until `etaf-desktop-mount'."
           (etaf-ref (etaf-desktop--default-settings)
                     :name 'etaf-desktop-settings)
           (etaf-desktop--controller-settings-open-ref controller)
-          (etaf-ref nil :name 'etaf-desktop-settings-open))
+          (etaf-ref nil :name 'etaf-desktop-settings-open)
+          (etaf-desktop--controller-layout-label-ref controller)
+          (etaf-ref "Floating" :name 'etaf-desktop-layout-label))
     controller))
 
 (defun etaf-desktop-launcher-open-p (desktop)
@@ -2059,7 +2076,11 @@ its position and size together."
                                                (etaf-desktop--window-z-index b)))))
                (setf (etaf-desktop--state-active-workspace state) workspace
                      (etaf-desktop--state-active-window state)
-                     (and windows (etaf-desktop--window-id (car windows)))))
+                     (and windows (etaf-desktop--window-id (car windows))))
+               ;; The label cell is read while the new tree renders, so it
+               ;; changes before publication.
+               (etaf-set-value (etaf-desktop--controller-layout-label-ref desktop)
+                               (etaf-desktop--layout-label desktop workspace)))
              workspace))))
     (when-let* ((active (etaf-desktop-active-window desktop)))
       (etaf-desktop--notify-window-event desktop active 'focused))

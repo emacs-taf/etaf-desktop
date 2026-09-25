@@ -883,22 +883,49 @@ shell without a structural re-render."
       (etaf-desktop-close desktop))))
 
 (ert-deftest etaf-desktop-mounted-layout-toggle-rerenders-both-directions ()
-  "The mounted Floating/Tiled control remains live after its first click."
+  "The mounted Floating/Tiled control stays live and publishes without re-render."
   (let ((desktop (etaf-desktop-create :name " *desktop-toggle-mounted*"
-                                      :canvas-width 360 :canvas-height 16)))
+                                      :canvas-width 360 :canvas-height 16
+                                      :workspaces '(main dev))))
     (unwind-protect
         (progn
           (etaf-desktop-open-window desktop 'one :title "One")
+          (etaf-desktop-open-window desktop 'two :title "Two")
           (let* ((buffer (etaf-desktop-mount desktop))
-                 (runtime (etaf-runtime-for-buffer buffer)))
+                 (runtime (etaf-runtime-for-buffer buffer))
+                 (label-visible-p
+                  (lambda (label)
+                    (with-current-buffer buffer
+                      (string-match-p (regexp-quote label) (buffer-string))))))
+            (should (funcall label-visible-p "Floating"))
+            (should-not (funcall label-visible-p "Tiled"))
+            ;; The first tiling of two windows allocates a divider node.
             (etaf-dispatch-event runtime 'etaf-workspace-layout 'press)
             (should (eq 'tiling (etaf-desktop-layout-mode desktop)))
-            (with-current-buffer buffer
-              (should (string-match-p "Tiled" (buffer-string))))
-            (etaf-dispatch-event runtime 'etaf-workspace-layout 'press)
-            (should (eq 'floating (etaf-desktop-layout-mode desktop)))
-            (with-current-buffer buffer
-              (should (string-match-p "Floating" (buffer-string))))))
+            (should (funcall label-visible-p "Tiled"))
+            (should-not (funcall label-visible-p "Floating"))
+            ;; Later toggles rewrite retained cells only: the runtime
+            ;; generation, and so every prepared cohort, stays the same.
+            (let ((generation (etaf-runtime-current-generation runtime)))
+              (etaf-dispatch-event runtime 'etaf-workspace-layout 'press)
+              (should (eq 'floating (etaf-desktop-layout-mode desktop)))
+              (should (eq generation (etaf-runtime-current-generation runtime)))
+              (should (funcall label-visible-p "Floating"))
+              (should-not (funcall label-visible-p "Tiled"))
+              (etaf-dispatch-event runtime 'etaf-workspace-layout 'press)
+              (should (eq 'tiling (etaf-desktop-layout-mode desktop)))
+              (should (eq generation (etaf-runtime-current-generation runtime)))
+              (should (funcall label-visible-p "Tiled"))
+              (should (= 2 (length (etaf-desktop-layout-apply desktop)))))
+            ;; The label follows the active workspace, whose mode is its own.
+            (etaf-desktop-switch-workspace desktop 'dev)
+            (should (funcall label-visible-p "Floating"))
+            (should-not (funcall label-visible-p "Tiled"))
+            (etaf-desktop-set-layout-mode desktop 'tiling 'main)
+            (should (funcall label-visible-p "Floating"))
+            (etaf-desktop-switch-workspace desktop 'main)
+            (should (funcall label-visible-p "Tiled"))
+            (should-not (funcall label-visible-p "Floating"))))
       (etaf-desktop-close desktop))))
 
 (ert-deftest etaf-desktop-mode-switch-reveals-tiles-after-maximize ()

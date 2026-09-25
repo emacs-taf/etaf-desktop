@@ -717,13 +717,13 @@ Tiling layouts fill the desktop canvas while respecting each window's minimum
 size.  Floating windows retain their own rectangles.  Monocle lays every leaf
 over the canvas and raises the active window, giving a single-window view while
 retaining the tree for instant return to tiling.  RESET-MAXIMIZED ends a
-temporary maximized view during a mode transition; FORCE-PUBLICATION makes the
-new mode visible even if every rectangle stays equal.
+temporary maximized view during a mode transition; FORCE-PUBLICATION
+republishes the desktop tree even if every rectangle stays equal.
 
-Every rectangle and divider allocation is written through retained cells in
-one batch, so an unchanged structure publishes as prepared geometry.  The
-desktop republishes structurally only when FORCE-PUBLICATION is set or the set
-of divider paths changed."
+Every rectangle, divider allocation and divider visibility is written through
+retained cells in one batch, so an unchanged structure publishes as prepared
+geometry.  The desktop republishes structurally only when FORCE-PUBLICATION is
+set or a divider path appears that has no retained node yet."
   (let* ((desktop (etaf-desktop--controller desktop))
          (state (etaf-desktop--state desktop))
          (workspace (or workspace (etaf-desktop--state-active-workspace state))))
@@ -859,12 +859,17 @@ new rectangles are published."
               (etaf-desktop--layout-workspace-floating policy) nil
               (etaf-desktop--layout-workspace-pending policy) nil))
       (setf (etaf-desktop--layout-workspace-mode policy) mode)
-      ;; The policy and its visible rectangles commit in one ETAF publication.
+      ;; The policy, its visible rectangles, divider visibility and the
+      ;; workspace bar label commit in one ETAF publication through retained
+      ;; cells; only a divider seen for the first time republishes the tree.
       ;; A mode change exits a temporary maximized view before tiling is
       ;; applied, so that view cannot cover the newly allocated tiles.
-      (etaf-desktop--layout-apply desktop workspace
-                                  (not (eq previous-mode mode))
-                                  (not (eq previous-mode mode)))
+      (etaf-call-with-batch
+       (lambda ()
+         (etaf-desktop--sync-layout-label desktop workspace)
+         (etaf-desktop--layout-apply desktop workspace
+                                     (not (eq previous-mode mode))
+                                     nil)))
       mode)))
 
 (defun etaf-desktop-layout-tile-window (desktop id &optional workspace)

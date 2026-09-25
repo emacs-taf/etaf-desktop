@@ -43,6 +43,13 @@ All notable changes to ETAF Desktop are documented here.
   scenarios `etaf-desktop.policy.tiled-{focus,maximize,minimize,close}`
   cover these paths.
 
+- Toggling between floating and tiling layouts publishes through retained
+  bindings. The workspace bar label reads a reactive source, tiling divider
+  overlays stay mounted and hide through their visibility cells, and
+  `etaf-desktop-set-layout-mode` batches the label and geometry writes, so a
+  toggle keeps the committed generation once its dividers exist. Requires
+  ETAF's prepared bindings under a reactive Theme.
+
 - Window shells and taskbar items receive each window's mode, visibility and
   taskbar state as retained reactive sources, so maximizing, minimizing or
   restoring a window publishes through prepared Host bindings instead of
