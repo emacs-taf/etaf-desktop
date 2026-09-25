@@ -774,6 +774,81 @@ row wider than the window.
       (etaf-desktop-unregister-app app t)
       (etaf-desktop-close desktop))))
 
+(ert-deftest etaf-desktop-canvas-follows-window-resize ()
+  "A default desktop refits its canvas when its Emacs window changes size.
+
+Shrinking the window reflows tiles, refills a maximized window and pulls a
+floating window back inside the canvas; growing it again restores the full
+shell without a structural re-render."
+  (let ((desktop (etaf-desktop-create :name " *desktop-resize*"
+                                      :workspaces '(main float))))
+    (unwind-protect
+        (progn
+          (etaf-desktop-open-window desktop 'one :x 0 :y 0 :width 200 :height 4
+                                    :min-width 20 :min-height 2)
+          (etaf-desktop-open-window desktop 'two :x 0 :y 0 :width 200 :height 4
+                                    :min-width 20 :min-height 2)
+          (etaf-desktop-open-window desktop 'float :x 5 :y 40 :width 200 :height 4
+                                    :min-width 20 :min-height 2 :workspace 'float)
+          (etaf-desktop-set-layout-mode desktop 'tiling 'main)
+          (let ((buffer (etaf-mount "*desktop-resize-surface*"
+                                    (etaf-desktop-view desktop)))
+                (window (selected-window)))
+            (delete-other-windows window)
+            (set-window-buffer window buffer)
+            (unwind-protect
+                (let* ((lines (lambda ()
+                                (with-current-buffer buffer
+                                  (split-string (buffer-substring-no-properties
+                                                 (point-min) (point-max))
+                                                "\n"))))
+                       (canvas-height (lambda ()
+                                        (max 8 (- (window-body-height window) 2))))
+                       (full (funcall canvas-height)))
+                  ;; Nothing changes while the window keeps its size.
+                  (should (etaf-desktop-fit-canvas desktop))
+                  (should-not (etaf-desktop-fit-canvas desktop))
+                  (should (= full (plist-get (etaf-desktop-state desktop)
+                                             :canvas-height)))
+                  (etaf-desktop-maximize-window desktop 'two)
+                  (should (= full (plist-get (etaf-desktop-window-state desktop 'two)
+                                             :height)))
+                  ;; Shrinking the window reflows the tiled workspace.
+                  (let ((other (split-window window)))
+                    (unwind-protect
+                        (let ((small (funcall canvas-height)))
+                          (should (< small full))
+                          (should (equal (cons (plist-get (etaf-desktop-state desktop)
+                                                          :canvas-width)
+                                               small)
+                                         (etaf-desktop-fit-canvas desktop)))
+                          (should (= small (plist-get (etaf-desktop-state desktop)
+                                                      :canvas-height)))
+                          (should (= (+ small 2) (length (funcall lines))))
+                          (should (= small
+                                     (plist-get (etaf-desktop-window-state desktop 'two)
+                                                :height)))
+                          (let ((one (etaf-desktop-window-state desktop 'one)))
+                            (should (<= (+ (plist-get one :y) (plist-get one :height))
+                                        small)))
+                          ;; A floating window beyond the new canvas is pulled
+                          ;; back inside it when its workspace becomes active.
+                          (etaf-desktop-switch-workspace desktop 'float)
+                          (delete-window other)
+                          (should (etaf-desktop-fit-canvas desktop))
+                          (should (= full (plist-get (etaf-desktop-state desktop)
+                                                     :canvas-height)))
+                          (should (= (+ full 2) (length (funcall lines))))
+                          (let ((float (etaf-desktop-window-state desktop 'float)))
+                            (should (<= (+ (plist-get float :y)
+                                           (plist-get float :height))
+                                        full))
+                            (should (= 4 (plist-get float :height)))))
+                      (when (window-live-p other) (delete-window other)))))
+              (when-let* ((runtime (etaf-runtime-for-buffer buffer)))
+                (etaf-unmount runtime)))))
+      (etaf-desktop-close desktop))))
+
 (ert-deftest etaf-desktop-toggle-layout-mode-switches-the-workspace ()
   "The workspace control switches between floating and tiling."
   (let ((desktop (etaf-desktop-create :name " *desktop-toggle*"

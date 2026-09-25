@@ -117,6 +117,18 @@
 ;; Mutations publish through ETAF's reactive path and retain Ebox's committed
 ;; target and incremental display semantics.
 ;;
+;; Function: etaf-desktop-fit-canvas (desktop &optional window)
+;;;###autoload (autoload 'etaf-desktop-fit-canvas "etaf-desktop" nil nil)
+;; Fit DESKTOP's default canvas to the live Emacs WINDOW displaying it; WINDOW
+;; defaults to the window showing the mounted buffer.  A desktop created with
+;; both `:canvas-width' and `:canvas-height' keeps them.  When the fitted
+;; `(WIDTH . HEIGHT)' changes, the shell frame follows through retained
+;; bindings, tiled and monocle workspaces reflow, maximized windows refill the
+;; canvas and floating windows stay inside it in one batch.  Return the new
+;; size, or nil when nothing changed.  A mounted desktop calls this itself
+;; from Emacs' window size hooks; call it after resizing a window outside the
+;; redisplay cycle, such as in batch Emacs.
+;;
 ;; Function: etaf-desktop-close (desktop)
 ;;;###autoload (autoload 'etaf-desktop-close "etaf-desktop" nil nil)
 ;; Unmount the Runtime created by `etaf-desktop-mount' and kill its newly

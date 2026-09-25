@@ -17,6 +17,12 @@ All notable changes to ETAF Desktop are documented here.
   keeps its own theme colors. `etaf-desktop-theme-tokens` exposes the resolved
   colors for companion applications and tests.
 
+- A default desktop now follows its Emacs window. Resizing the window refits
+  the shell frame, tiled and monocle workspaces, maximized windows and
+  floating windows in one batch through retained bindings, and
+  `etaf-desktop-fit-canvas` runs the same refit on demand (for example after
+  `split-window` in batch Emacs).
+
 ### Fixed
 
 - The Applications launcher lists every registered application by title

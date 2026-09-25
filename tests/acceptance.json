@@ -156,6 +156,11 @@
       "purpose": "An unconfigured desktop sizes its shell from the window it renders into, so a Playground-style preview fills its window without overflowing it."
     },
     {
+      "name": "etaf-desktop-canvas-follows-window-resize",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "A default desktop refits its shell, tiles, maximized and floating windows to the Emacs window's new size through etaf-desktop-fit-canvas."
+    },
+    {
       "name": "etaf-desktop-application-errors-are-isolated",
       "file": "tests/etaf-desktop-tests.el",
       "purpose": "A failing application becomes an error placeholder while other desktop windows remain usable."
