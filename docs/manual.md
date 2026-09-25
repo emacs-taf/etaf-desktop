@@ -56,7 +56,12 @@ canvas. `etaf-desktop-restore-window` returns that rectangle. Minimized windows
 become invisible and are listed by the taskbar; restoring them makes them
 visible and active. `etaf-desktop-focus-window` raises a window and switches to
 its workspace. Workspaces are application state: removing one moves its windows
-to a remaining workspace and the final workspace cannot be removed.
+to a remaining workspace and the final workspace cannot be removed. Every
+workspace's windows and dividers stay mounted; `etaf-desktop-switch-workspace`
+shows the target workspace, hides the others, focuses its highest visible
+window and updates the workspace bar through retained cells, so the mounted
+tree is not rebuilt. The taskbar lists the windows of every workspace, and
+activating another workspace's entry switches to it.
 
 ## Desktop Settings
 

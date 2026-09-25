@@ -32,6 +32,7 @@
 (declare-function etaf-desktop-layout-split "etaf-desktop-layout"
                   (desktop target new-id orientation ratio &optional workspace))
 (declare-function etaf-desktop--layout-workspace-tree "etaf-desktop-layout" (workspace))
+(declare-function etaf-desktop--layout-divider-shown "etaf-desktop-layout" (divider))
 (declare-function etaf-desktop--layout-tree-leaves "etaf-desktop-layout" (tree))
 (declare-function etaf-desktop--layout-dividers "etaf-desktop-layout"
                   (desktop &optional workspace))
@@ -53,12 +54,12 @@
   id title view x-source y-source width-source height-source
   min-width min-height max-width max-height
   visible-source minimized-source maximized-source mode-source taskbar-state-source
-  workspace normal-geometry z-index-source movable resizable
+  shown-source workspace-source normal-geometry z-index-source movable resizable
   geometry-input geometry-writer focus-writer)
 
 (cl-defstruct (etaf-desktop--state
                (:constructor etaf-desktop--state-create))
-  windows workspaces active-workspace active-window-source next-z)
+  windows workspaces active-workspace-source active-window-source next-z)
 
 (defmacro etaf-desktop--define-state-field (record field &optional unit)
   "Define FIELD access on RECORD with one authoritative reactive cell.
@@ -109,7 +110,9 @@ UNIT describes the canonical value supplied directly to UI geometry props."
 (etaf-desktop--define-state-field window visible)
 (etaf-desktop--define-state-field window minimized)
 (etaf-desktop--define-state-field window maximized)
+(etaf-desktop--define-state-field window workspace)
 (etaf-desktop--define-state-field state active-window)
+(etaf-desktop--define-state-field state active-workspace)
 
 (defun etaf-desktop--window-mode-value (window)
   "Return WINDOW's presentation mode from its minimized and maximized facts."
@@ -134,6 +137,21 @@ shell and taskbar receive stable reactive inputs for the window's lifetime."
           (or (and previous (etaf-desktop--window-taskbar-state-source previous))
               (etaf-computed
                (lambda () (and (etaf-value minimized) 'minimized)))))))
+
+(defun etaf-desktop--retain-window-shown (state window previous)
+  "Retain WINDOW's presentation source in STATE, reusing PREVIOUS's.
+The computed reads the retained visible, workspace and active-workspace
+cells, so a workspace switch hides and reveals windows through prepared
+visibility instead of remounting them."
+  (let ((visible (etaf-desktop--window-visible-source window))
+        (workspace (etaf-desktop--window-workspace-source window))
+        (active (etaf-desktop--state-active-workspace-source state)))
+    (setf (etaf-desktop--window-shown-source window)
+          (or (and previous (etaf-desktop--window-shown-source previous))
+              (etaf-computed
+               (lambda ()
+                 (and (etaf-value visible)
+                      (equal (etaf-value workspace) (etaf-value active)))))))))
 
 (defun etaf-desktop--taskbar-state-source (members)
   "Return the reactive taskbar state for window MEMBERS of one item.
@@ -554,7 +572,7 @@ desktop hides buffer chrome, so no extra padding row is needed at the bottom."
    :visible-source (etaf-desktop--window-visible window)
    :minimized-source (etaf-desktop--window-minimized window)
    :maximized-source (etaf-desktop--window-maximized window)
-   :workspace (etaf-desktop--window-workspace window)
+   :workspace-source (etaf-desktop--window-workspace window)
    :normal-geometry (copy-sequence (etaf-desktop--window-normal-geometry window))
    :z-index-source (etaf-desktop--window-z-index window)
    :movable (etaf-desktop--window-movable window)
@@ -566,7 +584,7 @@ desktop hides buffer chrome, so no extra padding row is needed at the bottom."
    :windows (mapcar #'etaf-desktop--copy-window
                     (etaf-desktop--state-windows state))
    :workspaces (copy-sequence (etaf-desktop--state-workspaces state))
-   :active-workspace (etaf-desktop--state-active-workspace state)
+   :active-workspace-source (etaf-desktop--state-active-workspace state)
    :active-window-source (etaf-desktop--state-active-window state)
    :next-z (etaf-desktop--state-next-z state)))
 
@@ -657,6 +675,7 @@ copy it before returning it to callers."
   (let ((previous (etaf-desktop--state desktop)))
     (etaf-call-with-batch
      (lambda ()
+       (etaf-desktop--retain-state-active-workspace state previous)
        (dolist (window (etaf-desktop--state-windows state))
          (let ((old (etaf-desktop--window-for
                      previous (etaf-desktop--window-id window))))
@@ -668,7 +687,9 @@ copy it before returning it to callers."
            (etaf-desktop--retain-window-visible window old)
            (etaf-desktop--retain-window-minimized window old)
            (etaf-desktop--retain-window-maximized window old)
+           (etaf-desktop--retain-window-workspace window old)
            (etaf-desktop--retain-window-mode window old)
+           (etaf-desktop--retain-window-shown state window old)
            (etaf-desktop--prepare-window-writers state window)))
        (etaf-desktop--retain-state-active-window state previous)
        (etaf-set-value (etaf-desktop--controller-state-ref desktop) state))))
@@ -706,12 +727,11 @@ policy and not maximized; other cases republish desktop structure."
        (not (etaf-desktop--tiled-window-p desktop window))
        (not (etaf-desktop--window-maximized window))))
 
-(defun etaf-desktop--retained-focus-p (state window)
+(defun etaf-desktop--retained-focus-p (_state window)
   "Return whether focusing WINDOW only raises it through retained cells.
-A visible, non-minimized window in the active workspace changes nothing but
-its stacking order and the active-window cell."
-  (and (etaf-desktop--active-workspace-window-p state window)
-       (etaf-desktop--window-visible window)
+A visible, non-minimized window changes nothing but its stacking order and
+the active-window and active-workspace cells, whichever workspace it is in."
+  (and (etaf-desktop--window-visible window)
        (not (etaf-desktop--window-minimized window))))
 
 (defun etaf-desktop--place-window (window x y width height)
@@ -1004,7 +1024,7 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
            ;; macOS presentation: only the active window shows colored
            ;; traffic lights; every other window renders gray lights.
            :controls-active active
-           :title title :mode mode :visible (etaf-desktop--window-visible-source window)
+           :title title :mode mode :visible (etaf-desktop--window-shown-source window)
            :title-font-size (plist-get settings :title-font-size)
            :content-font-size (plist-get settings :content-font-size)
            :font-family (plist-get settings :font-family)
@@ -1058,11 +1078,10 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
   "Project STATE's taskbar membership with a live ACTIVE selection source."
   (let* ((settings (etaf-desktop--settings desktop))
          (grouping (plist-get settings :taskbar-grouping))
-         (windows (cl-remove-if-not
-                   (lambda (window)
-                     (equal (etaf-desktop--window-workspace window)
-                            (etaf-desktop--state-active-workspace state)))
-                   (etaf-desktop--state-windows state)))
+         ;; Every workspace's windows stay listed: selecting one switches to
+         ;; its workspace through retained cells, and the bar's membership
+         ;; never depends on the active workspace.
+         (windows (etaf-desktop--state-windows state))
          (groups nil))
     (dolist (window windows)
       (let* ((key (etaf-desktop--taskbar-key
@@ -1128,7 +1147,7 @@ update instead of re-rendering the desktop."
   (progn
     (etaf-node 'etaf-workspace-bar
                (list :workspaces (etaf-desktop--state-workspaces state)
-                     :active (etaf-desktop--state-active-workspace state)
+                     :active (etaf-desktop--state-active-workspace-source state)
                      ;; The right side reports the focused application and the
                      ;; workspace's window-management mode, which the trailing
                      ;; control switches without leaving the desktop.  The
@@ -1207,7 +1226,7 @@ window covers them."
                     :width (etaf-desktop--layout-divider-width divider)
                     :height (etaf-desktop--layout-divider-height divider))
               :z-index 0
-              :visible (etaf-desktop--layout-divider-visible divider)
+              :visible (etaf-desktop--layout-divider-shown divider)
               :divider-content (etaf-desktop--layout-divider-content divider)
               :on-change
               (lambda (gesture)
@@ -1554,16 +1573,12 @@ of re-rendering the desktop tree."
                (etaf-desktop--controller-owns-buffer-p desktop) nil))))
     nil)
   :render
+  ;; Every workspace's windows stay in the retained Component tree so their
+  ;; child state survives; `etaf-window' projects the controlled hidden,
+  ;; minimized and inactive-workspace presentation through retained cells,
+  ;; so a workspace switch never re-renders this tree.
   (let* ((state (etaf-desktop--state desktop))
-         (workspace (etaf-desktop--state-active-workspace state))
-         (windows
-          (cl-remove-if-not
-                 (lambda (window)
-                   ;; Keep minimized windows in the retained Component tree so
-                   ;; their child state survives; `etaf-window' projects the
-                   ;; controlled hidden/minimized presentation.
-                   (equal (etaf-desktop--window-workspace window) workspace))
-                 (etaf-desktop--state-windows state))))
+         (windows (etaf-desktop--state-windows state)))
     (etaf-node
      'etaf-desktop--shell-frame
      (list :desktop desktop)
@@ -1582,10 +1597,13 @@ of re-rendering the desktop tree."
                      windows)
              ;; Tiling dividers are canvas overlays positioned in canvas
              ;; coordinates; their rectangles and visibility are retained
-             ;; layout-policy refs, so a floating workspace keeps its hidden
-             ;; divider nodes and a mode toggle publishes without re-render.
+             ;; layout-policy refs, so a floating or inactive workspace keeps
+             ;; its hidden divider nodes and a mode toggle or workspace switch
+             ;; publishes without re-render.
              (when (fboundp 'etaf-desktop--layout-dividers)
-               (etaf-desktop--splitter-overlays desktop workspace))))))))
+               (mapcan (lambda (workspace)
+                         (etaf-desktop--splitter-overlays desktop workspace))
+                       (etaf-desktop--state-workspaces state)))))))))
 
 (cl-defun etaf-desktop-create
     (&key (name "*ETAF Desktop*") canvas-width canvas-height
@@ -1609,7 +1627,8 @@ owns its reactive state and does not mount a buffer until `etaf-desktop-mount'."
           (etaf-ref
            (etaf-desktop--state-create
             :windows nil :workspaces (copy-sequence workspaces)
-           :active-workspace (car workspaces)
+            :active-workspace-source
+            (etaf-ref (car workspaces) :name 'etaf-desktop-workspace :test #'equal)
             :active-window-source (etaf-ref nil :name 'etaf-desktop-focus) :next-z 1)
            :name 'etaf-desktop-state)
           (etaf-desktop--controller-launcher-ref controller)
@@ -1731,7 +1750,7 @@ WORKSPACE defaults to the active workspace."
                  :width-source width :height-source height
                  :min-width min-width :min-height min-height :max-width max-width
                  :max-height max-height :visible-source visible
-                 :minimized-source nil :maximized-source nil :workspace workspace
+                 :minimized-source nil :maximized-source nil :workspace-source workspace
                  :normal-geometry (list x y width height)
                  :z-index-source (etaf-desktop--state-next-z state)
                  :movable movable :resizable resizable)))
@@ -1791,13 +1810,26 @@ a focused target while other windows remain available."
     result))
 
 (defun etaf-desktop-focus-window (desktop id)
-  "Focus and raise window ID, switching to its workspace."
+  "Focus and raise window ID, switching to its workspace.
+A visible window raises through retained cells; when it lives in another
+workspace, the active-workspace cell and layout label switch in the same
+batch and that workspace's layout is refreshed.  A hidden or minimized
+window republishes desktop structure."
   (let* ((desktop (etaf-desktop--controller desktop))
          (state (etaf-desktop--state desktop))
          (window (etaf-desktop--window-for state id))
+         (switching (and window
+                         (not (etaf-desktop--active-workspace-window-p
+                               state window))))
          (result
           (if (and window (etaf-desktop--retained-focus-p state window))
-              (etaf-call-with-batch (etaf-desktop--window-focus-writer window))
+              (prog1 (etaf-call-with-batch
+                      (lambda ()
+                        (prog1 (funcall (etaf-desktop--window-focus-writer window))
+                          (when switching
+                            (etaf-desktop--sync-layout-label desktop)))))
+                (when (and switching (fboundp 'etaf-desktop-layout-refresh))
+                  (etaf-desktop-layout-refresh desktop)))
             (etaf-desktop--update
              desktop
              (lambda (state)
@@ -2058,35 +2090,28 @@ its position and size together."
        (etaf-desktop--fail "Unknown desktop window: %S" id))))
 
 (defun etaf-desktop-switch-workspace (desktop workspace)
-  "Make WORKSPACE the active desktop workspace."
+  "Make WORKSPACE the active desktop workspace.
+The switch writes the retained active-workspace, active-window and layout
+label cells in one batch: every workspace's windows and dividers stay
+mounted and follow through prepared visibility, so no desktop structure is
+republished.  Focus passes to WORKSPACE's highest visible window."
   (let* ((desktop (etaf-desktop--controller desktop))
-         (result
-          (etaf-desktop--update
-           desktop
-           (lambda (state)
-             (etaf-desktop--assert-workspace state workspace)
-             (let ((windows (cl-remove-if-not
-                             (lambda (window)
-                               (and (equal (etaf-desktop--window-workspace window) workspace)
-                                    (etaf-desktop--window-visible window)
-                                    (not (etaf-desktop--window-minimized window))))
-                             (copy-sequence (etaf-desktop--state-windows state)))))
-               (setq windows (sort windows (lambda (a b)
-                                            (> (etaf-desktop--window-z-index a)
-                                               (etaf-desktop--window-z-index b)))))
-               (setf (etaf-desktop--state-active-workspace state) workspace
-                     (etaf-desktop--state-active-window state)
-                     (and windows (etaf-desktop--window-id (car windows))))
-               ;; The label cell is read while the new tree renders, so it
-               ;; changes before publication.
-               (etaf-set-value (etaf-desktop--controller-layout-label-ref desktop)
-                               (etaf-desktop--layout-label desktop workspace)))
-             workspace))))
-    (when-let* ((active (etaf-desktop-active-window desktop)))
-      (etaf-desktop--notify-window-event desktop active 'focused))
-    (unless (etaf-desktop-active-window desktop)
+         (state (etaf-desktop--state desktop)))
+    (etaf-desktop--assert-workspace state workspace)
+    (let ((replacement (etaf-desktop--highest-visible-window state workspace)))
+      (etaf-call-with-batch
+       (lambda ()
+         (setf (etaf-desktop--state-active-workspace state) workspace
+               (etaf-desktop--state-active-window state)
+               (and replacement (etaf-desktop--window-id replacement)))
+         (etaf-set-value (etaf-desktop--controller-layout-label-ref desktop)
+                         (etaf-desktop--layout-label desktop workspace)))))
+    (when (fboundp 'etaf-desktop-layout-refresh)
+      (etaf-desktop-layout-refresh desktop workspace))
+    (if-let* ((active (etaf-desktop-active-window desktop)))
+        (etaf-desktop--notify-window-event desktop active 'focused)
       (etaf-desktop--notify-window-event desktop nil 'focus-cleared))
-    result))
+    workspace))
 
 (defun etaf-desktop-add-workspace (desktop workspace)
   "Add WORKSPACE to DESKTOP and return its key."

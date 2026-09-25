@@ -36,6 +36,13 @@ All notable changes to ETAF Desktop are documented here.
 
 ### Changed
 
+- Switching workspaces, including through `etaf-desktop-focus-window` on a
+  window of another workspace, publishes through retained cells. Every
+  workspace's windows and tiling dividers stay mounted; the active workspace
+  is a reactive source that shows or hides them, updates the workspace bar
+  and layout label and focuses the highest visible window. The desktop tree
+  is no longer rebuilt on a switch. The taskbar now lists the windows of
+  every workspace, not only the active one.
 - Tiling layouts publish window rectangles and divider positions, labels and
   visibility through retained geometry cells. Ratio drags, focus changes,
   maximize and minimize under tiling update the affected windows in place;

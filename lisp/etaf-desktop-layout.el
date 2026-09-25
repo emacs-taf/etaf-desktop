@@ -41,20 +41,34 @@ LEFT, TOP, WIDTH, HEIGHT, CONTENT and VISIBLE are refs read by the divider's
 Host bindings; RATIO and SPAN are refs the gesture callback reads when it maps
 a pointer delta onto the caller-owned tree.  A record outlives its split: a
 path that leaves the tree keeps its retained node hidden, so membership
-changes publish through prepared visibility instead of desktop structure."
-  orientation left top width height content visible ratio span)
+changes publish through prepared visibility instead of desktop structure.
+SHOWN is the computed the Host binds: VISIBLE narrowed to the divider's
+workspace being active, so a workspace switch hides and reveals dividers
+through the same prepared visibility."
+  orientation left top width height content visible ratio span shown)
 
-(defun etaf-desktop--layout-divider-for (policy path)
-  "Return POLICY's retained divider record for PATH, creating it when new."
-  (let ((table (etaf-desktop--layout-workspace-dividers policy)))
+(defun etaf-desktop--layout-divider-for (desktop workspace path)
+  "Return WORKSPACE's retained divider record for PATH, creating it when new.
+Creation happens while DESKTOP's layout is applied, outside rendering, so the
+record's shown computed exists before any View reads it."
+  (let* ((policy (etaf-desktop--layout-ensure-workspace desktop workspace))
+         (table (etaf-desktop--layout-workspace-dividers policy)))
     (or (gethash path table)
-        (puthash path
-                 (etaf-desktop--layout-divider-create
-                  :left (etaf-ref '(px 0)) :top (etaf-ref '(lh 0))
-                  :width (etaf-ref '(px 1)) :height (etaf-ref '(lh 1))
-                  :content (etaf-ref " ") :visible (etaf-ref nil)
-                  :ratio (etaf-ref 0.5) :span (etaf-ref 1))
-                 table))))
+        (let* ((visible (etaf-ref nil))
+               (active (etaf-desktop--state-active-workspace-source
+                        (etaf-desktop--state desktop))))
+          (puthash path
+                   (etaf-desktop--layout-divider-create
+                    :left (etaf-ref '(px 0)) :top (etaf-ref '(lh 0))
+                    :width (etaf-ref '(px 1)) :height (etaf-ref '(lh 1))
+                    :content (etaf-ref " ") :visible visible
+                    :ratio (etaf-ref 0.5) :span (etaf-ref 1)
+                    :shown
+                    (etaf-computed
+                     (lambda ()
+                       (and (etaf-value visible)
+                            (equal (etaf-value active) workspace)))))
+                   table)))))
 
 (defun etaf-desktop--layout-divider-facts
     (state tree spacing x y width height &optional path)
@@ -785,7 +799,7 @@ set or a divider path appears that has no retained node yet."
              (when window (etaf-desktop--raise state window))))
          (dolist (fact dividers)
            (etaf-desktop--layout-write-divider
-            (etaf-desktop--layout-divider-for policy (car fact)) fact))
+            (etaf-desktop--layout-divider-for desktop workspace (car fact)) fact))
          (maphash (lambda (path divider)
                     (unless (member path paths)
                       (setf (etaf-value (etaf-desktop--layout-divider-visible

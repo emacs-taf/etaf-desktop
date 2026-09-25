@@ -928,6 +928,60 @@ shell without a structural re-render."
             (should-not (funcall label-visible-p "Floating"))))
       (etaf-desktop-close desktop))))
 
+(ert-deftest etaf-desktop-mounted-workspace-switch-is-retained ()
+  "Switching workspaces hides and shows windows without a structural publish."
+  (let ((desktop (etaf-desktop-create :name " *desktop-switch-mounted*"
+                                      :canvas-width 360 :canvas-height 16
+                                      :workspaces '(main dev))))
+    (unwind-protect
+        (progn
+          (etaf-desktop-open-window desktop 'one :title "One"
+                                    :view (etaf-view (text "Main body one"))
+                                    :min-width 10 :min-height 2)
+          (etaf-desktop-open-window desktop 'two :title "Two"
+                                    :view (etaf-view (text "Main body two"))
+                                    :min-width 10 :min-height 2)
+          (etaf-desktop-switch-workspace desktop 'dev)
+          (etaf-desktop-open-window desktop 'three :title "Three"
+                                    :view (etaf-view (text "Dev body three"))
+                                    :min-width 10 :min-height 2)
+          (etaf-desktop-switch-workspace desktop 'main)
+          (etaf-desktop-set-layout-mode desktop 'tiling 'main)
+          (let* ((buffer (etaf-desktop-mount desktop))
+                 (runtime (etaf-runtime-for-buffer buffer))
+                 (visible-p
+                  (lambda (text)
+                    (with-current-buffer buffer
+                      (string-match-p (regexp-quote text) (buffer-string)))))
+                 (generation (etaf-runtime-current-generation runtime)))
+            (should (funcall visible-p "Main body one"))
+            (should (funcall visible-p "Main body two"))
+            (should-not (funcall visible-p "Dev body three"))
+            ;; The taskbar lists every workspace's windows.
+            (should (funcall visible-p "Three"))
+            (etaf-desktop-switch-workspace desktop 'dev)
+            (should (eq generation (etaf-runtime-current-generation runtime)))
+            (should (eq 'dev (etaf-desktop-active-workspace desktop)))
+            (should (eq 'three (etaf-desktop-active-window desktop)))
+            (should (funcall visible-p "Dev body three"))
+            (should-not (funcall visible-p "Main body one"))
+            (should-not (funcall visible-p "Main body two"))
+            (should (funcall visible-p "Floating"))
+            (etaf-desktop-switch-workspace desktop 'main)
+            (should (eq generation (etaf-runtime-current-generation runtime)))
+            (should (eq 'two (etaf-desktop-active-window desktop)))
+            (should (funcall visible-p "Main body one"))
+            (should (funcall visible-p "Main body two"))
+            (should-not (funcall visible-p "Dev body three"))
+            (should (funcall visible-p "Tiled"))
+            ;; Focusing a window of another workspace switches to it retained.
+            (etaf-desktop-focus-window desktop 'three)
+            (should (eq generation (etaf-runtime-current-generation runtime)))
+            (should (eq 'dev (etaf-desktop-active-workspace desktop)))
+            (should (funcall visible-p "Dev body three"))
+            (should-not (funcall visible-p "Main body two"))))
+      (etaf-desktop-close desktop))))
+
 (ert-deftest etaf-desktop-mode-switch-reveals-tiles-after-maximize ()
   "Switching from a maximized floating view reveals every tiled window."
   (let ((desktop (etaf-desktop-create :name " *desktop-maximized-toggle*"
