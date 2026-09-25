@@ -102,9 +102,14 @@ keymap route with no replacement reader or direct gesture phase dispatch."
             :start (cons (car xy) (cdr xy)) :last-motion last-delta
             :release (cons (car delta) (cdr delta))))))
 
-(defun etaf-desktop-benchmark--fixture (operation)
-  "Create a four-window workload for public OPERATION."
-  (let* ((buffer (generate-new-buffer " *ETAF Desktop benchmark*"))
+(defun etaf-desktop-benchmark--fixture (scenario)
+  "Create a four-window workload for public SCENARIO.
+A `tiled-' prefix runs the remaining operation on a tiled workspace."
+  (let* ((tiled (string-prefix-p "tiled-" (symbol-name scenario)))
+         (operation (if tiled
+                        (intern (substring (symbol-name scenario) 6))
+                      scenario))
+         (buffer (generate-new-buffer " *ETAF Desktop benchmark*"))
          (desktop (etaf-desktop-create
                    :name (buffer-name buffer) :canvas-width 900 :canvas-height 30
                    :workspaces '(main dev)))
@@ -140,7 +145,7 @@ keymap route with no replacement reader or direct gesture phase dispatch."
                 desktop (intern (format "desktop-dev-%s" index)) index 'dev)))
     (etaf-desktop-switch-workspace desktop 'main)
     (etaf-desktop-focus-window desktop (car (last ids)))
-    (when (eq operation 'layout-ratio)
+    (when (or tiled (eq operation 'layout-ratio))
       (etaf-desktop-layout-set-tree
        desktop '(:split horizontal 0.5
                         (:split vertical 0.5 (:leaf desktop-one) (:leaf desktop-three))
@@ -367,6 +372,7 @@ keymap route with no replacement reader or direct gesture phase dispatch."
                          resize-top-left resize-top-right resize-bottom-left resize-bottom-right
                          focus maximize minimize restore-maximized restore-minimized close
                          workspace layout-ratio layout-mode
+                         tiled-focus tiled-maximize tiled-minimize tiled-close
                          launcher-open launcher-close switcher-open switcher-close
                          settings-open settings-close))
   (taf-benchmark-register

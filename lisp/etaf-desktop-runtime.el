@@ -9,8 +9,6 @@
 (declare-function ebox-viewport-window-width "ebox-viewport" (window))
 (defvar ebox-viewport-width)
 (defvar ebox-viewport-height)
-(defvar etaf-desktop--layout-divider-px)
-(defvar etaf-desktop--layout-divider-rows)
 (declare-function etaf-desktop-layout-mode "etaf-desktop-layout"
                   (desktop &optional workspace))
 (declare-function etaf-desktop--layout-ensure-workspace "etaf-desktop-layout"
@@ -28,11 +26,19 @@
                   (desktop path ratio &optional workspace))
 (declare-function etaf-desktop-layout-split "etaf-desktop-layout"
                   (desktop target new-id orientation ratio &optional workspace))
-(declare-function etaf-desktop--layout-partition "etaf-desktop-layout"
-                  (state node spacing x y width height))
-(declare-function etaf-desktop--layout-spacing "etaf-desktop-layout" (desktop))
-(declare-function etaf-desktop--layout-canvas-rect "etaf-desktop-layout"
-                  (desktop state tree spacing mode))
+(declare-function etaf-desktop--layout-workspace-tree "etaf-desktop-layout" (workspace))
+(declare-function etaf-desktop--layout-tree-leaves "etaf-desktop-layout" (tree))
+(declare-function etaf-desktop--layout-dividers "etaf-desktop-layout"
+                  (desktop &optional workspace))
+(declare-function etaf-desktop--layout-divider-orientation "etaf-desktop-layout" (divider))
+(declare-function etaf-desktop--layout-divider-left "etaf-desktop-layout" (divider))
+(declare-function etaf-desktop--layout-divider-top "etaf-desktop-layout" (divider))
+(declare-function etaf-desktop--layout-divider-width "etaf-desktop-layout" (divider))
+(declare-function etaf-desktop--layout-divider-height "etaf-desktop-layout" (divider))
+(declare-function etaf-desktop--layout-divider-content "etaf-desktop-layout" (divider))
+(declare-function etaf-desktop--layout-divider-visible "etaf-desktop-layout" (divider))
+(declare-function etaf-desktop--layout-divider-ratio "etaf-desktop-layout" (divider))
+(declare-function etaf-desktop--layout-divider-span "etaf-desktop-layout" (divider))
 (declare-function etaf-desktop-app "etaf-desktop-apps" (id))
 
 (define-error 'etaf-desktop-error "Invalid ETAF Desktop operation")
@@ -654,19 +660,71 @@ copy it before returning it to callers."
     (etaf-desktop-layout-refresh desktop))
   state)
 
-(defun etaf-desktop--floating-workspace-p (desktop state window)
-  "Return whether WINDOW sits in STATE's active workspace under floating layout."
-  (and (equal (etaf-desktop--state-active-workspace state)
-              (etaf-desktop--window-workspace window))
-       (eq 'floating
-           (etaf-desktop--layout-workspace-mode
-            (etaf-desktop--layout-ensure-workspace
-             desktop (etaf-desktop--state-active-workspace state))))))
+(defun etaf-desktop--active-workspace-window-p (state window)
+  "Return whether WINDOW belongs to STATE's active workspace."
+  (equal (etaf-desktop--state-active-workspace state)
+         (etaf-desktop--window-workspace window)))
+
+(defun etaf-desktop--tiled-window-p (desktop window)
+  "Return whether DESKTOP's layout policy owns WINDOW's rectangle.
+A window is tiled when its workspace runs a tiling, master-stack or monocle
+layout and the window is a leaf of that workspace's tree."
+  (and (fboundp 'etaf-desktop-layout-tree)
+       (let* ((workspace (etaf-desktop--window-workspace window))
+              (policy (etaf-desktop--layout-ensure-workspace desktop workspace)))
+         (and (memq (etaf-desktop--layout-workspace-mode policy)
+                    '(tiling master-stack monocle))
+              (member (etaf-desktop--window-id window)
+                      (etaf-desktop--layout-tree-leaves
+                       (etaf-desktop--layout-workspace-tree policy)))
+              t))))
 
 (defun etaf-desktop--floating-window-p (desktop state window)
-  "Return whether WINDOW permits direct scalar changes in current STATE."
-  (and (etaf-desktop--floating-workspace-p desktop state window)
+  "Return whether WINDOW permits direct scalar geometry writes in STATE.
+Direct writes need the window in the active workspace, unowned by the layout
+policy and not maximized; other cases republish desktop structure."
+  (and (etaf-desktop--active-workspace-window-p state window)
+       (not (etaf-desktop--tiled-window-p desktop window))
        (not (etaf-desktop--window-maximized window))))
+
+(defun etaf-desktop--retained-focus-p (state window)
+  "Return whether focusing WINDOW only raises it through retained cells.
+A visible, non-minimized window in the active workspace changes nothing but
+its stacking order and the active-window cell."
+  (and (etaf-desktop--active-workspace-window-p state window)
+       (etaf-desktop--window-visible window)
+       (not (etaf-desktop--window-minimized window))))
+
+(defun etaf-desktop--place-window (window x y width height)
+  "Write WINDOW's retained rectangle to X Y WIDTH HEIGHT without raising it.
+The layout policy calls this for every allocated tile inside one batch."
+  (setf (etaf-desktop--window-x window) x
+        (etaf-desktop--window-y window) y
+        (etaf-desktop--window-width window) width
+        (etaf-desktop--window-height window) height)
+  (etaf-desktop--store-normal-geometry window x y width height))
+
+(defun etaf-desktop--restore-normal-geometry (window)
+  "Leave WINDOW's maximized view and restore its normal rectangle."
+  (pcase-let ((`(,x ,y ,width ,height)
+               (etaf-desktop--window-normal-geometry window)))
+    (setf (etaf-desktop--window-maximized window) nil
+          (etaf-desktop--window-x window) x
+          (etaf-desktop--window-y window) y
+          (etaf-desktop--window-width window) width
+          (etaf-desktop--window-height window) height)))
+
+(defun etaf-desktop--focus-tiled-window (desktop state window)
+  "Focus tiled WINDOW and let the layout policy reassert its rectangle.
+Geometry requests on a tiled window never move it: the tile is the layout's
+allocation, so the request only raises the window and reapplies the layout
+through retained cells."
+  (if (etaf-desktop--retained-focus-p state window)
+      (etaf-call-with-batch (etaf-desktop--window-focus-writer window))
+    (etaf-desktop-focus-window desktop (etaf-desktop--window-id window)))
+  (etaf-desktop-layout-refresh
+   desktop (etaf-desktop--window-workspace window))
+  (etaf-desktop--window-plist window))
 
 (defun etaf-desktop--store-normal-geometry (window x y width height)
   "Record WINDOW's normal rectangle in place for the retained geometry writer."
@@ -681,8 +739,9 @@ copy it before returning it to callers."
   "Apply FUNCTION's mode and geometry writes to retained WINDOW in one batch.
 WINDOW's mode, visibility, geometry and stacking cells are authoritative, so
 the shell, taskbar and focus presentation follow through retained bindings
-without rebuilding DESKTOP's Component tree.  Floating layout membership is
-resynchronized afterwards."
+without rebuilding DESKTOP's Component tree.  Layout membership is
+resynchronized afterwards; a tiled workspace reflows through retained cells
+and republishes structurally only when its set of dividers changes."
   (etaf-call-with-batch function)
   (when (fboundp 'etaf-desktop-layout-refresh)
     (etaf-desktop-layout-refresh
@@ -1056,14 +1115,16 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
                        (etaf-desktop-switch-workspace desktop workspace)))
                nil)))
 
-(defun etaf-desktop--splitter-ratio-change
-    (desktop workspace path orientation ratio span gesture)
-  "Apply one controlled SPLITTER GESTURE to a layout ratio.
+(defun etaf-desktop--splitter-ratio-change (desktop workspace path divider gesture)
+  "Apply one controlled SPLITTER GESTURE to the layout ratio at PATH.
 The gesture remains an ETAF UI input fact; this application callback converts
-its axis delta into the caller-owned layout tree ratio through the public
-layout API."
+its axis delta, using DIVIDER's last allocated ratio and span, into the
+caller-owned layout tree ratio through the public layout API."
   (when (memq (plist-get gesture :phase) '(move end))
-    (let* ((delta (etaf-desktop--delta gesture))
+    (let* ((orientation (etaf-desktop--layout-divider-orientation divider))
+           (ratio (etaf-value (etaf-desktop--layout-divider-ratio divider)))
+           (span (etaf-value (etaf-desktop--layout-divider-span divider)))
+           (delta (etaf-desktop--delta gesture))
            (offset (if (eq orientation 'horizontal)
                        (car delta) (cdr delta)))
            (next (max 0.1 (min 0.9 (+ ratio (/ (float offset)
@@ -1071,82 +1132,38 @@ layout API."
       (when (fboundp 'etaf-desktop-layout-resize-split)
         (etaf-desktop-layout-resize-split desktop path next workspace)))))
 
-(defun etaf-desktop--windows-max-z (state)
-  "Return the highest z-index among STATE's windows, or zero."
-  (let ((max-z 0))
-    (dolist (window (etaf-desktop--state-windows state) max-z)
-      (setq max-z (max max-z (or (etaf-desktop--window-z-index window) 0))))))
-
-(defun etaf-desktop--splitter-overlays
-    (desktop state tree workspace spacing x y width height &optional path)
-  "Render all split dividers in TREE at their allocated canvas positions.
-X, Y, WIDTH and HEIGHT bound this subtree.  The layout policy owns pane and
-divider rectangles; ETAF UI owns only each divider's presentation and input."
-  (when (and tree (eq (car tree) :split))
-    (let* ((orientation (nth 1 tree))
-           (ratio (nth 2 tree))
-           (first (nth 3 tree))
-           (second (nth 4 tree))
-           (parts (etaf-desktop--layout-partition
-                   state tree spacing x y width height))
-           (first-rect (nth 0 parts))
-           (divider-rect (nth 1 parts))
-           (second-rect (nth 2 parts))
-           (divider-x (nth 0 divider-rect))
-           (divider-y (nth 1 divider-rect))
-           (divider-width (nth 2 divider-rect))
-           (divider-height (nth 3 divider-rect))
-           (handle-width (if (eq orientation 'horizontal)
-                             (min etaf-desktop--layout-divider-px divider-width)
-                           divider-width))
-           (handle-height (if (eq orientation 'vertical)
-                              (min etaf-desktop--layout-divider-rows
-                                   divider-height)
-                            divider-height))
-           (handle-x (+ divider-x
-                        (floor (/ (- divider-width handle-width) 2))))
-           (handle-y (+ divider-y
-                        (floor (/ (- divider-height handle-height) 2))))
-           (span (if (eq orientation 'horizontal)
-                     (- width divider-width)
-                   (- height divider-height)))
-           (divider
-            (when (and (> divider-width 0) (> divider-height 0))
-              (etaf-node
-               'etaf-splitter
-               (list :key (format "desktop-splitter-%S" path)
-                     :orientation orientation :ratio ratio
-                     :class "etaf-desktop-layout-splitter"
-                     :overlay t
-                     :overlay-rect
-                     (list :left (list 'px handle-x)
-                           :top (list 'lh handle-y)
-                           :width (list 'px handle-width)
-                           :height (list 'lh handle-height))
-                     :z-index (+ 1 (etaf-desktop--windows-max-z state))
-                     :divider-content
-                     (if (eq orientation 'horizontal)
-                         (mapconcat (lambda (_row) " ")
-                                    (number-sequence 1 handle-height) "\n")
-                       (make-string
-                        (max 1 (ceiling (/ (float handle-width)
-                                           (max 1 (frame-char-width)))))
-                        ?\s))
-                     :on-change
-                     (lambda (gesture)
-                       (etaf-desktop--splitter-ratio-change
-                        desktop workspace path orientation ratio span gesture)))
-               nil))))
-      (append
-       (when divider (list divider))
-       (etaf-desktop--splitter-overlays
-        desktop state first workspace spacing
-        (nth 0 first-rect) (nth 1 first-rect)
-        (nth 2 first-rect) (nth 3 first-rect) (append path '(0)))
-       (etaf-desktop--splitter-overlays
-        desktop state second workspace spacing
-        (nth 0 second-rect) (nth 1 second-rect)
-        (nth 2 second-rect) (nth 3 second-rect) (append path '(1)))))))
+(defun etaf-desktop--splitter-overlays (desktop workspace)
+  "Return the divider overlays for every split WORKSPACE has allocated.
+The layout policy owns every divider rectangle and visibility as retained
+refs and rewrites them when it applies the layout; ETAF UI owns only each
+divider's presentation and input.  A split that left the tree keeps its
+hidden node so membership changes stay prepared.  Dividers occupy the inner
+gaps between tiles, so they stack beneath every window and a maximized
+window covers them."
+  (mapcar
+   (lambda (entry)
+     (let ((path (car entry))
+           (divider (cdr entry)))
+       (etaf-node
+        'etaf-splitter
+        (list :key (format "desktop-splitter-%S" path)
+              :orientation (etaf-desktop--layout-divider-orientation divider)
+              :class "etaf-desktop-layout-splitter"
+              :overlay t
+              :overlay-rect
+              (list :left (etaf-desktop--layout-divider-left divider)
+                    :top (etaf-desktop--layout-divider-top divider)
+                    :width (etaf-desktop--layout-divider-width divider)
+                    :height (etaf-desktop--layout-divider-height divider))
+              :z-index 0
+              :visible (etaf-desktop--layout-divider-visible divider)
+              :divider-content (etaf-desktop--layout-divider-content divider)
+              :on-change
+              (lambda (gesture)
+                (etaf-desktop--splitter-ratio-change
+                 desktop workspace path divider gesture)))
+        nil)))
+   (etaf-desktop--layout-dividers desktop workspace)))
 
 (defun etaf-desktop--launcher-node (desktop)
   "Build the controlled application launcher for DESKTOP."
@@ -1430,11 +1447,9 @@ divider rectangles; ETAF UI owns only each divider's presentation and input."
   (let* ((state (etaf-desktop--state desktop))
          (colors (etaf-desktop--theme-colors desktop))
          (workspace (etaf-desktop--state-active-workspace state))
-         (layout-mode (when (fboundp 'etaf-desktop-layout-mode)
-                        (etaf-desktop-layout-mode desktop workspace)))
-         (layout-tree (when (and layout-mode
-                                 (memq layout-mode '(tiling master-stack monocle)))
-                        (etaf-desktop-layout-tree desktop workspace)))
+         (dividers-p (and (fboundp 'etaf-desktop-layout-mode)
+                          (memq (etaf-desktop-layout-mode desktop workspace)
+                                '(tiling master-stack))))
          (windows
           (cl-remove-if-not
                  (lambda (window)
@@ -1466,16 +1481,10 @@ divider rectangles; ETAF UI owns only each divider's presentation and input."
              :border (list '(px 1) 'solid (plist-get colors :canvas-border)))
        (append
         (mapcar (lambda (window) (etaf-desktop--window-node desktop window)) windows)
-        ;; Tiling dividers are canvas overlays: they must be positioned in
-        ;; canvas coordinates and painted after the windows they separate.
-        (when layout-tree
-          (let* ((spacing (etaf-desktop--layout-spacing desktop))
-                 (canvas-rect
-                  (etaf-desktop--layout-canvas-rect
-                   desktop state layout-tree spacing layout-mode)))
-            (apply #'etaf-desktop--splitter-overlays
-                   desktop state layout-tree workspace spacing
-                   canvas-rect)))))
+        ;; Tiling dividers are canvas overlays positioned in canvas
+        ;; coordinates; their rectangles are retained layout-policy refs.
+        (when dividers-p
+          (etaf-desktop--splitter-overlays desktop workspace))))
       (etaf-node 'etaf-desktop--taskbar-surface (list :desktop desktop) nil)
       (etaf-desktop--launcher-node desktop)
       (etaf-node 'etaf-desktop--switcher-surface (list :desktop desktop) nil)
@@ -1686,10 +1695,7 @@ a focused target while other windows remain available."
          (state (etaf-desktop--state desktop))
          (window (etaf-desktop--window-for state id))
          (result
-          (if (and window
-                   (etaf-desktop--floating-window-p desktop state window)
-                   (etaf-desktop--window-visible window)
-                   (not (etaf-desktop--window-minimized window)))
+          (if (and window (etaf-desktop--retained-focus-p state window))
               (etaf-call-with-batch (etaf-desktop--window-focus-writer window))
             (etaf-desktop--update
              desktop
@@ -1711,10 +1717,14 @@ a focused target while other windows remain available."
          (state (etaf-desktop--state desktop))
          (window (etaf-desktop--window-for state id)))
     (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
-    (if (etaf-desktop--floating-window-p desktop state window)
+    (cond
+     ((etaf-desktop--tiled-window-p desktop window)
+      (etaf-desktop--focus-tiled-window desktop state window))
+     ((etaf-desktop--floating-window-p desktop state window)
         (etaf-desktop--write-geometry
          window x y (etaf-desktop--window-width window)
-         (etaf-desktop--window-height window))
+         (etaf-desktop--window-height window)))
+     (t
       (etaf-desktop--update
        desktop
        (lambda (state)
@@ -1731,7 +1741,7 @@ a focused target while other windows remain available."
                  (etaf-desktop--window-normal-geometry window)
                  (list x y (etaf-desktop--window-width window) (etaf-desktop--window-height window)))
            (etaf-desktop--raise state window)
-           (etaf-desktop--window-plist window)))))))
+           (etaf-desktop--window-plist window))))))))
 
 (defun etaf-desktop--set-window-geometry (desktop id x y width height)
   "Commit one atomic geometry update for window ID.
@@ -1756,13 +1766,17 @@ its position and size together."
     (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
     (unless (etaf-desktop--window-resizable window)
       (etaf-desktop--fail "Desktop window is not resizable: %S" id))
-    (if (etaf-desktop--floating-window-p desktop state window)
+    (cond
+     ((etaf-desktop--tiled-window-p desktop window)
+      (etaf-desktop--focus-tiled-window desktop state window))
+     ((etaf-desktop--floating-window-p desktop state window)
         (etaf-desktop--write-geometry
          window x y
          (etaf-desktop--clamp width (etaf-desktop--window-min-width window)
                               (etaf-desktop--window-max-width window))
          (etaf-desktop--clamp height (etaf-desktop--window-min-height window)
-                              (etaf-desktop--window-max-height window)))
+                              (etaf-desktop--window-max-height window))))
+     (t
       (etaf-desktop--update
        desktop
        (lambda (state)
@@ -1785,7 +1799,7 @@ its position and size together."
                  (etaf-desktop--window-normal-geometry window)
                  (list x y width height))
            (etaf-desktop--raise state window)
-           (etaf-desktop--window-plist window)))))))
+           (etaf-desktop--window-plist window))))))))
 
 (defun etaf-desktop-resize-window (desktop id width height)
   "Resize window ID to WIDTH and HEIGHT, respecting its size limits."
@@ -1795,14 +1809,18 @@ its position and size together."
     (unless window (etaf-desktop--fail "Unknown desktop window: %S" id))
     (unless (etaf-desktop--window-resizable window)
       (etaf-desktop--fail "Desktop window is not resizable: %S" id))
-    (if (etaf-desktop--floating-window-p desktop state window)
+    (cond
+     ((etaf-desktop--tiled-window-p desktop window)
+      (etaf-desktop--focus-tiled-window desktop state window))
+     ((etaf-desktop--floating-window-p desktop state window)
         (etaf-desktop--write-geometry
          window (etaf-desktop--window-x window)
          (etaf-desktop--window-y window)
          (etaf-desktop--clamp width (etaf-desktop--window-min-width window)
                               (etaf-desktop--window-max-width window))
          (etaf-desktop--clamp height (etaf-desktop--window-min-height window)
-                              (etaf-desktop--window-max-height window)))
+                              (etaf-desktop--window-max-height window))))
+     (t
       (etaf-desktop--update
        desktop
        (lambda (state)
@@ -1826,7 +1844,7 @@ its position and size together."
                  (list (etaf-desktop--window-x window) (etaf-desktop--window-y window)
                        width height))
            (etaf-desktop--raise state window)
-           (etaf-desktop--window-plist window)))))))
+           (etaf-desktop--window-plist window))))))))
 
 (defun etaf-desktop--maximize-window (desktop state window)
   "Maximize retained or detached WINDOW of STATE onto DESKTOP's canvas."
@@ -1849,7 +1867,7 @@ its position and size together."
   (let* ((desktop (etaf-desktop--controller desktop))
          (state (etaf-desktop--state desktop))
          (window (etaf-desktop--window-for state id)))
-    (if (and window (etaf-desktop--floating-workspace-p desktop state window))
+    (if (and window (etaf-desktop--active-workspace-window-p state window))
         (etaf-desktop--write-mode
          desktop state window
          (lambda () (etaf-desktop--maximize-window desktop state window)))
@@ -1880,7 +1898,7 @@ its position and size together."
          (state (etaf-desktop--state desktop))
          (window (etaf-desktop--window-for state id))
          (result
-          (if (and window (etaf-desktop--floating-workspace-p desktop state window))
+          (if (and window (etaf-desktop--active-workspace-window-p state window))
               (etaf-desktop--write-mode
                desktop state window
                (lambda () (etaf-desktop--minimize-window state window)))
@@ -1918,7 +1936,7 @@ its position and size together."
          (state (etaf-desktop--state desktop))
          (window (etaf-desktop--window-for state id))
          (result
-          (if (and window (etaf-desktop--floating-workspace-p desktop state window))
+          (if (and window (etaf-desktop--active-workspace-window-p state window))
               (etaf-desktop--write-mode
                desktop state window
                (lambda () (etaf-desktop--restore-window state window)))

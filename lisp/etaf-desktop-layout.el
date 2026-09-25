@@ -3,12 +3,16 @@
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 
 ;; Layout policy stays above the Ebox/ETAF geometry providers.  A layout is a
-;; small immutable-looking tree owned by a desktop controller; applying it
-;; publishes one copied desktop state through the existing runtime ref.  The
-;; tree never becomes a second geometry store: window records remain
-;; authoritative for currently published rectangles.
+;; small immutable-looking tree owned by a desktop controller.  Applying it
+;; writes every allocated rectangle through the runtime's retained window
+;; cells and the policy's retained divider records in one batch, so ratio
+;; drags, focus and mode-preserving reflows publish as prepared geometry.
+;; Only a change in the set of dividers or in the layout mode republishes the
+;; desktop structurally.  The tree never becomes a second geometry store:
+;; window records remain authoritative for currently published rectangles.
 
 (require 'cl-lib)
+(require 'subr-x)
 (require 'etaf-desktop-runtime)
 
 (defvar etaf-desktop--layout-table
@@ -20,7 +24,117 @@
 
 (cl-defstruct (etaf-desktop--layout-workspace
                (:constructor etaf-desktop--layout-workspace-create))
-  mode tree floating pending)
+  mode tree floating pending
+  (dividers (make-hash-table :test #'equal))
+  divider-paths)
+
+(defconst etaf-desktop--layout-divider-px 3
+  "Pixel width reserved for a left/right split divider.")
+
+(defconst etaf-desktop--layout-divider-rows 1
+  "Text rows reserved for a top/bottom split divider.")
+
+(cl-defstruct (etaf-desktop--layout-divider
+               (:constructor etaf-desktop--layout-divider-create))
+  "Retained presentation facts for one split divider at a tree path.
+LEFT, TOP, WIDTH, HEIGHT, CONTENT and VISIBLE are refs read by the divider's
+Host bindings; RATIO and SPAN are refs the gesture callback reads when it maps
+a pointer delta onto the caller-owned tree.  A record outlives its split: a
+path that leaves the tree keeps its retained node hidden, so membership
+changes publish through prepared visibility instead of desktop structure."
+  orientation left top width height content visible ratio span)
+
+(defun etaf-desktop--layout-divider-for (policy path)
+  "Return POLICY's retained divider record for PATH, creating it when new."
+  (let ((table (etaf-desktop--layout-workspace-dividers policy)))
+    (or (gethash path table)
+        (puthash path
+                 (etaf-desktop--layout-divider-create
+                  :left (etaf-ref '(px 0)) :top (etaf-ref '(lh 0))
+                  :width (etaf-ref '(px 1)) :height (etaf-ref '(lh 1))
+                  :content (etaf-ref " ") :visible (etaf-ref nil)
+                  :ratio (etaf-ref 0.5) :span (etaf-ref 1))
+                 table))))
+
+(defun etaf-desktop--layout-divider-facts
+    (state tree spacing x y width height &optional path)
+  "Return the divider allocation of every split in TREE within X Y WIDTH HEIGHT.
+Each element is `(PATH ORIENTATION RATIO SPAN HANDLE-X HANDLE-Y HANDLE-WIDTH
+HANDLE-HEIGHT)'.  Windows and dividers share `etaf-desktop--layout-partition',
+so a handle never covers a pane's title row."
+  (when (etaf-desktop--layout-split-p tree)
+    (pcase-let* ((orientation (nth 1 tree))
+                 (`(,first-rect ,divider-rect ,second-rect)
+                  (etaf-desktop--layout-partition
+                   state tree spacing x y width height))
+                 (`(,divider-x ,divider-y ,divider-width ,divider-height)
+                  divider-rect)
+                 (handle-width (if (eq orientation 'horizontal)
+                                   (min etaf-desktop--layout-divider-px divider-width)
+                                 divider-width))
+                 (handle-height (if (eq orientation 'vertical)
+                                    (min etaf-desktop--layout-divider-rows
+                                         divider-height)
+                                  divider-height))
+                 (span (if (eq orientation 'horizontal)
+                           (- width divider-width)
+                         (- height divider-height))))
+      (append
+       (when (and (> divider-width 0) (> divider-height 0))
+         (list (list path orientation (nth 2 tree) span
+                     (+ divider-x (floor (/ (- divider-width handle-width) 2)))
+                     (+ divider-y (floor (/ (- divider-height handle-height) 2)))
+                     handle-width handle-height)))
+       (etaf-desktop--layout-divider-facts
+        state (nth 3 tree) spacing
+        (nth 0 first-rect) (nth 1 first-rect) (nth 2 first-rect) (nth 3 first-rect)
+        (append path '(0)))
+       (etaf-desktop--layout-divider-facts
+        state (nth 4 tree) spacing
+        (nth 0 second-rect) (nth 1 second-rect)
+        (nth 2 second-rect) (nth 3 second-rect)
+        (append path '(1)))))))
+
+(defun etaf-desktop--layout-divider-text (orientation handle-width handle-height)
+  "Return the text extent that paints a HANDLE-WIDTH by HANDLE-HEIGHT divider."
+  (if (eq orientation 'horizontal)
+      (mapconcat (lambda (_row) " ") (number-sequence 1 handle-height) "\n")
+    (make-string (max 1 (ceiling (/ (float handle-width)
+                                    (max 1 (frame-char-width)))))
+                 ?\s)))
+
+(defun etaf-desktop--layout-write-divider (divider fact)
+  "Write FACT's allocation into the retained DIVIDER record."
+  (pcase-let ((`(,_path ,orientation ,ratio ,span ,x ,y ,width ,height) fact))
+    (setf (etaf-desktop--layout-divider-orientation divider) orientation)
+    (setf (etaf-value (etaf-desktop--layout-divider-left divider)) (list 'px x)
+          (etaf-value (etaf-desktop--layout-divider-top divider)) (list 'lh y)
+          (etaf-value (etaf-desktop--layout-divider-width divider)) (list 'px width)
+          (etaf-value (etaf-desktop--layout-divider-height divider)) (list 'lh height)
+          (etaf-value (etaf-desktop--layout-divider-content divider))
+          (etaf-desktop--layout-divider-text orientation width height)
+          (etaf-value (etaf-desktop--layout-divider-ratio divider)) ratio
+          (etaf-value (etaf-desktop--layout-divider-span divider)) span
+          (etaf-value (etaf-desktop--layout-divider-visible divider)) t)))
+
+(defun etaf-desktop--layout-divider-path< (first second)
+  "Order divider paths FIRST and SECOND by depth, then lexically."
+  (or (< (length first) (length second))
+      (and (= (length first) (length second))
+           (string< (format "%S" first) (format "%S" second)))))
+
+(defun etaf-desktop--layout-dividers (desktop &optional workspace)
+  "Return `(PATH . DIVIDER)' for every divider record retained by WORKSPACE.
+Records whose split currently exists are visible; the others stay hidden.
+This is a pure query over the last applied layout; Views read the records'
+refs only inside Host property bindings."
+  (let* ((desktop (etaf-desktop--controller desktop))
+         (state (etaf-desktop--state desktop))
+         (workspace (or workspace (etaf-desktop--state-active-workspace state)))
+         (policy (etaf-desktop--layout-ensure-workspace desktop workspace))
+         (table (etaf-desktop--layout-workspace-dividers policy)))
+    (mapcar (lambda (path) (cons path (gethash path table)))
+            (sort (hash-table-keys table) #'etaf-desktop--layout-divider-path<))))
 
 (cl-defstruct (etaf-desktop--layout-state
                (:constructor etaf-desktop--layout-state-create))
@@ -333,12 +447,14 @@ state, so Views may call it during render without depending on membership."
   "Return a detached layout tree for DESKTOP's WORKSPACE.
 
 The tree uses `(:leaf WINDOW-ID)' and
-`(:split ORIENTATION RATIO FIRST SECOND)' nodes."
+`(:split ORIENTATION RATIO FIRST SECOND)' nodes.  This is a pure query of
+the last synchronized tree: it reads no window state, so Views may call it
+during render.  Mutation entry points synchronize membership through
+`etaf-desktop-layout-refresh'."
   (let* ((desktop (etaf-desktop--controller desktop))
          (state (etaf-desktop--state desktop))
          (workspace (or workspace (etaf-desktop--state-active-workspace state))))
     (etaf-desktop--assert-workspace state workspace)
-    (etaf-desktop-layout-sync desktop workspace)
     (etaf-desktop--layout-copy-tree
      (etaf-desktop--layout-workspace-tree
       (etaf-desktop--layout-ensure-workspace desktop workspace)))))
@@ -413,12 +529,6 @@ stack whose ratios make each leaf the same height."
                   (stack-tree (cdr values))))))
           (etaf-desktop--layout-split-node
            'horizontal 0.6 master (stack-tree stack)))))))
-
-(defconst etaf-desktop--layout-divider-px 3
-  "Pixel width reserved for a left/right split divider.")
-
-(defconst etaf-desktop--layout-divider-rows 1
-  "Text rows reserved for a top/bottom split divider.")
 
 (defun etaf-desktop--layout-spacing (desktop)
   "Return DESKTOP's allocated outer and inner gaps in geometry units.
@@ -608,7 +718,12 @@ size.  Floating windows retain their own rectangles.  Monocle lays every leaf
 over the canvas and raises the active window, giving a single-window view while
 retaining the tree for instant return to tiling.  RESET-MAXIMIZED ends a
 temporary maximized view during a mode transition; FORCE-PUBLICATION makes the
-new mode visible even if every rectangle stays equal."
+new mode visible even if every rectangle stays equal.
+
+Every rectangle and divider allocation is written through retained cells in
+one batch, so an unchanged structure publishes as prepared geometry.  The
+desktop republishes structurally only when FORCE-PUBLICATION is set or the set
+of divider paths changed."
   (let* ((desktop (etaf-desktop--controller desktop))
          (state (etaf-desktop--state desktop))
          (workspace (or workspace (etaf-desktop--state-active-workspace state))))
@@ -631,6 +746,18 @@ new mode visible even if every rectangle stays equal."
                       (etaf-desktop--layout-tree-leaves tree)))
              (t (and tree (apply #'etaf-desktop--layout-rectangles
                                  state tree spacing canvas-rect)))))
+           (dividers
+            (when (memq mode '(tiling master-stack))
+              (apply #'etaf-desktop--layout-divider-facts
+                     state tree spacing canvas-rect)))
+           (paths (mapcar #'car dividers))
+           (table (etaf-desktop--layout-workspace-dividers policy))
+           ;; Only a divider path never rendered before needs a new node;
+           ;; a path leaving the tree hides its retained node until the
+           ;; next structural publication drops it.
+           (structural (or force-publication
+                           (cl-some (lambda (path) (null (gethash path table)))
+                                    paths)))
            (result
             (mapcar
              (lambda (rectangle)
@@ -640,40 +767,42 @@ new mode visible even if every rectangle stays equal."
                      (list (car rectangle) 0 0 canvas-width canvas-height)
                    rectangle)))
              rectangles)))
-      (etaf-desktop--update
-       desktop
-       (lambda (next-state)
+      (etaf-call-with-batch
+       (lambda ()
          (when reset-maximized
-           (dolist (window (etaf-desktop--state-windows next-state))
+           (dolist (window (etaf-desktop--state-windows state))
              (when (and (equal workspace (etaf-desktop--window-workspace window))
                         (etaf-desktop--window-maximized window))
-               (pcase-let ((`(,x ,y ,width ,height)
-                            (etaf-desktop--window-normal-geometry window)))
-                 (setf (etaf-desktop--window-x window) x
-                       (etaf-desktop--window-y window) y
-                       (etaf-desktop--window-width window) width
-                       (etaf-desktop--window-height window) height
-                       (etaf-desktop--window-maximized window) nil)))))
+               (etaf-desktop--restore-normal-geometry window))))
          (dolist (rectangle rectangles)
            (pcase-let ((`(,id ,x ,y ,width ,height) rectangle))
-             (let ((window (etaf-desktop--window-for next-state id)))
+             (let ((window (etaf-desktop--window-for state id)))
                (when (and window (not (etaf-desktop--window-maximized window)))
-                 (setf (etaf-desktop--window-x window) x
-                       (etaf-desktop--window-y window) y
-                       (etaf-desktop--window-width window) width
-                       (etaf-desktop--window-height window) height
-                       (etaf-desktop--window-normal-geometry window)
-                       (list x y width height))))))
+                 (etaf-desktop--place-window window x y width height)))))
          (when (and (eq mode 'monocle) active
                     (member active (etaf-desktop--layout-tree-leaves tree)))
-           (let ((window (etaf-desktop--window-for next-state active)))
-             (when window
-               (setf (etaf-desktop--window-z-index window)
-                     (etaf-desktop--state-next-z next-state)
-                     (etaf-desktop--state-next-z next-state)
-                     (1+ (etaf-desktop--state-next-z next-state))))))
-         result)
-       force-publication))))
+           (let ((window (etaf-desktop--window-for state active)))
+             (when window (etaf-desktop--raise state window))))
+         (dolist (fact dividers)
+           (etaf-desktop--layout-write-divider
+            (etaf-desktop--layout-divider-for policy (car fact)) fact))
+         (maphash (lambda (path divider)
+                    (unless (member path paths)
+                      (setf (etaf-value (etaf-desktop--layout-divider-visible
+                                         divider))
+                            nil)))
+                  table)))
+      (setf (etaf-desktop--layout-workspace-divider-paths policy) paths)
+      (when structural
+        ;; A republished tree carries only the current dividers; hidden
+        ;; nodes are retained solely between structural publications.
+        (let (stale)
+          (maphash (lambda (path _divider)
+                     (unless (member path paths) (push path stale)))
+                   table)
+          (dolist (path stale) (remhash path table)))
+        (etaf-desktop--update desktop #'ignore t))
+      result)))
 
 (defun etaf-desktop-layout-apply (desktop &optional workspace)
   "Apply DESKTOP's current layout to WORKSPACE and return its rectangles.

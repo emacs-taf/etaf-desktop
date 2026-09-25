@@ -6,6 +6,13 @@ All notable changes to ETAF Desktop are documented here.
 
 ### Changed
 
+- Tiling layouts publish window rectangles and divider positions, labels and
+  visibility through retained geometry cells. Ratio drags, focus changes,
+  maximize and minimize under tiling update the affected windows in place;
+  the desktop tree is rebuilt only when a new divider appears. Performance
+  scenarios `etaf-desktop.policy.tiled-{focus,maximize,minimize,close}`
+  cover these paths.
+
 - Window shells and taskbar items receive each window's mode, visibility and
   taskbar state as retained reactive sources, so maximizing, minimizing or
   restoring a window publishes through prepared Host bindings instead of
