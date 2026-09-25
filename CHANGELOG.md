@@ -4,6 +4,19 @@ All notable changes to ETAF Desktop are documented here.
 
 ## Unreleased
 
+### Added
+
+- Selectable desktop themes. `etaf-desktop-define-theme` registers a named
+  light or dark token set; `daylight`, `paper`, `midnight`, `forest` and
+  `graphite` are built in and `etaf-desktop-themes` lists them. The `:theme`
+  setting accepts `system`, `light`, `dark` or a theme name, and the
+  Appearance tab offers every registered theme. `:accent-color` now defaults
+  to nil, meaning the theme's own accent; a `#RRGGBB` value overrides it.
+  Theme changes repaint the mounted shell in place, and an open launcher,
+  switcher or settings dialog dims the desktop behind it while the dialog
+  keeps its own theme colors. `etaf-desktop-theme-tokens` exposes the resolved
+  colors for companion applications and tests.
+
 ### Fixed
 
 - The Applications launcher lists every registered application by title

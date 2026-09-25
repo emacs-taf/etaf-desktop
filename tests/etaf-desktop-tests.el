@@ -4,7 +4,7 @@
 (require 'cl-lib)
 (require 'etaf-desktop)
 (require 'etaf)
-
+(require 'ebox)
 (ert-deftest etaf-desktop-window-lifecycle-and-state-isolation ()
   "Public mutations preserve identity and detached reads cannot mutate state."
   (let ((desktop (etaf-desktop-create)))
@@ -564,9 +564,12 @@
   "Only the active window renders the colored macOS traffic lights."
   (let* ((app 'etaf-desktop-test-controls)
          (active-color "#FF5F57")
-         (inactive-color "#B7BDC6")
          (desktop (etaf-desktop-create :name " *desktop-controls*"
-                                       :canvas-width 80 :canvas-height 16)))
+                                       :canvas-width 80 :canvas-height 16))
+         (inactive-color
+          (plist-get (etaf-desktop-theme-tokens
+                      (plist-get (etaf-desktop-settings desktop) :theme))
+                     :ui-window-title-fg)))
     (unwind-protect
         (progn
           (etaf-desktop-register-app
@@ -585,7 +588,13 @@
                            (cl-loop for (_ref . props) in
                                     (etaf-runtime-host-props-entries runtime)
                                     when (equal "Close" (plist-get props :aria-label))
-                                    collect (plist-get props :color)))))
+                                    collect (let ((color (plist-get props :color)))
+                                              ;; Theme-bound colors publish
+                                              ;; through retained paint slots.
+                                              (if (ebox-paint-slot-p color)
+                                                  (plist-get (ebox-paint-slot-spec color)
+                                                             :foreground)
+                                                color))))))
             (let ((first (funcall colors)))
               (should (= 2 (length first)))
               (should (= 1 (cl-count active-color first :test #'equal)))

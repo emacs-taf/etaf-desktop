@@ -73,6 +73,34 @@ defaults. Session restore remains an explicit
 `etaf-desktop-session-state`; invalid persisted values are rejected through the
 same public validator during restore.
 
+### Themes
+
+A desktop theme is a named set of ETAF Theme tokens that paints the shell
+(bars, canvas, window chrome, dividers) and the dialogs above it. Built-in
+themes are `daylight` and `paper` (light) and `midnight`, `forest` and
+`graphite` (dark); `etaf-desktop-themes` lists them in order. The `:theme`
+setting selects one by name, or `system` (the first built-in theme matching
+the Emacs frame's light or dark mode), `light` or `dark`. `:accent-color`
+is nil by default, which keeps the theme's accent; a `#RRGGBB` string replaces
+the accent and its derived tints. The Appearance tab exposes both controls.
+
+Theme and accent changes repaint the mounted desktop through Theme paint
+slots without re-rendering windows, and while the launcher, switcher or
+settings dialog is open the shell is dimmed behind the dialog. Register a
+custom theme before mounting or at any later time:
+
+```elisp
+(etaf-desktop-define-theme
+ 'harbor :label "Harbor" :mode 'dark
+ :tokens '(:ui-shell-bg "#10202B" :ui-canvas-bg "#152A36"
+           :ui-window-bg "#1B3442" :ui-accent "#5DD3C8"))
+(etaf-desktop-set-setting desktop :theme 'harbor)
+```
+
+Omitted tokens fall back to the first built-in theme of the same mode.
+`etaf-desktop-theme-tokens` returns the resolved plist so companion
+applications can match the desktop's colors.
+
 The default Desktop buffer map uses single letters because it is local to the
 Desktop surface: `n`/`p` focus next/previous, `a` opens Applications, `w`
 opens the switcher, `o` opens Settings, `l` toggles layout, `s` splits, `x`

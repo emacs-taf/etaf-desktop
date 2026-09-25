@@ -160,6 +160,12 @@
 ;; Function: etaf-desktop-set-setting (desktop key value)
 ;;;###autoload (autoload 'etaf-desktop-set-setting "etaf-desktop" nil nil)
 ;; Validate and set one user setting, returning the detached settings plist.
+;; `:theme' accepts `system', `light', `dark' or a registered theme name
+;; (default `system': the first built-in theme matching the Emacs frame mode;
+;; `light'/`dark' select the first built-in theme of that mode).
+;; `:accent-color' accepts nil (the theme's accent) or a "#RRGGBB" string
+;; replacing the accent and its derived tints.  Theme changes repaint the
+;; mounted shell through Theme paint slots without re-rendering windows.
 ;; `:tile-outer-gap' accepts integers 0..4 and `:tile-inner-gap' accepts integers
 ;; 1..4; both default to 1.  Gap units and allocation are described under
 ;; `etaf-desktop-layout-apply'.  Layout mode and tile spacing changes apply
@@ -175,6 +181,30 @@
 ;; Function: etaf-desktop-settings-open-p (desktop)
 ;;;###autoload (autoload 'etaf-desktop-settings-open-p "etaf-desktop" nil nil)
 ;; Return whether the in-buffer settings modal is visible.
+
+;; Function: etaf-desktop-define-theme (name &key label (mode 'light) tokens)
+;;;###autoload (autoload 'etaf-desktop-define-theme "etaf-desktop" nil nil)
+;; Register or replace desktop theme NAME, a symbol other than `system',
+;; `light' or `dark'.  LABEL is shown in Desktop Settings; MODE is `light' or
+;; `dark'.  TOKENS is a plist of "#RRGGBB" colors for the shell tokens
+;; (`:ui-shell-*', `:ui-canvas-*', `:ui-window-*', `:ui-divider-bg',
+;; `:ui-accent*') and the dialog tokens (`:ui-panel-*', `:ui-picker-item-*',
+;; `:ui-button-*', `:ui-selection-*', `:ui-checkbox-*', `:ui-fg', `:ui-bg',
+;; `:ui-muted-fg', `:ui-border'); omitted tokens fall back to the first
+;; built-in theme of MODE.  Invalid names, modes or tokens signal
+;; `etaf-desktop-error'.  Built-in themes: `daylight' and `paper' (light),
+;; `midnight', `forest' and `graphite' (dark).  Return the registered plist.
+
+;; Function: etaf-desktop-themes ()
+;;;###autoload (autoload 'etaf-desktop-themes "etaf-desktop" nil nil)
+;; Return registered themes in definition order as detached plists with
+;; `:name', `:label' and `:mode'.
+
+;; Function: etaf-desktop-theme-tokens (name)
+;;;###autoload (autoload 'etaf-desktop-theme-tokens "etaf-desktop" nil nil)
+;; Return the complete token plist of theme NAME, with `system', `light' and
+;; `dark' resolved to their built-in theme.  Use it to match desktop colors
+;; in tests or companion applications.
 
 ;; Function: etaf-desktop-toggle-settings (desktop &optional open)
 ;;;###autoload (autoload 'etaf-desktop-toggle-settings "etaf-desktop" nil nil)
@@ -352,6 +382,7 @@
                                       (bound-and-true-p byte-compile-current-file)
                                       buffer-file-name)))))
 
+(require 'etaf-desktop-theme)
 (require 'etaf-desktop-runtime)
 (require 'etaf-desktop-layout)
 (require 'etaf-desktop-apps)

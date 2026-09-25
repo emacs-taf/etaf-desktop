@@ -5,6 +5,7 @@
 (require 'cl-lib)
 (require 'etaf)
 (require 'etaf-ui)
+(require 'etaf-desktop-theme)
 
 (declare-function ebox-viewport-window-width "ebox-viewport" (window))
 (defvar ebox-viewport-width)
@@ -152,7 +153,7 @@ minimized state only when every member window is minimized."
 (defun etaf-desktop--default-settings ()
   "Return the detached default settings for a new Desktop controller."
   (list :theme 'system
-        :accent-color "#3657D6"
+        :accent-color nil
         :layout-mode 'floating
         :tile-outer-gap 1
         :tile-inner-gap 1
@@ -228,10 +229,8 @@ Settings are caller-visible configuration, not a second geometry store.  Use
 (defun etaf-desktop--valid-setting-p (key value)
   "Return non-nil when KEY accepts VALUE as a Desktop setting."
   (pcase key
-    (:theme (memq value '(system light dark)))
-    (:accent-color
-     (and (stringp value)
-          (string-match-p "\\`#[[:xdigit:]]\\{6\\}\\'" value)))
+    (:theme (etaf-desktop--theme-name-p value))
+    (:accent-color (or (null value) (etaf-desktop--theme-color-p value)))
     (:layout-mode (memq value '(floating tiling master-stack monocle)))
     (:tile-outer-gap (and (integerp value) (<= 0 value 4)))
     (:tile-inner-gap (and (integerp value) (<= 1 value 4)))
@@ -1042,7 +1041,6 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
 (defun etaf-desktop--taskbar-node (desktop state active)
   "Project STATE's taskbar membership with a live ACTIVE selection source."
   (let* ((settings (etaf-desktop--settings desktop))
-         (accent-color (plist-get settings :accent-color))
          (grouping (plist-get settings :taskbar-grouping))
          (windows (cl-remove-if-not
                    (lambda (window)
@@ -1076,7 +1074,6 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
             groups)))
     (etaf-node 'etaf-taskbar
                (list :items items
-                     :accent-color accent-color
                      :active active
                      :on-select (lambda (id)
                                   (let ((target (or (plist-get
@@ -1093,10 +1090,9 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
 
 (defun etaf-desktop--workspace-node (desktop state status)
   "Project STATE's workspace controls with a live focused-window STATUS."
-  (let ((accent-color (plist-get (etaf-desktop--settings desktop) :accent-color)))
+  (progn
     (etaf-node 'etaf-workspace-bar
                (list :workspaces (etaf-desktop--state-workspaces state)
-                     :accent-color accent-color
                      :active (etaf-desktop--state-active-workspace state)
                      ;; The right side reports the focused application and the
                      ;; workspace's window-management mode, which the trailing
@@ -1238,25 +1234,23 @@ window covers them."
                                    (etaf-desktop-toggle-switcher desktop nil)))
                  nil))))
 
-(defun etaf-desktop--theme-colors (desktop)
-  "Return shell colors for DESKTOP's selected theme."
-  (let* ((settings (etaf-desktop--settings desktop))
-         (theme (plist-get settings :theme))
-         (dark (if (eq theme 'system)
-                   (eq (etaf-theme-current-mode) 'dark)
-                 (eq theme 'dark)))
-         (accent (plist-get settings :accent-color)))
-    (if dark
-        (list :shell-bg "#17202A" :shell-fg "#F8FAFC"
-              :canvas-bg "#202B36" :canvas-fg "#F8FAFC"
-              :canvas-border "#4B5D6D" :accent accent)
-      (list :shell-bg "#CBD7E1" :shell-fg "#17202A"
-            :canvas-bg "#EDF2F7" :canvas-fg "#17202A"
-            :canvas-border "#D7E0E8" :accent accent))))
+(defun etaf-desktop--theme-token (key &optional transform)
+  "Return the deferred Desktop Theme value for shell token KEY.
+TRANSFORM, when given, maps the resolved color to the final property value."
+  (etaf-theme-token key (plist-get (etaf-desktop-theme-tokens 'light) key)
+                    transform))
+
+(defun etaf-desktop--modal-open-p (desktop)
+  "Return non-nil when a launcher, switcher or settings dialog is open."
+  (or (etaf-desktop-launcher-open-p desktop)
+      (etaf-desktop-switcher-open-p desktop)
+      (etaf-desktop-settings-open-p desktop)))
 
 (defun etaf-desktop--settings-control (kind props paper ink)
   "Build a flat settings control of KIND with PROPS on PAPER in INK."
-  (let ((style (list :border (list '(px 0) 'solid paper)
+  (let ((style (list :border (etaf-desktop--theme-token
+                              :ui-panel-bg
+                              (lambda (color) (list '(px 0) 'solid color)))
                      :background-color paper :color ink
                      :font-weight 'normal :padding '((lh 0) (ch 0)))))
     (while props
@@ -1266,37 +1260,27 @@ window covers them."
 (etaf-define-component etaf-desktop--settings-panel (&key desktop)
   "Render a compact, sectioned settings form for DESKTOP."
   :bindings
-  ((section (etaf-ref 'appearance))
-   (palette
-    (etaf-computed
-     (lambda ()
-       (let* ((mode (plist-get (etaf-desktop--settings desktop) :theme))
-              (dark (eq (if (eq mode 'system) (etaf-theme-current-mode) mode) 'dark))
-              (paper (if dark "#292724" "#FAF9F5"))
-              (ink (if dark "#E7E3DA" "#35332E")))
-         (list :ui-fg ink :ui-panel-fg ink :ui-panel-bg paper
-               :ui-panel-border (if dark "#5A5349" "#D9D4CA")
-               :ui-button-ghost-fg ink :ui-button-ghost-bg paper
-               :ui-button-ghost-border paper))))))
-  :setup (etaf-theme-provide palette)
+  ((section (etaf-ref 'appearance)))
   :render
   (when (etaf-desktop-settings-open-p desktop)
    (let* ((settings (etaf-desktop--settings desktop))
          (active (etaf-value section))
-         (dark (if (eq (plist-get settings :theme) 'system)
-                   (eq (etaf-theme-current-mode) 'dark)
-                 (eq (plist-get settings :theme) 'dark)))
-         (paper (if dark "#292724" "#FAF9F5"))
-         (ink (if dark "#E7E3DA" "#35332E"))
-         (muted (if dark "#AAA398" "#777267"))
-         (selected (if dark "#44382F" "#EEE4D9"))
+         (paper (etaf-desktop--theme-token :ui-panel-bg))
+         (ink (etaf-desktop--theme-token :ui-panel-fg))
+         (muted (etaf-desktop--theme-token :ui-muted-fg))
+         (selected (etaf-desktop--theme-token :ui-accent-soft-bg))
          (bindings (plist-get settings :keybindings))
          (fields
           (pcase active
             ('appearance
-             '((etaf-select :theme "Theme" :options
-                            ((system . "System") (light . "Light") (dark . "Dark")))
-               (etaf-text-input :accent-color "Accent color")
+             `((etaf-select :theme "Theme" :options
+                            ((system . "System")
+                             ,@(mapcar (lambda (theme)
+                                         (cons (plist-get theme :name)
+                                               (plist-get theme :label)))
+                                       (etaf-desktop-themes))))
+               (etaf-text-input :accent-color "Accent color"
+                                :placeholder "Theme accent")
                (etaf-text-input :font-family "Font family" :placeholder "Emacs default")
                (etaf-number-input :title-font-size "Title font size" :min 8 :max 32)
                (etaf-number-input :content-font-size "Content font size" :min 8 :max 32)))
@@ -1364,7 +1348,11 @@ window covers them."
          (mapcar
           (lambda (field)
             (let* ((kind (nth 0 field)) (key (nth 1 field)) (label (nth 2 field))
-                   (value (plist-get (if (eq active 'shortcuts) bindings settings) key)))
+                   (value (plist-get (if (eq active 'shortcuts) bindings settings) key))
+                   ;; `light' and `dark' select the built-in theme of that mode.
+                   (value (if (and (eq key :theme) (memq value '(light dark)))
+                              (plist-get (etaf-desktop--theme-entry value) :name)
+                            value)))
               (etaf-desktop--settings-control
                kind
                (append
@@ -1376,7 +1364,7 @@ window covers them."
                         (if (eq active 'shortcuts)
                             (etaf-desktop--set-keybinding desktop key next)
                           (etaf-desktop-set-setting
-                           desktop key (if (and (eq key :font-family)
+                           desktop key (if (and (memq key '(:font-family :accent-color))
                                                (string-empty-p next)) nil next)))))
                 (nthcdr 3 field))
                paper ink))) fields))
@@ -1432,6 +1420,23 @@ window covers them."
   :render (etaf-desktop--switcher-node desktop (etaf-desktop--state desktop)))
 
 (etaf-define-component etaf-desktop--application (&key desktop)
+  "Provide DESKTOP's Theme to the retained shell.
+
+The Theme is a computed source over the settings and modal-visibility refs:
+selecting a theme or accent, or opening a dialog, repaints the shell through
+Theme paint slots without re-rendering the desktop tree."
+  :bindings
+  ((theme
+    (etaf-computed
+     (lambda ()
+       (etaf-desktop--theme-for-settings
+        (etaf-desktop--settings desktop)
+        (etaf-desktop--modal-open-p desktop)))
+     :test #'equal)))
+  :setup (etaf-theme-provide theme)
+  :render (etaf-node 'etaf-desktop--shell (list :desktop desktop) nil))
+
+(etaf-define-component etaf-desktop--shell (&key desktop)
   "Render DESKTOP as a controlled desktop surface."
   :setup
   (progn
@@ -1464,7 +1469,6 @@ window covers them."
     nil)
   :render
   (let* ((state (etaf-desktop--state desktop))
-         (colors (etaf-desktop--theme-colors desktop))
          (workspace (etaf-desktop--state-active-workspace state))
          (dividers-p (and (fboundp 'etaf-desktop-layout-mode)
                           (memq (etaf-desktop-layout-mode desktop workspace)
@@ -1486,8 +1490,8 @@ window covers them."
      ;; keep canvas-height rows between the workspace bar and the taskbar.
      (list :width (etaf-desktop--canvas-box-width desktop)
            :height (list 'lh (+ (etaf-desktop--canvas-height-value desktop) 2))
-           :background-color (plist-get colors :shell-bg)
-           :color (plist-get colors :shell-fg))
+           :background-color (etaf-desktop--theme-token :ui-shell-bg)
+           :color (etaf-desktop--theme-token :ui-shell-fg))
      (list
       (etaf-node 'etaf-desktop--workspace-surface (list :desktop desktop) nil)
       (etaf-node
@@ -1495,9 +1499,11 @@ window covers them."
        (list :position 'relative
              :width (etaf-desktop--canvas-box-width desktop)
              :height (list 'lh (etaf-desktop--canvas-height-value desktop))
-             :background-color (plist-get colors :canvas-bg)
-             :color (plist-get colors :canvas-fg)
-             :border (list '(px 1) 'solid (plist-get colors :canvas-border)))
+             :background-color (etaf-desktop--theme-token :ui-canvas-bg)
+             :color (etaf-desktop--theme-token :ui-canvas-fg)
+             :border (etaf-desktop--theme-token
+                      :ui-canvas-border
+                      (lambda (color) (list '(px 1) 'solid color))))
        (append
         (mapcar (lambda (window) (etaf-desktop--window-node desktop window)) windows)
         ;; Tiling dividers are canvas overlays positioned in canvas
