@@ -145,6 +145,15 @@
 ;; Create a default desktop when DESKTOP is nil, mount it, and return the
 ;; controller.  Interactive calls display the mounted buffer.
 
+;; Function: etaf-desktop-demo-open (&optional buffer-or-name)
+;;;###autoload (autoload 'etaf-desktop-demo-open "etaf-desktop" nil t)
+;; Mount the runnable example desktop in *ETAF Desktop Demo* (or
+;; BUFFER-OR-NAME) and return its controller.  It registers the Notes,
+;; Tasks, Clock, Calculator, Chat and Monitor sample applications, launches
+;; them across the `main' and `work' workspaces and leaves the launcher,
+;; taskbar and settings dialog fully usable.  Reopening closes the previous
+;; demo first; `etaf-desktop-close' disposes it and stops its timers.
+
 ;; Function: etaf-desktop-launcher-open-p (desktop)
 ;;;###autoload (autoload 'etaf-desktop-launcher-open-p "etaf-desktop" nil nil)
 ;; Return whether DESKTOP's controlled application launcher is visible.
@@ -404,6 +413,8 @@
 (require 'etaf-desktop-runtime)
 (require 'etaf-desktop-layout)
 (require 'etaf-desktop-apps)
+
+(autoload 'etaf-desktop-demo-open "examples/etaf-desktop-demo" nil t)
 
 (provide 'etaf-desktop)
 ;;; etaf-desktop.el ends here

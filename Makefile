@@ -3,11 +3,12 @@
 EMACS ?= emacs
 LOAD_PATH = -L . -L lisp -L tests -L ../etaf -L ../etaf-ui -L ../ebox -L ../ecss
 SOURCES = lisp/etaf-desktop-theme.el lisp/etaf-desktop-runtime.el lisp/etaf-desktop-layout.el lisp/etaf-desktop-apps.el etaf-desktop.el
+SOURCES += $(wildcard examples/*.el)
 TEST_FILES := $(wildcard tests/*-tests.el)
 
 .PHONY: compile load check clean structure-check setup-hooks acceptance api-check test
 compile:
-	rm -f *.elc lisp/*.elc tests/*.elc
+	rm -f *.elc lisp/*.elc tests/*.elc examples/*.elc
 	$(EMACS) -Q --batch $(LOAD_PATH) \
 		--eval '(setq load-prefer-newer t byte-compile-error-on-warn t)' \
 		--eval '(require (quote cl-lib))' \
@@ -25,6 +26,6 @@ api-check:
 	$(EMACS) -Q --batch -L . $(LOAD_PATH) --eval '(setq load-prefer-newer t)' -l scripts/check-api.el
 # check-api.el is supplied by the shared provider checker in standalone clones.
 clean:
-	rm -f *.elc lisp/*.elc tests/*.elc
+	rm -f *.elc lisp/*.elc tests/*.elc examples/*.elc
 
 test: acceptance

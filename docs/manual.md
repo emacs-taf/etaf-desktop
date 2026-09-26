@@ -181,6 +181,11 @@ placeholder so the remaining desktop can continue operating.
 `etaf-desktop-instances` and `etaf-desktop-instance`
 return detached state snapshots.
 
+[examples/etaf-desktop-demo.el](../examples/etaf-desktop-demo.el) is the
+runnable form of this contract: `M-x etaf-desktop-demo-open` registers six
+sample applications, each one Component on a shared surface plus a manifest
+entry with its launcher metadata and default window geometry.
+
 `etaf-desktop-session-state` excludes View and Runtime objects. It records
 desktop geometry, settings (including tile spacing), workspaces, instance
 options, application-owned data from `:serialize`, and every workspace's layout

@@ -6,6 +6,12 @@ All notable changes to ETAF Desktop are documented here.
 
 ### Added
 
+- `etaf-desktop-demo-open` (examples/etaf-desktop-demo.el) mounts a
+  standalone demo desktop with six sample applications — Notes, Tasks,
+  Clock, Calculator, Chat and Monitor — spread over two workspaces. Each
+  application is one Component on a shared header/body/footer surface plus a
+  manifest entry, so it doubles as the template for new applications.
+
 - Selectable desktop themes. `etaf-desktop-define-theme` registers a named
   light or dark token set; `daylight`, `paper`, `midnight`, `forest` and
   `graphite` are built in and `etaf-desktop-themes` lists them. The `:theme`
