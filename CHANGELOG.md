@@ -29,6 +29,12 @@ All notable changes to ETAF Desktop are documented here.
   `etaf-desktop-fit-canvas` runs the same refit on demand (for example after
   `split-window` in batch Emacs).
 
+### Changed
+
+- Structural window changes under a tiling or monocle layout publish once:
+  the layout reflow and its divider republication now run inside the same
+  reactive batch as the structural change instead of as a second publication.
+
 ### Fixed
 
 - Tiling two workspaces at once no longer fails with a duplicate

@@ -692,12 +692,14 @@ copy it before returning it to callers."
            (etaf-desktop--retain-window-shown state window old)
            (etaf-desktop--prepare-window-writers state window)))
        (etaf-desktop--retain-state-active-window state previous)
-       (etaf-set-value (etaf-desktop--controller-state-ref desktop) state))))
-  ;; Layout policy is an optional application-layer consumer of the runtime.
-  ;; Its guarded refresh applies an active tiling/monocle tree after ordinary
-  ;; window mutations, while avoiding a recursive publish during layout apply.
-  (when (fboundp 'etaf-desktop-layout-refresh)
-    (etaf-desktop-layout-refresh desktop))
+       (etaf-set-value (etaf-desktop--controller-state-ref desktop) state)
+       ;; Layout policy is an optional application-layer consumer of the
+       ;; runtime.  Its guarded refresh reflows an active tiling/monocle tree
+       ;; inside this batch, so the reflow and any divider republication
+       ;; publish together with the structural change instead of as a second
+       ;; publication; the guard avoids a recursive publish during apply.
+       (when (fboundp 'etaf-desktop-layout-refresh)
+         (etaf-desktop-layout-refresh desktop)))))
   state)
 
 (defun etaf-desktop--active-workspace-window-p (state window)
