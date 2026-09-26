@@ -25,6 +25,11 @@ All notable changes to ETAF Desktop are documented here.
 
 ### Fixed
 
+- The Layout tab's "Window layout" select shows the active workspace's
+  current mode. It read the `:layout-mode` preference, which the bar
+  control, the `l` shortcut and workspace switches never write, so it kept
+  showing "Floating" for a tiled workspace. The bar label also names
+  `master-stack` ("Master") and `monocle` modes instead of "Floating".
 - Pressing anywhere outside the launcher, switcher or settings dialog closes
   it: window content, window controls, bar controls and shell background all
   dismiss the open modal, and a taskbar control that opens another modal

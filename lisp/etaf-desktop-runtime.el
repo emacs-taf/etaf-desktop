@@ -1140,9 +1140,12 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
 
 (defun etaf-desktop--layout-label (desktop workspace)
   "Return the workspace bar label for DESKTOP's WORKSPACE layout mode."
-  (if (and (fboundp 'etaf-desktop-layout-mode)
-           (eq (etaf-desktop-layout-mode desktop workspace) 'tiling))
-      "Tiled" "Floating"))
+  (pcase (and (fboundp 'etaf-desktop-layout-mode)
+              (etaf-desktop-layout-mode desktop workspace))
+    ('tiling "Tiled")
+    ('master-stack "Master")
+    ('monocle "Monocle")
+    (_ "Floating")))
 
 (defun etaf-desktop--sync-layout-label (desktop &optional workspace)
   "Write the active workspace's layout label into DESKTOP's retained cell.
@@ -1348,7 +1351,16 @@ TRANSFORM, when given, maps the resolved color to the final property value."
   ((section (etaf-ref 'appearance)))
   :render
   (when (etaf-desktop-settings-open-p desktop)
-   (let* ((settings (etaf-desktop--settings desktop))
+   (let* ((settings
+           (let ((settings (etaf-desktop--settings desktop)))
+             ;; Layout mode is active-workspace state that the bar control and
+             ;; workspace switches change without touching the settings ref;
+             ;; the label cell tracks it, so reading it keeps this form live.
+             (etaf-value (etaf-desktop--controller-layout-label-ref desktop))
+             (if (fboundp 'etaf-desktop-layout-mode)
+                 (plist-put settings :layout-mode
+                            (etaf-desktop-layout-mode desktop))
+               settings)))
          (active (etaf-value section))
          (paper (etaf-desktop--theme-token :ui-panel-bg))
          (ink (etaf-desktop--theme-token :ui-panel-fg))

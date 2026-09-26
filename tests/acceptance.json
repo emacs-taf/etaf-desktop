@@ -196,6 +196,11 @@
       "purpose": "The workspace layout control switches between floating and tiling, preserves the last rectangles when floating and returns other modes to tiling."
     },
     {
+      "name": "etaf-desktop-settings-layout-select-follows-workspace-mode",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "The settings Layout tab shows the active workspace's live layout mode after bar toggles, API changes and workspace switches, independent of the stored preference."
+    },
+    {
       "name": "etaf-desktop-mounted-workspace-switch-is-retained",
       "file": "tests/etaf-desktop-tests.el",
       "purpose": "Switching workspaces on a mounted desktop, directly or by focusing another workspace's window, keeps the ETAF generation while hiding and showing the right windows, focusing the highest visible one, updating the layout label and listing every workspace's windows in the taskbar."

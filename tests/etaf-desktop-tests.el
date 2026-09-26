@@ -965,6 +965,38 @@ shell without a structural re-render."
             (should-not (funcall label-visible-p "Floating"))))
       (etaf-desktop-close desktop))))
 
+(ert-deftest etaf-desktop-settings-layout-select-follows-workspace-mode ()
+  "The Layout tab shows the active workspace's live mode, not a stale preference."
+  (let ((desktop (etaf-desktop-create :name " *desktop-settings-layout*"
+                                      :canvas-width 360 :canvas-height 24
+                                      :workspaces '(main dev))))
+    (unwind-protect
+        (progn
+          (etaf-desktop-open-window desktop 'one :title "One")
+          (let* ((buffer (etaf-desktop-mount desktop))
+                 (runtime (etaf-runtime-for-buffer buffer))
+                 (select-shows-p
+                  (lambda (label)
+                    (with-current-buffer buffer
+                      (string-match-p (concat "Window layout +" (regexp-quote label))
+                                      (buffer-string))))))
+            (etaf-desktop-toggle-settings desktop t)
+            (etaf-dispatch-event runtime 'settings-tab-layout 'press)
+            (should (funcall select-shows-p "Floating"))
+            ;; The `l' shortcut and the bar control both go through the
+            ;; layout API rather than the settings ref.
+            (etaf-desktop-toggle-layout-mode desktop)
+            (should (eq 'tiling (etaf-desktop-layout-mode desktop)))
+            (should (etaf-desktop-settings-open-p desktop))
+            (should (funcall select-shows-p "Tiling"))
+            (etaf-desktop-set-layout-mode desktop 'monocle)
+            (should (funcall select-shows-p "Monocle"))
+            (etaf-desktop-switch-workspace desktop 'dev)
+            (should (funcall select-shows-p "Floating"))
+            (should (equal 'floating
+                           (plist-get (etaf-desktop-settings desktop) :layout-mode)))))
+      (etaf-desktop-close desktop))))
+
 (ert-deftest etaf-desktop-mounted-workspace-switch-is-retained ()
   "Switching workspaces hides and shows windows without a structural publish."
   (let ((desktop (etaf-desktop-create :name " *desktop-switch-mounted*"
