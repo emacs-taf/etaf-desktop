@@ -31,6 +31,10 @@ All notable changes to ETAF Desktop are documented here.
 
 ### Changed
 
+- Opening or closing the launcher re-renders only the launcher surface
+  instead of the whole desktop shell, cutting the batch launcher toggle on
+  the four-window benchmark from about 335 ms to about 125 ms.
+
 - Structural window changes under a tiling or monocle layout publish once:
   the layout reflow and its divider republication now run inside the same
   reactive batch as the structural change instead of as a second publication.

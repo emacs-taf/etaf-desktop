@@ -1575,6 +1575,10 @@ footer.  Shortcuts fill two label/control column pairs."
   :render
   (etaf-desktop--taskbar-node desktop (etaf-desktop--state desktop) active))
 
+(etaf-define-component etaf-desktop--launcher-surface (&key desktop)
+  "Project the launcher so opening it re-renders only this surface."
+  :render (etaf-desktop--launcher-node desktop))
+
 (etaf-define-component etaf-desktop--switcher-surface (&key desktop)
   "Project switcher focus only while the switcher is visible."
   :render (etaf-desktop--switcher-node desktop (etaf-desktop--state desktop)))
@@ -1680,7 +1684,7 @@ of re-rendering the desktop tree."
      (list :desktop desktop)
      (list
       (etaf-node 'etaf-desktop--taskbar-surface (list :desktop desktop) nil)
-      (etaf-desktop--launcher-node desktop)
+      (etaf-node 'etaf-desktop--launcher-surface (list :desktop desktop) nil)
       (etaf-node 'etaf-desktop--switcher-surface (list :desktop desktop) nil)
       (etaf-desktop--settings-node desktop)
       (etaf-node 'etaf-desktop--close-confirm-surface (list :desktop desktop) nil))
