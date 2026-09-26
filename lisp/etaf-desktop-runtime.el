@@ -1027,7 +1027,7 @@ the controller and clears on either answer."
                         (etaf-desktop--controller-close-request-ref desktop) nil))))
         (etaf-node
          'etaf-dialog
-         (list :open t :title "Close window?" :width '(ch 48) :height '(lh 8)
+         (list :open t :title "Close window?" :width '(ch 60) :height '(lh 8)
                :close-label nil :backdrop nil :on-close cancel)
          (list (etaf-node 'etaf-label
                           (list :text (format "“%s” will close. Unsaved work in it is lost."
@@ -1456,10 +1456,10 @@ Labels sit in their own grid column, so controls hide their captions."
   "Return the `(lh N)' dialog height fitting SECTION's FIELDS.
 The body holds the tab row, the field grid and one hint row separated by
 one row each inside one row of padding; the card adds its header and
-footer.  Shortcut rows pack without gaps."
-  (let* ((rows (if (eq section 'shortcuts)
-                   (ceiling (length fields) 2)
-                 (max 1 (1- (* 2 (length fields)))))))
+footer.  Shortcuts fill two label/control column pairs."
+  (let* ((rows (max 1 (1- (* 2 (if (eq section 'shortcuts)
+                                    (ceiling (length fields) 2)
+                                  (length fields)))))))
     (list 'lh (+ rows 9))))
 
 (etaf-define-component etaf-desktop--settings-panel (&key desktop)
@@ -1508,7 +1508,7 @@ footer.  Shortcut rows pack without gaps."
                    :grid-template-columns (if shortcuts
                                               '((ch 16) (fr 1) (ch 16) (fr 1))
                                             '((ch 18) (fr 1)))
-                   :column-gap '(ch 2) :row-gap (if shortcuts '(lh 0) '(lh 1))
+                   :column-gap '(ch 2) :row-gap '(lh 1)
                    :align-items 'center)
        (mapcan
         (lambda (field)
