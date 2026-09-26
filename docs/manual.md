@@ -23,8 +23,9 @@ With no explicit `:canvas-width` or `:canvas-height`, the mounted surface
 measures the Emacs window that displays it before the first render, so the
 workspace bar, canvas and taskbar fill the visible window body.  The desktop
 keeps following that window: when Emacs resizes it, the shell frame, tiled
-and monocle workspaces, maximized windows and floating windows refit in one
-batch through retained bindings, without re-rendering the desktop tree.
+and monocle workspaces, maximized windows and floating windows on every
+workspace (including inactive ones) refit in one batch through retained
+bindings, without re-rendering the desktop tree.
 `etaf-desktop-fit-canvas` runs the same refit on demand, for example after
 `split-window` in batch Emacs where no redisplay hook fires.  Pass explicit
 dimensions when a desktop embeds a fixed-size surface or when tests need

@@ -37,6 +37,9 @@ All notable changes to ETAF Desktop are documented here.
 
 ### Fixed
 
+- Resizing the Emacs window now refits windows on every workspace. Floating
+  windows parked on an inactive workspace previously kept their old canvas
+  geometry and reappeared off-canvas when that workspace was switched to.
 - Tiling two workspaces at once no longer fails with a duplicate
   `desktop-splitter-nil` key: every workspace's dividers share the canvas,
   so their keys now carry the workspace.

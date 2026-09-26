@@ -127,10 +127,10 @@
 ;; defaults to the window showing the mounted buffer.  A desktop created with
 ;; both `:canvas-width' and `:canvas-height' keeps them.  When the fitted
 ;; `(WIDTH . HEIGHT)' changes, the shell frame follows through retained
-;; bindings, tiled and monocle workspaces reflow, maximized windows refill the
-;; canvas and floating windows shrink to it and keep their title row and part
-;; of their width reachable, in one batch.  Return the new
-;; size, or nil when nothing changed.  A mounted desktop calls this itself
+;; bindings, every tiled and monocle workspace reflows, maximized windows
+;; refill the canvas and floating windows on every workspace shrink to it and
+;; keep their title row and part of their width reachable, in one batch.
+;; Return the new size, or nil when nothing changed.  A mounted desktop calls this itself
 ;; from Emacs' window size hooks; call it after resizing a window outside the
 ;; redisplay cycle, such as in batch Emacs.
 ;;

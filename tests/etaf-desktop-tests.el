@@ -861,9 +861,9 @@ row wider than the window.
 (ert-deftest etaf-desktop-canvas-follows-window-resize ()
   "A default desktop refits its canvas when its Emacs window changes size.
 
-Shrinking the window reflows tiles, refills a maximized window and pulls a
-floating window back inside the canvas; growing it again restores the full
-shell without a structural re-render."
+Shrinking the window reflows tiles, refills a maximized window and pulls
+floating windows on every workspace back inside the canvas; growing it again
+restores the full shell without a structural re-render."
   (let ((desktop (etaf-desktop-create :name " *desktop-resize*"
                                       :workspaces '(main float))))
     (unwind-protect
@@ -915,9 +915,16 @@ shell without a structural re-render."
                           (let ((one (etaf-desktop-window-state desktop 'one)))
                             (should (<= (+ (plist-get one :y) (plist-get one :height))
                                         small)))
-                          ;; A floating window whose title row lies beyond the
-                          ;; new canvas is pulled back onto it when its
+                          ;; A floating window on an inactive workspace shares
+                          ;; the canvas, so its title row is pulled back onto
+                          ;; the new canvas immediately, not only once that
                           ;; workspace becomes active; overflow below stays.
+                          (let ((float (etaf-desktop-window-state desktop 'float)))
+                            (should (< (plist-get float :y) small))
+                            (should (<= (plist-get float :width)
+                                        (plist-get (etaf-desktop-state desktop)
+                                                   :canvas-width)))
+                            (should (= 4 (plist-get float :height))))
                           (etaf-desktop-switch-workspace desktop 'float)
                           (delete-window other)
                           (should (etaf-desktop-fit-canvas desktop))

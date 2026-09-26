@@ -2325,8 +2325,9 @@ follows so leaving maximization restores a reachable one."
 WINDOW defaults to the live window showing DESKTOP's mounted buffer.  A
 desktop created with an explicit canvas width and height keeps that geometry.
 When the fitted `(WIDTH . HEIGHT)' changes, the shell frame follows through
-retained bindings, tiled and monocle workspaces reflow, maximized windows
-refill the canvas and floating windows are kept inside it, all in one batch.
+retained bindings, every tiled and monocle workspace reflows, maximized
+windows refill the canvas and floating windows on every workspace are kept
+inside it, all in one batch.
 Return the fitted size, or nil when nothing changed.
 
 The desktop calls this itself from Emacs' window size hooks; consumers call
@@ -2341,28 +2342,30 @@ Emacs."
                          (etaf-desktop--controller-canvas-height desktop))))
       (let ((size (etaf-desktop--window-canvas-size window)))
         (unless (equal size (etaf-value ref))
-          (let* ((state (etaf-desktop--state desktop))
-                 (workspace (etaf-desktop--state-active-workspace state)))
+          (let ((state (etaf-desktop--state desktop)))
             (etaf-call-with-batch
              (lambda ()
                (etaf-set-value ref size)
+               ;; Every workspace shares the one canvas, so windows parked
+               ;; on inactive workspaces refit now rather than reappearing
+               ;; off-canvas when their workspace is switched to later.
                (let ((width (etaf-desktop--canvas-width-value desktop))
                      (height (etaf-desktop--canvas-height-value desktop)))
                  (dolist (window (etaf-desktop--state-windows state))
-                   (when (equal (etaf-desktop--window-workspace window) workspace)
-                     (cond
-                      ((etaf-desktop--window-maximized window)
-                       (setf (etaf-desktop--window-x window) 0
-                             (etaf-desktop--window-y window) 0
-                             (etaf-desktop--window-width window) width
-                             (etaf-desktop--window-height window) height))
-                      ((not (etaf-desktop--tiled-window-p desktop window))
-                       (etaf-desktop--fit-floating-window
-                        desktop window width height))))))
+                   (cond
+                    ((etaf-desktop--window-maximized window)
+                     (setf (etaf-desktop--window-x window) 0
+                           (etaf-desktop--window-y window) 0
+                           (etaf-desktop--window-width window) width
+                           (etaf-desktop--window-height window) height))
+                    ((not (etaf-desktop--tiled-window-p desktop window))
+                     (etaf-desktop--fit-floating-window
+                      desktop window width height)))))
                ;; The layout's own batch joins this one, so the frame, the
                ;; windows and the dividers publish in a single projection.
                (when (fboundp 'etaf-desktop-layout-refresh)
-                 (etaf-desktop-layout-refresh desktop workspace)))))
+                 (dolist (workspace (etaf-desktop--state-workspaces state))
+                   (etaf-desktop-layout-refresh desktop workspace))))))
           size)))))
 
 (defun etaf-desktop--fit-pending-desktops ()

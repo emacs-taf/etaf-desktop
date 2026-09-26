@@ -173,7 +173,7 @@
     {
       "name": "etaf-desktop-canvas-follows-window-resize",
       "file": "tests/etaf-desktop-tests.el",
-      "purpose": "A default desktop refits its shell, tiles, maximized and floating windows to the Emacs window's new size through etaf-desktop-fit-canvas."
+      "purpose": "A default desktop refits its shell, tiles, maximized and floating windows on every workspace to the Emacs window's new size through etaf-desktop-fit-canvas."
     },
     {
       "name": "etaf-desktop-application-errors-are-isolated",
