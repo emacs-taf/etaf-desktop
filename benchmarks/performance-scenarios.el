@@ -6,6 +6,11 @@
 ;; performs one real public operation; its precondition is restored and flushed
 ;; before timing, and its publication is flushed inside the timed operation.
 ;; Geometry alternates direction so long sample sets never reach size limits.
+;; A GUI fixture mounts a default desktop and fits it to the benchmark window,
+;; exactly as a user's desktop fills its Emacs window; batch Emacs has no
+;; graphical window, so it uses a fixed canvas the size of a full-width frame.
+;; Window placement, drag expectations and the environment probe derive from
+;; the fitted canvas, so a frame resized between runs is recorded, not hidden.
 ;; Native GUI sequences use real rendered targets and prequeued Emacs mouse
 ;; events: eight motions for a sequence and 130 for a burst.  The distinct
 ;; release endpoint must be published after all pending motions are consumed.
@@ -24,13 +29,37 @@
 (defconst etaf-desktop-benchmark--ids
   '(desktop-one desktop-two desktop-three desktop-four))
 
-(defun etaf-desktop-benchmark--open-window (desktop id index workspace)
-  "Open text window ID at INDEX in DESKTOP's WORKSPACE."
-  (etaf-desktop-open-window
-   desktop id :workspace workspace :title (format "Window %s" id)
-   :view (etaf-view (text (expr (format "Content %s" id))))
-   :x (+ 20 (* 440 (mod index 2))) :y (+ 2 (* 14 (/ index 2)))
-   :width 360 :height 10 :min-width 120 :min-height 5))
+(defconst etaf-desktop-benchmark--batch-canvas '(1421 . 49)
+  "Canvas for batch Emacs, which has no graphical window to fit.
+It equals a default desktop filling a 1440 px wide frame with 7 px characters
+and a 51-row body, so batch workloads render as much as a full GUI window.")
+
+(defun etaf-desktop-benchmark--window-geometry (canvas index)
+  "Return the (X Y WIDTH HEIGHT) of window INDEX on a two-by-two grid of CANVAS.
+CANVAS is `(WIDTH . HEIGHT)' in pixels and text rows.  Every window keeps a
+gutter to the canvas edges and its neighbours so moves and resizes in either
+direction stay inside the canvas without touching another window."
+  (let* ((column (/ (car canvas) 2))
+         (row (/ (1- (cdr canvas)) 2))
+         (gutter (max 8 (round (/ (car canvas) 45.0)))))
+    (list (+ gutter (* column (mod index 2)))
+          (+ 1 (* row (/ index 2)))
+          (max 120 (- column (* 2 gutter)))
+          (max 5 (- row 2)))))
+
+(defun etaf-desktop-benchmark--open-window (desktop id index workspace canvas)
+  "Open text window ID at grid INDEX of CANVAS in DESKTOP's WORKSPACE."
+  (pcase-let ((`(,x ,y ,width ,height)
+               (etaf-desktop-benchmark--window-geometry canvas index)))
+    (etaf-desktop-open-window
+     desktop id :workspace workspace :title (format "Window %s" id)
+     :view (etaf-view (text (expr (format "Content %s" id))))
+     :x x :y y :width width :height height :min-width 120 :min-height 5)))
+
+(defun etaf-desktop-benchmark--canvas (desktop)
+  "Return DESKTOP's current `(WIDTH . HEIGHT)' canvas."
+  (let ((state (etaf-desktop-state desktop)))
+    (cons (plist-get state :canvas-width) (plist-get state :canvas-height))))
 
 (defun etaf-desktop-benchmark--rectangle (state)
   "Return the public geometry fields from window STATE."
@@ -102,17 +131,23 @@ keymap route with no replacement reader or direct gesture phase dispatch."
             :start (cons (car xy) (cdr xy)) :last-motion last-delta
             :release (cons (car delta) (cdr delta))))))
 
-(defun etaf-desktop-benchmark--fixture (scenario)
-  "Create a four-window workload for public SCENARIO.
-A `tiled-' prefix runs the remaining operation on a tiled workspace."
+(defun etaf-desktop-benchmark--fixture (scenario mode)
+  "Create a four-window workload for public SCENARIO in MODE.
+A `tiled-' prefix runs the remaining operation on a tiled workspace.  In
+`gui' MODE the desktop fits the selected benchmark window; `batch' uses
+`etaf-desktop-benchmark--batch-canvas'."
   (let* ((tiled (string-prefix-p "tiled-" (symbol-name scenario)))
          (operation (if tiled
                         (intern (substring (symbol-name scenario) 6))
                       scenario))
          (buffer (generate-new-buffer " *ETAF Desktop benchmark*"))
-         (desktop (etaf-desktop-create
-                   :name (buffer-name buffer) :canvas-width 900 :canvas-height 30
-                   :workspaces '(main dev)))
+         (gui (eq mode 'gui))
+         (desktop (apply #'etaf-desktop-create
+                         :name (buffer-name buffer) :workspaces '(main dev)
+                         (unless gui
+                           (list :canvas-width (car etaf-desktop-benchmark--batch-canvas)
+                                 :canvas-height (cdr etaf-desktop-benchmark--batch-canvas)))))
+         (canvas nil)
          (ids etaf-desktop-benchmark--ids)
          (step 0)
          (target (car ids))
@@ -137,12 +172,19 @@ A `tiled-' prefix runs the remaining operation on a tiled workspace."
                       ((string-prefix-p "switcher-" (symbol-name operation)) 'switcher)
                       ((string-prefix-p "settings-" (symbol-name operation)) 'settings)))
          (shell-open (string-suffix-p "-open" (symbol-name operation))))
+    ;; Mount before opening windows: a GUI desktop learns its canvas from the
+    ;; window that displays it, and the grid below is laid out on that canvas.
+    (setq runtime (etaf-runtime-for-buffer (etaf-desktop-mount desktop buffer)))
+    (when gui
+      (set-window-buffer (selected-window) buffer)
+      (etaf-desktop-fit-canvas desktop (selected-window)))
+    (setq canvas (etaf-desktop-benchmark--canvas desktop))
     (cl-loop for id in ids for index from 0 do
-             (etaf-desktop-benchmark--open-window desktop id index 'main))
+             (etaf-desktop-benchmark--open-window desktop id index 'main canvas))
     (when (eq operation 'workspace)
       (cl-loop for index below 4 do
                (etaf-desktop-benchmark--open-window
-                desktop (intern (format "desktop-dev-%s" index)) index 'dev)))
+                desktop (intern (format "desktop-dev-%s" index)) index 'dev canvas)))
     (etaf-desktop-switch-workspace desktop 'main)
     (etaf-desktop-focus-window desktop (car (last ids)))
     (when (or tiled (eq operation 'layout-ratio))
@@ -152,7 +194,7 @@ A `tiled-' prefix runs the remaining operation on a tiled workspace."
                         (:split vertical 0.5 (:leaf desktop-two) (:leaf desktop-four)))
        'main)
       (etaf-desktop-set-layout-mode desktop 'tiling 'main))
-    (setq runtime (etaf-runtime-for-buffer (etaf-desktop-mount desktop buffer)))
+    (etaf-runtime-flush runtime)
     (cl-labels
         ((flush () (etaf-runtime-flush runtime))
          (open-shell ()
@@ -175,13 +217,15 @@ A `tiled-' prefix runs the remaining operation on a tiled workspace."
        :buffer buffer
        :ready (lambda () t)
        :environment (lambda ()
-                      (list :operation (symbol-name operation)
-                            :canvas-width 900 :canvas-height 30
-                            :workspace-window-count 4
-                            :input-route (if native "native-keymap" "public-api")
-                            :motion-queue (and native "prequeued")
-                            :motion-count motion-count
-                            :physical-pointer-latency-certified :false))
+                      (let ((current (etaf-desktop-benchmark--canvas desktop)))
+                        (list :operation (symbol-name operation)
+                              :canvas-width (car current) :canvas-height (cdr current)
+                              :canvas-policy (if gui "window-fitted" "batch-fixed")
+                              :workspace-window-count 4
+                              :input-route (if native "native-keymap" "public-api")
+                              :motion-queue (and native "prequeued")
+                              :motion-count motion-count
+                              :physical-pointer-latency-certified :false)))
        :prepare
        (lambda ()
          (cl-incf step)
@@ -194,7 +238,7 @@ A `tiled-' prefix runs the remaining operation on a tiled workspace."
            (cl-loop for id in ids for index from 0
                     unless (cl-find id (etaf-desktop-windows desktop)
                                     :key (lambda (window) (plist-get window :id)))
-                    do (etaf-desktop-benchmark--open-window desktop id index 'main))
+                    do (etaf-desktop-benchmark--open-window desktop id index 'main canvas))
            (etaf-desktop-focus-window desktop target))
           ((memq operation '(maximize minimize restore-maximized restore-minimized))
            (dolist (id ids) (etaf-desktop-restore-window desktop id))
@@ -299,7 +343,8 @@ A `tiled-' prefix runs the remaining operation on a tiled workspace."
                  (cl-every (lambda (id) (etaf-desktop-benchmark--content-p buffer id)) ids)))
            ((eq operation 'maximize)
             (and (etaf-desktop-window-maximized-p desktop target)
-                 (equal '(0 0 900 30) (etaf-desktop-benchmark--rectangle (state)))
+                 (equal (list 0 0 (car canvas) (cdr canvas))
+                        (etaf-desktop-benchmark--rectangle (state)))
                  (etaf-desktop-benchmark--content-p buffer target)))
            ((eq operation 'minimize)
             (and (plist-get (state) :minimized)
@@ -380,20 +425,20 @@ A `tiled-' prefix runs the remaining operation on a tiled workspace."
            (if (or (eq operation 'move)
                    (string-prefix-p "resize-" (symbol-name operation))) "geometry" "policy")
            operation)
-   :version 3 :modes '(batch gui) :isolation 'series :required-providers '(ebox)
+   :version 4 :modes '(batch gui) :isolation 'series :required-providers '(ebox)
    :budget-ms 10 :impact 'mixed
    :description (format "Four-window Desktop %s with completed publication" operation)
    :setup (let ((selected-operation operation))
-            (lambda (_mode) (etaf-desktop-benchmark--fixture selected-operation)))))
+            (lambda (mode) (etaf-desktop-benchmark--fixture selected-operation mode)))))
 
 (dolist (operation '(native-move-sequence native-move-burst
                     native-resize-bottom-right-sequence native-resize-bottom-right-burst))
   (taf-benchmark-register
    (format "etaf-desktop.geometry.%s" operation)
-   :version 3 :modes '(gui) :isolation 'series :required-providers '(ebox)
+   :version 4 :modes '(gui) :isolation 'series :required-providers '(ebox)
    :budget-ms 10 :impact 'mixed
    :description (format "Four-window %s with prequeued native motions and exact release" operation)
    :setup (let ((selected-operation operation))
-            (lambda (_mode) (etaf-desktop-benchmark--fixture selected-operation)))))
+            (lambda (mode) (etaf-desktop-benchmark--fixture selected-operation mode)))))
 
 ;;; performance-scenarios.el ends here

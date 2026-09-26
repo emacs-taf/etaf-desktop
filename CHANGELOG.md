@@ -35,6 +35,13 @@ All notable changes to ETAF Desktop are documented here.
   the layout reflow and its divider republication now run inside the same
   reactive batch as the structural change instead of as a second publication.
 
+- Performance workloads (`benchmarks/performance-scenarios.el`, version 4)
+  measure a default desktop that fills the benchmark window in GUI mode, as a
+  user's desktop does; batch Emacs uses a fixed full-frame canvas. The four
+  windows are placed on a grid derived from that canvas, and the recorded
+  environment includes the canvas actually measured. Baselines recorded with
+  the earlier fixed 900×30 canvas are incomparable and must be re-established.
+
 ### Fixed
 
 - Resizing the Emacs window now refits windows on every workspace. Floating
