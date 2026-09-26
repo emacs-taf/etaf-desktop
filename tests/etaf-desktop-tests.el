@@ -397,8 +397,8 @@ can always be grabbed again."
                            for ref = (car entry)
                            for props = (etaf-runtime-host-props-for runtime ref)
                            when (and (assq 'press entry)
-                                     (equal (plist-get props :class)
-                                            "etaf-button enabled"))
+                                     (equal (plist-get props :aria-label)
+                                            "Open notes"))
                            return ref)))
             (should button-ref)
             (should (eq 'files (etaf-desktop-active-window desktop)))
@@ -648,6 +648,52 @@ can always be grabbed again."
                 (should (= 1 (cl-count active-color second :test #'equal)))
                 (should (= 1 (cl-count inactive-color second :test #'equal)))))))
       (etaf-desktop-unregister-app app t)
+      (etaf-desktop-close desktop))))
+
+(ert-deftest etaf-desktop-confirm-close-asks-inside-the-desktop ()
+  "With confirm-close on, the Close control opens an in-buffer dialog.
+Cancel keeps the window; the primary action closes it.  Neither path uses
+the minibuffer."
+  (let ((desktop (etaf-desktop-create :name " *desktop-confirm-close*"
+                                      :canvas-width 80 :canvas-height 20)))
+    (unwind-protect
+        (progn
+          (etaf-desktop-set-setting desktop :confirm-close t)
+          (etaf-desktop-open-window desktop 'notes :title "Notes"
+                                    :view (etaf-view (text "Body")))
+          (let* ((buffer (etaf-desktop-mount desktop))
+                 (runtime (etaf-runtime-for-buffer buffer))
+                 (press-close
+                  (lambda ()
+                    (let ((entry (cl-find-if
+                                  (lambda (item)
+                                    (equal "Close" (plist-get (cdr item) :aria-label)))
+                                  (etaf-runtime-host-props-entries runtime))))
+                      (should entry)
+                      (etaf-dispatch-event runtime (car entry) 'press))))
+                 (dialog-shown-p
+                  (lambda ()
+                    (with-current-buffer buffer
+                      (string-match-p "Close window\\?" (buffer-string)))))
+                 (window-open-p
+                  (lambda ()
+                    (cl-find 'notes (etaf-desktop-windows desktop)
+                             :key (lambda (plist) (plist-get plist :id))))))
+            (cl-letf (((symbol-function 'yes-or-no-p)
+                       (lambda (&rest _) (error "minibuffer prompt used")))
+                      ((symbol-function 'y-or-n-p)
+                       (lambda (&rest _) (error "minibuffer prompt used"))))
+              (funcall press-close)
+              (should (funcall dialog-shown-p))
+              (should (funcall window-open-p))
+              (etaf-dispatch-event runtime 'etaf-desktop-close-cancel 'press)
+              (should-not (funcall dialog-shown-p))
+              (should (funcall window-open-p))
+              (funcall press-close)
+              (should (funcall dialog-shown-p))
+              (etaf-dispatch-event runtime 'etaf-desktop-close-confirm 'press)
+              (should-not (funcall dialog-shown-p))
+              (should-not (funcall window-open-p)))))
       (etaf-desktop-close desktop))))
 
 (ert-deftest etaf-desktop-application-errors-are-isolated ()
@@ -977,9 +1023,16 @@ shell without a structural re-render."
                  (runtime (etaf-runtime-for-buffer buffer))
                  (select-shows-p
                   (lambda (label)
-                    (with-current-buffer buffer
-                      (string-match-p (concat "Window layout +" (regexp-quote label))
-                                      (buffer-string))))))
+                    ;; The layout chips render every option; the selected
+                    ;; chip is the one whose host class carries "selected".
+                    (cl-some
+                     (lambda (entry)
+                       (let ((props (etaf-runtime-host-props-for
+                                     runtime (car entry))))
+                         (and (equal (plist-get props :aria-label) label)
+                              (string-match-p "selected"
+                                              (or (plist-get props :class) "")))))
+                     (etaf-runtime-handler-entries runtime)))))
             (etaf-desktop-toggle-settings desktop t)
             (etaf-dispatch-event runtime 'settings-tab-layout 'press)
             (should (funcall select-shows-p "Floating"))

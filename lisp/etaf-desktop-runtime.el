@@ -167,7 +167,7 @@ minimized state only when every member window is minimized."
                (:constructor etaf-desktop--controller-create))
   name canvas-width canvas-height canvas-size-ref state-ref buffer runtime
   launcher-ref switcher-ref settings-ref settings-open-ref layout-label-ref
-  owns-runtime-p owns-buffer-p divider-drag-origin)
+  close-request-ref owns-runtime-p owns-buffer-p divider-drag-origin)
 
 (defun etaf-desktop--default-settings ()
   "Return the detached default settings for a new Desktop controller."
@@ -1002,14 +1002,56 @@ at this boundary."
              nil))
 
 (defun etaf-desktop--request-close-window (desktop id)
-  "Close ID, optionally asking for confirmation from Desktop settings."
+  "Close ID, or ask first through the in-buffer dialog when settings say so."
   (if (plist-get (etaf-desktop--settings desktop) :confirm-close)
-      (when (etaf-confirm-dialog
-             (format "Close the %s window?"
-                     (or (plist-get (etaf-desktop-window-state desktop id) :title)
-                         id)))
-        (etaf-desktop-close-window desktop id))
+      (etaf-set-value (etaf-desktop--controller-close-request-ref desktop) id)
     (etaf-desktop-close-window desktop id)))
+
+(defun etaf-desktop--close-request (desktop)
+  "Return the window id awaiting close confirmation in DESKTOP, or nil."
+  (etaf-value (etaf-desktop--controller-close-request-ref desktop)))
+
+(etaf-define-component etaf-desktop--close-confirm-surface (&key desktop)
+  "Ask whether to close the window awaiting confirmation in DESKTOP.
+Cancel, Escape and a press outside the card keep the window; the primary
+action closes it.  The dialog owns no window state: the pending id lives in
+the controller and clears on either answer."
+  :render
+  (let ((id (etaf-desktop--close-request desktop)))
+    (when id
+      (let* ((window (cl-find id (etaf-desktop-windows desktop)
+                              :key (lambda (plist) (plist-get plist :id))))
+             (title (or (plist-get window :title) (format "%s" id)))
+             (cancel (lambda ()
+                       (etaf-set-value
+                        (etaf-desktop--controller-close-request-ref desktop) nil))))
+        (etaf-node
+         'etaf-dialog
+         (list :open t :title "Close window?" :width '(ch 48) :height '(lh 8)
+               :close-label nil :backdrop nil :on-close cancel)
+         (list (etaf-node 'etaf-label
+                          (list :text (format "“%s” will close. Unsaved work in it is lost."
+                                              title)
+                                :wrap-mode 'word)
+                          nil))
+         (list (cons 'footer
+                     (list
+                      (etaf-node 'etaf-button
+                                 (list :label "Cancel" :variant 'secondary
+                                       :ref 'etaf-desktop-close-cancel
+                                       :on-press cancel)
+                                 nil)
+                      (etaf-node 'etaf-button
+                                 (list :label "Close window" :variant 'primary
+                                       :ref 'etaf-desktop-close-confirm
+                                       :on-press
+                                       (lambda ()
+                                         (funcall cancel)
+                                         (when (cl-find id (etaf-desktop-windows desktop)
+                                                        :key (lambda (plist)
+                                                               (plist-get plist :id)))
+                                           (etaf-desktop-close-window desktop id))))
+                                 nil)))))))))
 
 (defun etaf-desktop--window-shell
     (desktop window active move resize-left resize-right resize-top resize-bottom
@@ -1329,24 +1371,99 @@ TRANSFORM, when given, maps the resolved color to the final property value."
                     transform))
 
 (defun etaf-desktop--modal-open-p (desktop)
-  "Return non-nil when a launcher, switcher or settings dialog is open."
+  "Return non-nil when a launcher, switcher, settings or confirm dialog is open."
   (or (etaf-desktop-launcher-open-p desktop)
       (etaf-desktop-switcher-open-p desktop)
-      (etaf-desktop-settings-open-p desktop)))
+      (etaf-desktop-settings-open-p desktop)
+      (and (etaf-desktop--close-request desktop) t)))
 
-(defun etaf-desktop--settings-control (kind props paper ink)
-  "Build a flat settings control of KIND with PROPS on PAPER in INK."
-  (let ((style (list :border (etaf-desktop--theme-token
-                              :ui-panel-bg
-                              (lambda (color) (list '(px 0) 'solid color)))
-                     :background-color paper :color ink
-                     :font-weight 'normal :padding '((lh 0) (ch 0)))))
-    (while props
-      (setq style (plist-put style (pop props) (pop props))))
-    (etaf-node kind style nil)))
+(defconst etaf-desktop--settings-sections
+  '((appearance . "Appearance") (layout . "Layout")
+    (behavior . "Behavior") (shortcuts . "Shortcuts"))
+  "Settings dialog sections in tab order.")
+
+(defconst etaf-desktop--settings-shortcuts
+  '((:focus-next . "Focus next") (:focus-previous . "Focus previous")
+    (:launcher . "Applications") (:switcher . "Window switcher")
+    (:settings . "Settings") (:toggle-layout . "Toggle layout")
+    (:split-window . "Split window") (:swap-window . "Swap windows")
+    (:maximize-window . "Maximize") (:restore-window . "Restore")
+    (:minimize-window . "Minimize") (:close-window . "Close window"))
+  "Editable desktop shortcuts and their captions.")
+
+(defun etaf-desktop--settings-fields (section)
+  "Return the (KIND KEY LABEL . PROPS) field specs of settings SECTION."
+  (pcase section
+    ('appearance
+     `((etaf-select :theme "Theme" :options
+                    ((system . "System")
+                     ,@(mapcar (lambda (theme)
+                                 (cons (plist-get theme :name)
+                                       (plist-get theme :label)))
+                               (etaf-desktop-themes))))
+       (etaf-text-input :accent-color "Accent color" :placeholder "Theme accent")
+       (etaf-text-input :font-family "Font family" :placeholder "Emacs default")
+       (etaf-number-input :title-font-size "Title font size" :min 8 :max 32)
+       (etaf-number-input :content-font-size "Content font size" :min 8 :max 32)))
+    ('layout
+     '((etaf-select :layout-mode "Window layout" :options
+                    ((floating . "Floating") (tiling . "Tiling")
+                     (master-stack . "Master and stack") (monocle . "Monocle")))
+       (etaf-number-input :tile-outer-gap "Outer gap" :min 0 :max 4)
+       (etaf-number-input :tile-inner-gap "Inner gap" :min 1 :max 4)))
+    ('behavior
+     '((etaf-select :drag-lock-modifier "Drag lock modifier" :options
+                    ((shift . "Shift") (control . "Control")
+                     (meta . "Meta") (super . "Super") (hyper . "Hyper")))
+       (etaf-switch :resize-enabled "Allow window resizing")
+       (etaf-switch :confirm-close "Confirm before closing")
+       (etaf-select :taskbar-grouping "Taskbar grouping" :options
+                    ((window . "Every window") (application . "By application")))))
+    ('shortcuts
+     (mapcar (lambda (entry) (list 'etaf-text-input (car entry) (cdr entry)))
+             etaf-desktop--settings-shortcuts))))
+
+(defun etaf-desktop--settings-field-nodes (desktop section field value)
+  "Return the label and control nodes of FIELD showing VALUE in SECTION.
+Labels sit in their own grid column, so controls hide their captions."
+  (let* ((kind (nth 0 field)) (key (nth 1 field)) (label (nth 2 field))
+         (extra (nthcdr 3 field))
+         (on-change
+          (lambda (next)
+            (if (eq section 'shortcuts)
+                (etaf-desktop--set-keybinding desktop key next)
+              (etaf-desktop-set-setting
+               desktop key (if (and (memq key '(:font-family :accent-color))
+                                    (stringp next) (string-empty-p next))
+                               nil next))))))
+    (list
+     (etaf-node 'etaf-label (list :key (format "%s-label" key) :text label
+                                  :variant 'muted :wrap-mode 'none)
+                nil)
+     (etaf-node
+      kind
+      (append
+       (list :key key)
+       (pcase kind
+         ('etaf-switch (list :checked (and value t) :label (if value "On" "Off")))
+         ('etaf-text-input (list :value (or value "") :label label :hide-label t))
+         (_ (list :value value :label label :hide-label t)))
+       (list :on-change on-change)
+       extra)
+      nil))))
+
+(defun etaf-desktop--settings-height (section fields)
+  "Return the `(lh N)' dialog height fitting SECTION's FIELDS.
+The body holds the tab row, the field grid and one hint row separated by
+one row each inside one row of padding; the card adds its header and
+footer.  Shortcut rows pack without gaps."
+  (let* ((rows (if (eq section 'shortcuts)
+                   (ceiling (length fields) 2)
+                 (max 1 (1- (* 2 (length fields)))))))
+    (list 'lh (+ rows 9))))
 
 (etaf-define-component etaf-desktop--settings-panel (&key desktop)
-  "Render a compact, sectioned settings form for DESKTOP."
+  "Render DESKTOP's settings as one card with tabs and a labelled field grid."
   :bindings
   ((section (etaf-ref 'appearance)))
   :render
@@ -1362,119 +1479,60 @@ TRANSFORM, when given, maps the resolved color to the final property value."
                             (etaf-desktop-layout-mode desktop))
                settings)))
          (active (etaf-value section))
-         (paper (etaf-desktop--theme-token :ui-panel-bg))
-         (ink (etaf-desktop--theme-token :ui-panel-fg))
-         (muted (etaf-desktop--theme-token :ui-muted-fg))
-         (selected (etaf-desktop--theme-token :ui-accent-soft-bg))
          (bindings (plist-get settings :keybindings))
-         (fields
-          (pcase active
-            ('appearance
-             `((etaf-select :theme "Theme" :options
-                            ((system . "System")
-                             ,@(mapcar (lambda (theme)
-                                         (cons (plist-get theme :name)
-                                               (plist-get theme :label)))
-                                       (etaf-desktop-themes))))
-               (etaf-text-input :accent-color "Accent color"
-                                :placeholder "Theme accent")
-               (etaf-text-input :font-family "Font family" :placeholder "Emacs default")
-               (etaf-number-input :title-font-size "Title font size" :min 8 :max 32)
-               (etaf-number-input :content-font-size "Content font size" :min 8 :max 32)))
-            ('layout
-             '((etaf-select :layout-mode "Window layout" :options
-                            ((floating . "Floating") (tiling . "Tiling")
-                             (master-stack . "Master and stack") (monocle . "Monocle")))
-               (etaf-number-input :tile-outer-gap "Outer gap" :min 0 :max 4)
-               (etaf-number-input :tile-inner-gap "Inner gap" :min 1 :max 4)))
-            ('behavior
-             '((etaf-select :drag-lock-modifier "Drag lock modifier" :options
-                            ((shift . "Shift") (control . "Control")
-                             (meta . "Meta") (super . "Super") (hyper . "Hyper")))
-               (etaf-checkbox :resize-enabled "Allow window resizing")
-               (etaf-checkbox :confirm-close "Confirm before closing")
-               (etaf-select :taskbar-grouping "Taskbar grouping" :options
-                            ((window . "Every window") (application . "By application")))))
-            ('shortcuts
-             (mapcar (lambda (entry)
-                       (list 'etaf-text-input (car entry) (cdr entry)))
-                     '((:focus-next . "Focus next") (:focus-previous . "Focus previous")
-                       (:launcher . "Applications") (:switcher . "Window switcher")
-                       (:settings . "Settings") (:toggle-layout . "Toggle layout")
-                       (:split-window . "Split window") (:swap-window . "Swap windows")
-                       (:maximize-window . "Maximize") (:restore-window . "Restore")
-                       (:minimize-window . "Minimize") (:close-window . "Close window")))))))
+         (fields (etaf-desktop--settings-fields active))
+         (shortcuts (eq active 'shortcuts)))
     (etaf-node
      'etaf-dialog
      (list :open (etaf-desktop-settings-open-p desktop)
-           :title "Desktop Settings" :width '(ch 64) :height '(lh 22) :compact t
+           :title "Desktop Settings" :width '(ch 76)
+           :height (etaf-desktop--settings-height active fields)
            :close-label "Done" :backdrop nil
            :on-close (lambda () (etaf-desktop-close-settings desktop)))
      (list
       (etaf-node
-       'column (list :width 'stretch :item-gap '(lh 1)
-                     :padding '((lh 1) (ch 1)) :background-color paper :color ink)
-       (list
-        (etaf-node
-         'row (list :item-gap '(ch 2))
-         (mapcar
-          (lambda (entry)
-            (let ((key (car entry)))
-              (etaf-desktop--settings-control
-               'etaf-button
-               (list :ref (intern (format "settings-tab-%s" key))
-                     :label (cdr entry) :aria-label (cdr entry) :variant 'ghost
-                     :background-color (if (eq active key) selected paper)
-                     :font-weight (if (eq active key) 'bold 'normal)
-                     :on-press (lambda () (etaf-set-value section key)))
-               paper ink)))
-          '((appearance . "Appearance") (layout . "Layout")
-            (behavior . "Behavior") (shortcuts . "Shortcuts"))))
-        (etaf-node 'etaf-label
-                   (list :text (pcase active
-                                 ('appearance "A comfortable place to work.")
-                                 ('layout "Give tiled windows room to breathe.")
-                                 ('behavior "Choose how your desktop responds.")
-                                 (_ "Keys apply only while the desktop is active."))
-                         :color muted) nil)
-        (etaf-node
-         'grid (list :width 'stretch
-                     :grid-template-columns (if (eq active 'shortcuts)
-                                                '((fr 1) (fr 1)) '((fr 1)))
-                     :column-gap '(ch 2) :row-gap '(lh 1))
-         (mapcar
-          (lambda (field)
-            (let* ((kind (nth 0 field)) (key (nth 1 field)) (label (nth 2 field))
-                   (value (plist-get (if (eq active 'shortcuts) bindings settings) key))
-                   ;; `light' and `dark' select the built-in theme of that mode.
-                   (value (if (and (eq key :theme) (memq value '(light dark)))
-                              (plist-get (etaf-desktop--theme-entry value) :name)
-                            value)))
-              (etaf-desktop--settings-control
-               kind
-               (append
-                (list :key key :label label :aria-label label
-                      (if (eq kind 'etaf-checkbox) :checked :value)
-                      (if (eq kind 'etaf-text-input) (or value "") value)
-                      :on-change
-                      (lambda (next)
-                        (if (eq active 'shortcuts)
-                            (etaf-desktop--set-keybinding desktop key next)
-                          (etaf-desktop-set-setting
-                           desktop key (if (and (memq key '(:font-family :accent-color))
-                                               (string-empty-p next)) nil next)))))
-                (nthcdr 3 field))
-               paper ink))) fields))
-        (etaf-node 'etaf-label
-                   (list :text (if (eq active 'layout)
-                                   "Gap units: character widths across, text rows down."
-                                 "Changes are saved with your desktop session.")
-                         :color muted) nil)
-        (etaf-desktop--settings-control
-         'etaf-button
-         (list :label "Reset settings" :variant 'ghost :aria-label "Reset settings"
-               :on-press (lambda () (etaf-desktop-reset-settings desktop)))
-         paper muted))))))))
+       'flex (list :class "etaf-desktop-settings-tabs" :role 'tablist
+                   :flex-direction 'row :gap '((lh 0) (ch 1)) :width 'stretch)
+       (mapcar
+        (lambda (entry)
+          (let ((key (car entry)))
+            (etaf-node 'etaf-button
+                       (list :ref (intern (format "settings-tab-%s" key))
+                             :label (cdr entry) :aria-label (cdr entry)
+                             :variant (if (eq active key) 'secondary 'ghost)
+                             :on-press (lambda () (etaf-set-value section key)))
+                       nil)))
+        etaf-desktop--settings-sections))
+      (etaf-node
+       'grid (list :class "etaf-desktop-settings-fields" :width 'stretch
+                   :grid-template-columns (if shortcuts
+                                              '((ch 16) (fr 1) (ch 16) (fr 1))
+                                            '((ch 18) (fr 1)))
+                   :column-gap '(ch 2) :row-gap (if shortcuts '(lh 0) '(lh 1))
+                   :align-items 'center)
+       (mapcan
+        (lambda (field)
+          (let* ((key (nth 1 field))
+                 (value (plist-get (if shortcuts bindings settings) key))
+                 ;; `light' and `dark' select the built-in theme of that mode.
+                 (value (if (and (eq key :theme) (memq value '(light dark)))
+                            (plist-get (etaf-desktop--theme-entry value) :name)
+                          value)))
+            (etaf-desktop--settings-field-nodes desktop active field value)))
+        fields))
+      (etaf-node 'etaf-label
+                 (list :text (pcase active
+                               ('layout "Gaps use character widths across and text rows down.")
+                               ('shortcuts "Keys apply while the desktop is active.")
+                               (_ "Changes are saved with your desktop session."))
+                       :variant 'muted) nil))
+     (list
+      (cons 'footer
+            (list (etaf-node 'etaf-button
+                             (list :label "Reset settings" :variant 'ghost
+                                   :aria-label "Reset settings"
+                                   :on-press (lambda () (etaf-desktop-reset-settings desktop)))
+                             nil))))))))
 
 (defun etaf-desktop--settings-node (desktop)
   "Render DESKTOP's settings through its retained section controller."
@@ -1619,7 +1677,8 @@ of re-rendering the desktop tree."
       (etaf-node 'etaf-desktop--taskbar-surface (list :desktop desktop) nil)
       (etaf-desktop--launcher-node desktop)
       (etaf-node 'etaf-desktop--switcher-surface (list :desktop desktop) nil)
-      (etaf-desktop--settings-node desktop))
+      (etaf-desktop--settings-node desktop)
+      (etaf-node 'etaf-desktop--close-confirm-surface (list :desktop desktop) nil))
      (list
       (cons 'workspace-bar
             (list (etaf-node 'etaf-desktop--workspace-surface
@@ -1676,7 +1735,9 @@ owns its reactive state and does not mount a buffer until `etaf-desktop-mount'."
           (etaf-desktop--controller-settings-open-ref controller)
           (etaf-ref nil :name 'etaf-desktop-settings-open)
           (etaf-desktop--controller-layout-label-ref controller)
-          (etaf-ref "Floating" :name 'etaf-desktop-layout-label))
+          (etaf-ref "Floating" :name 'etaf-desktop-layout-label)
+          (etaf-desktop--controller-close-request-ref controller)
+          (etaf-ref nil :name 'etaf-desktop-close-request))
     controller))
 
 (defun etaf-desktop-launcher-open-p (desktop)

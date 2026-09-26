@@ -59,6 +59,17 @@ All notable changes to ETAF Desktop are documented here.
 
 ### Changed
 
+- Desktop Settings is one card with a tab row and a labelled two-column
+  form. Theme, layout, drag-lock modifier and taskbar grouping are chip or
+  dropdown selects, numbers are `[−] value [+]` steppers and booleans are
+  On/Off switches, so choosing a theme no longer opens the minibuffer.
+- "Confirm before closing" asks through an in-desktop "Close window?" card
+  with Cancel and Close window actions instead of a `yes-or-no-p` prompt.
+- Themes follow the ETAF UI tonal control palette: `:ui-button-secondary-*`
+  tints controls with the theme accent, and the `:ui-button-*-border`,
+  `:ui-selection-*`, `:ui-checkbox-*-bg`/`-border` and
+  `:ui-button-ghost-bg` tokens are no longer part of a theme. Custom themes
+  that set them are still accepted; the values are ignored.
 - Switching workspaces, including through `etaf-desktop-focus-window` on a
   window of another workspace, publishes through retained cells. Every
   workspace's windows and tiling dividers stay mounted; the active workspace

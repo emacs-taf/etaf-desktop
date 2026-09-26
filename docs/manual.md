@@ -68,14 +68,25 @@ activating another workspace's entry switches to it.
 The workspace bar's Settings action opens an in-buffer ETAF UI dialog as a
 root-layer projection, so the existing desktop remains visible underneath.
 On a graphical Emacs viewport the panel is centered, limited to the visible
-canvas and scrollable. Appearance, Layout, Behavior and Shortcuts tabs keep
-the controls in a compact panel. Appearance controls theme, accent and fonts;
-Layout controls layout mode and tile spacing; Behavior controls drag locking,
-resize availability, close confirmation and taskbar grouping. Shortcuts
-configures focus traversal, launcher, switcher, layout, split, swap, maximize,
-minimize and close bindings. Done closes the panel; Reset settings restores
-defaults. Session restore remains an explicit
+canvas and scrollable. A row of Appearance, Layout, Behavior and Shortcuts
+tabs sits above a two-column form: each setting's name is in the left
+column and its control in the right. Choices with a few options (theme,
+layout, drag-lock modifier, taskbar grouping) render as selectable chips
+and longer lists as a dropdown; numbers use `[−] value [+]` steppers whose
+value pill also accepts a typed number; booleans are On/Off switches.
+Appearance controls theme, accent and fonts; Layout controls layout mode and
+tile spacing; Behavior controls drag locking, resize availability, close
+confirmation and taskbar grouping. Shortcuts configures focus traversal,
+launcher, switcher, layout, split, swap, maximize, minimize and close
+bindings. Done closes the panel; Reset settings restores defaults. Session
+restore remains an explicit
 `etaf-desktop-save-session`/`etaf-desktop-restore-session` workflow.
+
+When "Confirm before closing" is on, a window's Close control and the close
+shortcut open a "Close window?" card inside the desktop instead of a
+minibuffer prompt. Cancel, Escape or a press outside the card keeps the
+window; "Close window" removes it. The pending request is desktop state:
+switching workspaces or closing the desktop discards it.
 
 `etaf-desktop-settings` returns a detached plist. Use
 `etaf-desktop-set-setting` for validated changes or

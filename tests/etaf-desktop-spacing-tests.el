@@ -361,8 +361,8 @@
             (etaf-desktop-test-spacing-press runtime "Appearance")
             (etaf-desktop-test-spacing-press runtime "Layout")
             (with-current-buffer buffer
-              (should (string-match-p "Outer gap 0" (buffer-string)))
-              (should (string-match-p "Inner gap 3" (buffer-string))))
+              (should (string-match-p "Outer gap[^0-9]*0" (buffer-string)))
+              (should (string-match-p "Inner gap[^0-9]*3" (buffer-string))))
             (etaf-desktop-test-spacing-press runtime "Reset settings")
             (should (= 1 (plist-get (etaf-desktop-settings desktop) :tile-outer-gap)))
             (should (= 1 (plist-get (etaf-desktop-settings desktop) :tile-inner-gap)))

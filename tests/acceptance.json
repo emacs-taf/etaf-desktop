@@ -161,6 +161,11 @@
       "purpose": "A desktop window renders gray macOS traffic lights unless it is the active window; focusing another window swaps the colored lights."
     },
     {
+      "name": "etaf-desktop-confirm-close-asks-inside-the-desktop",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "With confirm-close enabled, pressing a window's Close control opens an in-desktop dialog instead of a minibuffer prompt; Cancel keeps the window and Close window removes it."
+    },
+    {
       "name": "etaf-desktop-default-canvas-fills-the-render-window",
       "file": "tests/etaf-desktop-tests.el",
       "purpose": "An unconfigured desktop sizes its shell from the window it renders into, so a Playground-style preview fills its window without overflowing it."

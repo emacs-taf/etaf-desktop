@@ -206,8 +206,9 @@
 ;; `dark'.  TOKENS is a plist of "#RRGGBB" colors for the shell tokens
 ;; (`:ui-shell-*', `:ui-canvas-*', `:ui-window-*', `:ui-divider-bg',
 ;; `:ui-accent*') and the dialog tokens (`:ui-panel-*', `:ui-picker-item-*',
-;; `:ui-button-*', `:ui-selection-*', `:ui-checkbox-*', `:ui-fg', `:ui-bg',
-;; `:ui-muted-fg', `:ui-border'); omitted tokens fall back to the first
+;; `:ui-button-{primary,secondary}-{fg,bg}', `:ui-button-ghost-fg',
+;; `:ui-checkbox-enabled-fg', `:ui-fg', `:ui-bg', `:ui-muted-fg',
+;; `:ui-border'); omitted tokens fall back to the first
 ;; built-in theme of MODE.  Invalid names, modes or tokens signal
 ;; `etaf-desktop-error'.  Built-in themes: `daylight' and `paper' (light),
 ;; `midnight', `forest' and `graphite' (dark).  Return the registered plist.

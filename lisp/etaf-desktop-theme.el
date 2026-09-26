@@ -30,12 +30,10 @@ Each plist holds `:label', `:mode' (`light' or `dark') and `:tokens'.")
   '(:ui-fg :ui-bg :ui-muted-fg :ui-border
     :ui-panel-bg :ui-panel-fg :ui-panel-border
     :ui-picker-item-bg :ui-picker-item-fg :ui-picker-item-muted-fg
-    :ui-button-ghost-fg :ui-button-ghost-bg :ui-button-ghost-border
-    :ui-button-secondary-fg :ui-button-secondary-bg :ui-button-secondary-border
-    :ui-button-primary-fg :ui-button-primary-bg :ui-button-primary-border
-    :ui-selection-enabled-fg :ui-selection-enabled-bg :ui-selection-enabled-border
-    :ui-selection-selected-fg :ui-selection-selected-bg :ui-selection-selected-border
-    :ui-checkbox-enabled-fg :ui-checkbox-enabled-bg :ui-checkbox-enabled-border)
+    :ui-button-ghost-fg
+    :ui-button-secondary-fg :ui-button-secondary-bg
+    :ui-button-primary-fg :ui-button-primary-bg
+    :ui-checkbox-enabled-fg)
   "Tokens painting dialogs and pickers.  These stay crisp above a dimmed shell.")
 
 (defun etaf-desktop--theme-color-p (value)
@@ -146,11 +144,9 @@ so dialogs painted with panel tokens stay legible above it."
                                accent (plist-get tokens :ui-shell-bg)
                                (if dark 0.7 0.8))))
       (setq tokens (plist-put tokens :ui-button-primary-bg accent))
-      (setq tokens (plist-put tokens :ui-button-primary-border accent))
-      (setq tokens (plist-put tokens :ui-button-secondary-border accent))
-      (setq tokens (plist-put tokens :ui-selection-selected-bg accent))
-      (setq tokens (plist-put tokens :ui-selection-selected-border accent))
-      (setq tokens (plist-put tokens :ui-checkbox-enabled-border accent)))
+      (setq tokens (plist-put tokens :ui-button-secondary-fg accent))
+      (setq tokens (plist-put tokens :ui-button-secondary-bg
+                              (plist-get tokens :ui-accent-soft-bg))))
     (when dimmed
       (let ((veil (if dark "#0B1016" "#5B6470")))
         (dolist (key etaf-desktop--theme-shell-tokens)
@@ -176,18 +172,10 @@ so dialogs painted with panel tokens stay legible above it."
    :ui-panel-bg "#FFFFFF" :ui-panel-fg "#16202C" :ui-panel-border "#C3CDD8"
    :ui-picker-item-bg "#F5F7FA" :ui-picker-item-fg "#16202C"
    :ui-picker-item-muted-fg "#6B7683"
-   :ui-button-ghost-fg "#16202C" :ui-button-ghost-bg "#FFFFFF"
-   :ui-button-ghost-border "#C3CDD8"
-   :ui-button-secondary-fg "#16202C" :ui-button-secondary-bg "#E3EBFB"
-   :ui-button-secondary-border "#2F6FE4"
+   :ui-button-ghost-fg "#16202C"
+   :ui-button-secondary-fg "#2F6FE4" :ui-button-secondary-bg "#D6E2FA"
    :ui-button-primary-fg "#FFFFFF" :ui-button-primary-bg "#2F6FE4"
-   :ui-button-primary-border "#2F6FE4"
-   :ui-selection-enabled-fg "#16202C" :ui-selection-enabled-bg "#F5F7FA"
-   :ui-selection-enabled-border "#C3CDD8"
-   :ui-selection-selected-fg "#FFFFFF" :ui-selection-selected-bg "#2F6FE4"
-   :ui-selection-selected-border "#2F6FE4"
-   :ui-checkbox-enabled-fg "#16202C" :ui-checkbox-enabled-bg "#E3EBFB"
-   :ui-checkbox-enabled-border "#2F6FE4"))
+   :ui-checkbox-enabled-fg "#16202C"))
 
 (etaf-desktop-define-theme
  'midnight :label "Midnight" :mode 'dark
@@ -203,18 +191,10 @@ so dialogs painted with panel tokens stay legible above it."
    :ui-panel-bg "#242E3A" :ui-panel-fg "#E6EBF2" :ui-panel-border "#3B4858"
    :ui-picker-item-bg "#2A3542" :ui-picker-item-fg "#E6EBF2"
    :ui-picker-item-muted-fg "#8B96A4"
-   :ui-button-ghost-fg "#E6EBF2" :ui-button-ghost-bg "#242E3A"
-   :ui-button-ghost-border "#3B4858"
-   :ui-button-secondary-fg "#E6EBF2" :ui-button-secondary-bg "#2C3F5F"
-   :ui-button-secondary-border "#6FA1FF"
+   :ui-button-ghost-fg "#E6EBF2"
+   :ui-button-secondary-fg "#6FA1FF" :ui-button-secondary-bg "#233552"
    :ui-button-primary-fg "#0B1016" :ui-button-primary-bg "#6FA1FF"
-   :ui-button-primary-border "#6FA1FF"
-   :ui-selection-enabled-fg "#E6EBF2" :ui-selection-enabled-bg "#2A3542"
-   :ui-selection-enabled-border "#3B4858"
-   :ui-selection-selected-fg "#0B1016" :ui-selection-selected-bg "#6FA1FF"
-   :ui-selection-selected-border "#6FA1FF"
-   :ui-checkbox-enabled-fg "#E6EBF2" :ui-checkbox-enabled-bg "#2C3F5F"
-   :ui-checkbox-enabled-border "#6FA1FF"))
+   :ui-checkbox-enabled-fg "#E6EBF2"))
 
 (etaf-desktop-define-theme
  'paper :label "Paper" :mode 'light
@@ -230,18 +210,10 @@ so dialogs painted with panel tokens stay legible above it."
    :ui-panel-bg "#FFFCF6" :ui-panel-fg "#2C2924" :ui-panel-border "#CFC5B4"
    :ui-picker-item-bg "#F6F1E8" :ui-picker-item-fg "#2C2924"
    :ui-picker-item-muted-fg "#7E776B"
-   :ui-button-ghost-fg "#2C2924" :ui-button-ghost-bg "#FFFCF6"
-   :ui-button-ghost-border "#CFC5B4"
-   :ui-button-secondary-fg "#2C2924" :ui-button-secondary-bg "#F5E3D9"
-   :ui-button-secondary-border "#B4552D"
+   :ui-button-ghost-fg "#2C2924"
+   :ui-button-secondary-fg "#B4552D" :ui-button-secondary-bg "#F1D9CC"
    :ui-button-primary-fg "#FFF9F0" :ui-button-primary-bg "#B4552D"
-   :ui-button-primary-border "#B4552D"
-   :ui-selection-enabled-fg "#2C2924" :ui-selection-enabled-bg "#F6F1E8"
-   :ui-selection-enabled-border "#CFC5B4"
-   :ui-selection-selected-fg "#FFF9F0" :ui-selection-selected-bg "#B4552D"
-   :ui-selection-selected-border "#B4552D"
-   :ui-checkbox-enabled-fg "#2C2924" :ui-checkbox-enabled-bg "#F5E3D9"
-   :ui-checkbox-enabled-border "#B4552D"))
+   :ui-checkbox-enabled-fg "#2C2924"))
 
 (etaf-desktop-define-theme
  'forest :label "Forest" :mode 'dark
@@ -257,18 +229,10 @@ so dialogs painted with panel tokens stay legible above it."
    :ui-panel-bg "#243029" :ui-panel-fg "#E3EBE4" :ui-panel-border "#3B4B40"
    :ui-picker-item-bg "#2A3730" :ui-picker-item-fg "#E3EBE4"
    :ui-picker-item-muted-fg "#8A998E"
-   :ui-button-ghost-fg "#E3EBE4" :ui-button-ghost-bg "#243029"
-   :ui-button-ghost-border "#3B4B40"
-   :ui-button-secondary-fg "#E3EBE4" :ui-button-secondary-bg "#2D4636"
-   :ui-button-secondary-border "#7FC99A"
+   :ui-button-ghost-fg "#E3EBE4"
+   :ui-button-secondary-fg "#7FC99A" :ui-button-secondary-bg "#24382C"
    :ui-button-primary-fg "#0F1712" :ui-button-primary-bg "#7FC99A"
-   :ui-button-primary-border "#7FC99A"
-   :ui-selection-enabled-fg "#E3EBE4" :ui-selection-enabled-bg "#2A3730"
-   :ui-selection-enabled-border "#3B4B40"
-   :ui-selection-selected-fg "#0F1712" :ui-selection-selected-bg "#7FC99A"
-   :ui-selection-selected-border "#7FC99A"
-   :ui-checkbox-enabled-fg "#E3EBE4" :ui-checkbox-enabled-bg "#2D4636"
-   :ui-checkbox-enabled-border "#7FC99A"))
+   :ui-checkbox-enabled-fg "#E3EBE4"))
 
 (etaf-desktop-define-theme
  'graphite :label "Graphite" :mode 'dark
@@ -284,18 +248,10 @@ so dialogs painted with panel tokens stay legible above it."
    :ui-panel-bg "#2E2E31" :ui-panel-fg "#EDEDEF" :ui-panel-border "#45454A"
    :ui-picker-item-bg "#363639" :ui-picker-item-fg "#EDEDEF"
    :ui-picker-item-muted-fg "#98989E"
-   :ui-button-ghost-fg "#EDEDEF" :ui-button-ghost-bg "#2E2E31"
-   :ui-button-ghost-border "#45454A"
-   :ui-button-secondary-fg "#EDEDEF" :ui-button-secondary-bg "#443A24"
-   :ui-button-secondary-border "#F2B545"
+   :ui-button-ghost-fg "#EDEDEF"
+   :ui-button-secondary-fg "#F2B545" :ui-button-secondary-bg "#3C3423"
    :ui-button-primary-fg "#1C1C1E" :ui-button-primary-bg "#F2B545"
-   :ui-button-primary-border "#F2B545"
-   :ui-selection-enabled-fg "#EDEDEF" :ui-selection-enabled-bg "#363639"
-   :ui-selection-enabled-border "#45454A"
-   :ui-selection-selected-fg "#1C1C1E" :ui-selection-selected-bg "#F2B545"
-   :ui-selection-selected-border "#F2B545"
-   :ui-checkbox-enabled-fg "#EDEDEF" :ui-checkbox-enabled-bg "#443A24"
-   :ui-checkbox-enabled-border "#F2B545"))
+   :ui-checkbox-enabled-fg "#EDEDEF"))
 
 (provide 'etaf-desktop-theme)
 ;;; etaf-desktop-theme.el ends here
