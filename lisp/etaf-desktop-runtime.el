@@ -973,12 +973,45 @@ at this boundary."
                     (etaf-desktop--window-resizable window))
            (apply #'etaf-desktop--set-window-geometry desktop id saved)))))))
 
+(defun etaf-desktop--window-shell-same-p (old new)
+  "Return non-nil when window records OLD and NEW build the same shell.
+Retained sources and the caller-owned View compare by identity; per-publication
+writers are invocation plumbing and do not affect the shell."
+  (or (eq old new)
+      (and old new
+           (cl-loop for accessor in '(etaf-desktop--window-view
+                                      etaf-desktop--window-mode-source
+                                      etaf-desktop--window-shown-source
+                                      etaf-desktop--window-x-source
+                                      etaf-desktop--window-y-source
+                                      etaf-desktop--window-width-source
+                                      etaf-desktop--window-height-source
+                                      etaf-desktop--window-z-index-source)
+                    always (eq (funcall accessor old) (funcall accessor new)))
+           (cl-loop for accessor in '(etaf-desktop--window-id
+                                      etaf-desktop--window-title
+                                      etaf-desktop--window-min-width
+                                      etaf-desktop--window-min-height
+                                      etaf-desktop--window-max-width
+                                      etaf-desktop--window-max-height
+                                      etaf-desktop--window-movable
+                                      etaf-desktop--window-resizable)
+                    always (equal (funcall accessor old) (funcall accessor new))))))
+
 (etaf-define-component etaf-desktop--window-surface (&key desktop id)
   "Own one window's gesture Behaviors for its retained Component lifetime."
   :bindings ((active (etaf-computed
                      (lambda ()
                        (equal id (etaf-desktop--state-active-window
                                   (etaf-desktop--state desktop))))))
+             ;; Every desktop update copies the window records while retaining
+             ;; their live sources and View, so closing or restacking another
+             ;; window keeps this surface retained.
+             (window (etaf-computed
+                      (lambda ()
+                        (etaf-desktop--window-for
+                         (etaf-desktop--state desktop) id))
+                      :test #'etaf-desktop--window-shell-same-p))
              (move (etaf-desktop--move-behavior desktop id))
              (resize-left (etaf-desktop--resize-behavior desktop id 'left))
              (resize-right (etaf-desktop--resize-behavior desktop id 'right))
@@ -989,8 +1022,7 @@ at this boundary."
              (resize-bottom-left (etaf-desktop--resize-behavior desktop id 'bottom-left))
              (resize-bottom-right (etaf-desktop--resize-behavior desktop id 'bottom-right)))
   :render
-  (when-let* ((window (etaf-desktop--window-for
-                      (etaf-desktop--state desktop) id)))
+  (when-let* ((window (etaf-value window)))
     (etaf-desktop--window-shell desktop window active move
                                  resize-left resize-right resize-top resize-bottom
                                  resize-top-left resize-top-right

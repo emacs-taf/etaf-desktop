@@ -31,6 +31,9 @@ All notable changes to ETAF Desktop are documented here.
 
 ### Changed
 
+- Closing, focusing or restacking one window re-renders only the windows
+  whose shell facts changed; other window surfaces stay retained. The batch
+  close workload drops from about 158 to 145 ms.
 - Opening or closing the launcher re-renders only the launcher surface
   instead of the whole desktop shell, cutting the batch launcher toggle on
   the four-window benchmark from about 335 ms to about 125 ms.
