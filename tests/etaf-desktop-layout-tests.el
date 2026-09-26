@@ -44,6 +44,39 @@
       (should (= 15 (plist-get three :y)))
       (should (= 19 (+ (plist-get three :y) (plist-get three :height)))))))
 
+(ert-deftest etaf-desktop-tiling-two-workspaces-publishes-both-trees ()
+  "Every tiled workspace keeps its own dividers mounted in one canvas."
+  (let ((desktop (etaf-desktop-create :name " *desktop-two-tiled*"
+                                      :canvas-width 100 :canvas-height 20
+                                      :workspaces '(main work))))
+    (unwind-protect
+        (progn
+          (dolist (id '(one two))
+            (etaf-desktop-open-window desktop id :title (symbol-name id)
+                                      :width 20 :height 4 :min-width 5 :min-height 2
+                                      :workspace 'main))
+          (dolist (id '(three four))
+            (etaf-desktop-open-window desktop id :title (symbol-name id)
+                                      :width 20 :height 4 :min-width 5 :min-height 2
+                                      :workspace 'work))
+          (let ((buffer (etaf-desktop-mount desktop)))
+            (etaf-desktop-set-layout-mode desktop 'tiling 'main)
+            (etaf-desktop-set-layout-mode desktop 'tiling 'work)
+            (should (eq 'tiling (etaf-desktop-layout-mode desktop 'main)))
+            (should (eq 'tiling (etaf-desktop-layout-mode desktop 'work)))
+            (should (< (plist-get (etaf-desktop-window-state desktop 'one) :y)
+                       (plist-get (etaf-desktop-window-state desktop 'two) :y)))
+            (should (< (plist-get (etaf-desktop-window-state desktop 'three) :y)
+                       (plist-get (etaf-desktop-window-state desktop 'four) :y)))
+            (with-current-buffer buffer
+              (should (string-match-p "one" (buffer-substring-no-properties
+                                             (point-min) (point-max)))))
+            (etaf-desktop-switch-workspace desktop 'work)
+            (with-current-buffer buffer
+              (should (string-match-p "three" (buffer-substring-no-properties
+                                               (point-min) (point-max)))))))
+      (etaf-desktop-close desktop))))
+
 (ert-deftest etaf-desktop-layout-floating-and-untile ()
   "Untiling preserves a window as a floating overlay while tree leaves reflow."
   (let ((desktop (etaf-desktop-create :canvas-width 80 :canvas-height 16)))

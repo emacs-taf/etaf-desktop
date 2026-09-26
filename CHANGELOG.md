@@ -25,6 +25,10 @@ All notable changes to ETAF Desktop are documented here.
 
 ### Fixed
 
+- Tiling two workspaces at once no longer fails with a duplicate
+  `desktop-splitter-nil` key: every workspace's dividers share the canvas,
+  so their keys now carry the workspace.
+
 - The Layout tab's "Window layout" select shows the active workspace's
   current mode. It read the `:layout-mode` preference, which the bar
   control, the `l` shortcut and workspace switches never write, so it kept

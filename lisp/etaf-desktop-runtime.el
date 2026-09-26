@@ -1276,7 +1276,10 @@ window covers them."
            (divider (cdr entry)))
        (etaf-node
         'etaf-splitter
-        (list :key (format "desktop-splitter-%S" path)
+        ;; Every workspace's dividers are siblings in the canvas slot, so the
+        ;; key carries the workspace: two tiled workspaces both own a root
+        ;; split at the same path.
+        (list :key (format "desktop-splitter-%S-%S" workspace path)
               :orientation (etaf-desktop--layout-divider-orientation divider)
               :class "etaf-desktop-layout-splitter"
               :overlay t

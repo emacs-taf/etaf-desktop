@@ -251,6 +251,11 @@
       "purpose": "Tiling assigns non-overlapping rectangles and applies an adjustable split ratio."
     },
     {
+      "name": "etaf-desktop-tiling-two-workspaces-publishes-both-trees",
+      "file": "tests/etaf-desktop-layout-tests.el",
+      "purpose": "Two tiled workspaces publish their own divider nodes in one canvas without key collisions."
+    },
+    {
       "name": "etaf-desktop-nested-splitters-occupy-reserved-gaps",
       "file": "tests/etaf-desktop-layout-tests.el",
       "purpose": "Nested divider handles center in custom inner gaps and drag changes only the selected subtree ratio."
