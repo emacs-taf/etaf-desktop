@@ -42,3 +42,23 @@ contract described in [the manual](docs/manual.md#applications-and-instances).
 
 Run `make check` with Emacs 29.1 or newer and sibling `etaf`, `etaf-ui`, `ebox`
 and `ecss` checkouts.
+
+The workspace's `scripts/performance.py` includes native mouse workloads named
+`etaf-desktop.demo.*`. They run the complete six-application demo with its Clock
+timer, covering Notes launch/close, Settings open/close and all four tabs, and
+Notes/Tasks content focus. Every sample checks lifecycle, active window and the
+unchanged geometry of existing windows. Launch/close samples use fresh demos;
+shell and focus samples retain their demo within a set. These workloads reopen
+the demo through its public entry, which closes any previous demo controller.
+Run them against your normal configured Emacs server, for example from the
+workspace root:
+
+```sh
+python3 scripts/performance.py run --mode gui \
+  --scenario 'etaf-desktop.demo.settings-*' --scenario etaf-desktop.demo.focus \
+  --sets 1 --samples 3 --diagnose
+```
+
+This is a diagnostic screen; the workspace performance manual describes the
+three-set acceptance protocol and its 10 ms interaction budget. Native input is
+prequeued and does not certify physical pointer-to-display latency.
