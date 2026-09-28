@@ -31,6 +31,12 @@ All notable changes to ETAF Desktop are documented here.
 
 ### Changed
 
+- New desktops inherit the Emacs font size for window titles and application
+  content instead of forcing 14 CSS pixels (10.5 points). Appearance font
+  fields show "Emacs default" or offer to restore it for an existing override,
+  instead of offering arbitrary larger sizes on Emacs's shared text rows.
+  Explicit and saved numeric overrides remain CSS pixels.
+
 - Closing, focusing or restacking one window re-renders only the windows
   whose shell facts changed; other window surfaces stay retained. The batch
   close workload drops from about 158 to 145 ms.

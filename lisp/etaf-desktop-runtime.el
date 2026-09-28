@@ -179,8 +179,8 @@ minimized state only when every member window is minimized."
         :layout-mode 'floating
         :tile-outer-gap 1
         :tile-inner-gap 1
-        :title-font-size 14
-        :content-font-size 14
+        :title-font-size nil
+        :content-font-size nil
         :font-family nil
         :drag-lock-modifier 'shift
         :resize-enabled t
@@ -257,7 +257,7 @@ Settings are caller-visible configuration, not a second geometry store.  Use
     (:tile-outer-gap (and (integerp value) (<= 0 value 4)))
     (:tile-inner-gap (and (integerp value) (<= 1 value 4)))
     ((or :title-font-size :content-font-size)
-     (and (numberp value) (>= value 8) (<= value 32)))
+     (or (null value) (and (numberp value) (>= value 8) (<= value 32))))
     (:font-family (or (null value) (stringp value)))
     (:drag-lock-modifier (memq value '(nil shift control meta super hyper)))
     (:resize-enabled (booleanp value))
@@ -277,7 +277,9 @@ Settings are caller-visible configuration, not a second geometry store.  Use
   "Set DESKTOP setting KEY to VALUE and return its detached settings.
 
 Layout mode and tile spacing changes apply to the active workspace
-immediately; other settings project through the next retained shell publication."
+immediately; other settings project through the next retained shell publication.
+Title and content font sizes are nil to inherit the Emacs font, or numbers
+from 8 through 32 in CSS reference pixels (not points)."
   (let ((desktop (etaf-desktop--controller desktop)))
     (unless (and (keywordp key) (etaf-desktop--valid-setting-p key value))
       (etaf-desktop--fail "Invalid Desktop setting %S=%S" key value))
@@ -1461,8 +1463,8 @@ TRANSFORM, when given, maps the resolved color to the final property value."
                                (etaf-desktop-themes))))
        (etaf-text-input :accent-color "Accent color" :placeholder "Theme accent")
        (etaf-text-input :font-family "Font family" :placeholder "Emacs default")
-       (etaf-number-input :title-font-size "Title font size" :min 8 :max 32)
-       (etaf-number-input :content-font-size "Content font size" :min 8 :max 32)))
+       (etaf-button :title-font-size "Title font size")
+       (etaf-button :content-font-size "Content font size")))
     ('layout
      '((etaf-select :layout-mode "Window layout" :options
                     ((floating . "Floating") (tiling . "Tiling")
@@ -1498,17 +1500,27 @@ Labels sit in their own grid column, so controls hide their captions."
      (etaf-node 'etaf-label (list :key (format "%s-label" key) :text label
                                   :variant 'muted :wrap-mode 'none)
                 nil)
-     (etaf-node
-      kind
-      (append
-       (list :key key)
-       (pcase kind
-         ('etaf-switch (list :checked (and value t) :label (if value "On" "Off")))
-         ('etaf-text-input (list :value (or value "") :label label :hide-label t))
-         (_ (list :value value :label label :hide-label t)))
-       (list :on-change on-change)
-       extra)
-      nil))))
+     (if (memq key '(:title-font-size :content-font-size))
+         (etaf-node
+          'etaf-button
+          (list :key key :variant 'ghost :disabled (null value)
+                :label (if value
+                           (format "%s px · Use Emacs default" value)
+                         "Emacs default")
+                :aria-label (format "Use Emacs default for %s" (downcase label))
+                :on-press (lambda () (etaf-desktop-set-setting desktop key nil)))
+          nil)
+       (etaf-node
+        kind
+        (append
+         (list :key key)
+         (pcase kind
+           ('etaf-switch (list :checked (and value t) :label (if value "On" "Off")))
+           ('etaf-text-input (list :value (or value "") :label label :hide-label t))
+           (_ (list :value value :label label :hide-label t)))
+         (list :on-change on-change)
+         extra)
+        nil)))))
 
 (defun etaf-desktop--settings-height (section fields)
   "Return the `(lh N)' dialog height fitting SECTION's FIELDS.

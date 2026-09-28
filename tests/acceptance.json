@@ -414,6 +414,16 @@
       "name": "etaf-desktop-native-title-click-only-focuses",
       "file": "tests/etaf-desktop-shortcut-tests.el",
       "purpose": "A zero-displacement native title press/release focuses a normal or maximized window while preserving its coordinates, dimensions and mode."
+    },
+    {
+      "name": "etaf-desktop-font-default-overrides-and-reset",
+      "file": "tests/etaf-desktop-font-tests.el",
+      "purpose": "Desktop window typography defaults to Emacs inheritance, explicit title/body pixel sizes apply independently, and reset or nil restores inheritance."
+    },
+    {
+      "name": "etaf-desktop-font-settings-restore-inheritance",
+      "file": "tests/etaf-desktop-font-tests.el",
+      "purpose": "Appearance font controls display Emacs default and restore each existing explicit override independently or through Reset settings."
     }
   ]
 }

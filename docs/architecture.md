@@ -92,9 +92,13 @@ through ETAF UI Components: the workspace bar exposes a settings action and
 the unpainted modal variant so the underlying application windows remain
 visible; the reusable UI component retains its normal painted backdrop for
 other modal callers. The form groups controls into Appearance, Layout,
-Behavior and Shortcuts tabs within a compact panel. Font changes set the
-positioned window host to the larger of the title and content sizes,
-preserving Ebox's shared line-height invariant.
+Behavior and Shortcuts tabs within a compact panel. Unspecified title and
+content sizes stay nil through the controlled shell and inherit through the
+shared style cascade; the desktop does not copy the current frame size into
+settings. Explicit sizes remain CSS reference pixels and apply independently
+to title and content. When both are explicit, the positioned host uses their
+maximum for the shared line-height basis; if either inherits, the host retains
+its inherited basis so one override cannot impose a size on the other region.
 
 The settings form owns only policies already supported by the application:
 theme/accent presentation, typography, tile spacing, resize and locked-drag

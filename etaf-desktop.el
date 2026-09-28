@@ -182,6 +182,7 @@
 ;;;###autoload (autoload 'etaf-desktop-settings "etaf-desktop" nil nil)
 ;; Return detached user settings for DESKTOP, including theme, layout mode,
 ;; tile spacing, title/content font sizes, optional font family and keybindings.
+;; Both font sizes default to nil, following the inherited Emacs typography.
 
 ;; Function: etaf-desktop-set-setting (desktop key value)
 ;;;###autoload (autoload 'etaf-desktop-set-setting "etaf-desktop" nil nil)
@@ -198,6 +199,10 @@
 ;; immediately to the active workspace; the other values are projected by the
 ;; retained shell.  Invalid settings signal `etaf-desktop-error' without
 ;; changing settings or window geometry.  Settings persist in session state.
+;; `:title-font-size' and `:content-font-size' accept nil (inherit, the default)
+;; or numbers 8..32 in CSS reference pixels, independently for each region.
+;; These are not point sizes: 16 CSS pixels is 12 points. `:font-family' is
+;; nil to inherit or a font family string. Reset restores font inheritance.
 
 ;; Function: etaf-desktop-reset-settings (desktop)
 ;;;###autoload (autoload 'etaf-desktop-reset-settings "etaf-desktop" nil nil)

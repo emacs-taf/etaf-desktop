@@ -78,6 +78,11 @@ column and its control in the right. Choices with a few options (theme,
 layout, drag-lock modifier, taskbar grouping) render as selectable chips
 and longer lists as a dropdown; numbers use `[−] value [+]` steppers whose
 value pill also accepts a typed number; booleans are On/Off switches.
+Font size fields display "Emacs default". If a restored session or an API
+caller has set an explicit size, the field shows its CSS pixel value and a
+"Use Emacs default" action. This restores each size independently; Reset
+settings restores all defaults. The form does not offer arbitrary larger
+sizes that could expand Emacs's shared physical text rows.
 Appearance controls theme, accent and fonts; Layout controls layout mode and
 tile spacing; Behavior controls drag locking, resize availability, close
 confirmation and taskbar grouping. Shortcuts configures focus traversal,
@@ -97,6 +102,22 @@ switching workspaces or closing the desktop discards it.
 `etaf-desktop-reset-settings` to restore defaults. Settings are included in
 `etaf-desktop-session-state`; invalid persisted values are rejected through the
 same public validator during restore.
+
+By default, window titles and application content use the current Emacs font
+size. Title and content overrides are independent and use CSS reference pixels,
+not points: 16 pixels is 12 points. For example:
+
+```elisp
+(etaf-desktop-set-setting desktop :content-font-size 16) ; 12 points
+(etaf-desktop-set-setting desktop :content-font-size nil) ; inherit again
+```
+
+Controls inside applications inherit the content font unless an application
+explicitly styles them. Desktop Settings and the other desktop panels inherit
+the Emacs font independently of application title/content overrides. Saved
+numeric preferences remain explicit overrides when restoring a session; use
+"Use Emacs default" or reset settings to restore inheritance. Explicit sizes
+still obey Ebox's shared text-row constraint for positioned windows.
 
 ### Themes
 
