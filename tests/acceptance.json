@@ -10,6 +10,7 @@
   ],
   "support": [],
   "cases": [
+    {"name": "etaf-desktop-demo-body-scroll-keeps-header-footer-live", "file": "tests/etaf-desktop-demo-tests.el", "purpose": "The public six-app demo keeps Notes header and footer controls fixed while its bounded body scrolls, resizes, returns to the top and accepts edits; closing cancels its mounted timers."},
     {
       "name": "etaf-desktop-locked-resize-confirms-controlled-geometry",
       "file": "tests/etaf-desktop-resize-lock-tests.el",

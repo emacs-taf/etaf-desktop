@@ -48,26 +48,30 @@ the title label."
   (let ((header (etaf-current-slot 'header))
         (footer (etaf-current-slot 'footer)))
     (etaf-view
-     (column :class "etaf-desktop-demo-app" :width 'stretch
-             :padding '((lh 1) (ch 2)) :item-gap '(lh 1)
+     (flex :class "etaf-desktop-demo-app" :width 'stretch :height 'stretch
+           :flex-direction 'column :align-items 'stretch
+           :padding '((lh 0) (ch 2)) :row-gap '(lh 0)
        (expr
         (when (or header title status)
           (etaf-view
            (flex :class "etaf-desktop-demo-app-header" :width 'stretch
-                 :justify-content 'space-between :align-items 'center
+                 :flex-shrink 0 :justify-content 'space-between :align-items 'center
                  :column-gap '(ch 2)
              (expr (or header
                        (when title (etaf-view (etaf-label :text title :variant 'strong)))))
              (expr (when status
                      (etaf-view (etaf-label :text status :variant 'muted :wrap-mode 'none
                                             :flex-shrink 0 :min-width 'max-content))))))))
-       (column :class "etaf-desktop-demo-app-body" :width 'stretch :item-gap '(lh 0)
-         (expr (etaf-current-slot 'default)))
+       (box :class "etaf-desktop-demo-app-body" :width 'stretch
+            :height 'stretch :flex-grow 1 :flex-shrink 1 :flex-basis '(lh 0)
+            :min-height '(lh 0) :overflow 'scroll
+         (column :width 'stretch :item-gap '(lh 0)
+           (expr (etaf-current-slot 'default))))
        (expr
         (when footer
           (etaf-view
            (row :class "etaf-desktop-demo-app-footer" :width 'stretch
-                :item-gap '(ch 1) :cross-align 'center
+                :flex-shrink 0 :item-gap '(ch 1) :cross-align 'center
              (expr footer)))))))))
 
 ;;;; Notes
@@ -369,23 +373,23 @@ STATE holds :display, :accumulator, :operator and :fresh."
 
 (defconst etaf-desktop-demo-apps
   '((etaf-desktop-demo-notes
-     :title "Notes" :icon "✎" :capabilities (multiple-instances resizable)
+     :title "Notes" :icon "N" :capabilities (multiple-instances resizable)
      :props etaf-desktop-demo--notes-props
      :window (:x 24 :y 1 :width 480 :height 15 :min-width 300 :min-height 9))
     (etaf-desktop-demo-tasks
-     :title "Tasks" :icon "☑" :capabilities (resizable)
+     :title "Tasks" :icon "T" :capabilities (resizable)
      :window (:x 528 :y 1 :width 400 :height 15 :min-width 300 :min-height 9))
     (etaf-desktop-demo-clock
-     :title "Clock" :icon "◷" :capabilities (multiple-instances resizable)
+     :title "Clock" :icon "C" :capabilities (multiple-instances resizable)
      :window (:x 952 :y 1 :width 360 :height 8 :min-width 260 :min-height 7))
     (etaf-desktop-demo-chat
-     :title "Chat" :icon "✉" :capabilities (resizable)
+     :title "Chat" :icon "@" :capabilities (resizable)
      :window (:x 24 :y 18 :width 560 :height 17 :min-width 340 :min-height 10))
     (etaf-desktop-demo-monitor
-     :title "Monitor" :icon "▤" :capabilities (resizable)
+     :title "Monitor" :icon "M" :capabilities (resizable)
      :window (:x 24 :y 1 :width 520 :height 16 :min-width 340 :min-height 13))
     (etaf-desktop-demo-calculator
-     :title "Calculator" :icon "∑" :capabilities (multiple-instances)
+     :title "Calculator" :icon "=" :capabilities (multiple-instances)
      :window (:x 568 :y 1 :width 300 :height 17 :min-width 300 :min-height 17
               :resizable nil)))
   "Demo application manifests keyed by their Component symbol.

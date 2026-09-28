@@ -57,6 +57,8 @@ All notable changes to ETAF Desktop are documented here.
 
 ### Fixed
 
+- Demo applications scroll their body content when resized, keeping the app
+  header and footer actions visible instead of clipping longer content.
 - Clicking a maximized window's title without dragging keeps it maximized;
   unchanged gesture proposals focus the window without changing its geometry.
 - Tiled `x` swaps now exchange layout leaves and preserve split ratios; `s` and

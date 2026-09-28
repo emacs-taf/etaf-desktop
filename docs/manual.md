@@ -217,7 +217,13 @@ return detached state snapshots.
 [examples/etaf-desktop-demo.el](../examples/etaf-desktop-demo.el) is the
 runnable form of this contract: `M-x etaf-desktop-demo-open` registers six
 sample applications, each one Component on a shared surface plus a manifest
-entry with its launcher metadata and default window geometry.
+entry with its launcher metadata and default window geometry. The shared application
+surface fills the window body and reserves its header and footer toolbar; only
+the bounded middle region scrolls when content exceeds the available height.
+Resizing changes that viewport while title input and footer actions stay visible.
+This scrolling policy belongs to the demo applications, not every Desktop window.
+Launcher marks use ordinary ASCII from the inherited text font, avoiding
+symbol-font fallback that could stretch a shared physical row.
 
 `etaf-desktop-session-state` excludes View and Runtime objects. It records
 desktop geometry, settings (including tile spacing), workspaces, instance
