@@ -45,7 +45,7 @@ changes publish through prepared visibility instead of desktop structure.
 SHOWN is the computed the Host binds: VISIBLE narrowed to the divider's
 workspace being active, so a workspace switch hides and reveals dividers
 through the same prepared visibility."
-  orientation left top width height content visible ratio span shown)
+  orientation left top width height content visible ratio span extent shown)
 
 (defun etaf-desktop--layout-divider-for (desktop workspace path)
   "Return WORKSPACE's retained divider record for PATH, creating it when new.
@@ -74,8 +74,9 @@ record's shown computed exists before any View reads it."
     (state tree spacing x y width height &optional path)
   "Return the divider allocation of every split in TREE within X Y WIDTH HEIGHT.
 Each element is `(PATH ORIENTATION RATIO SPAN HANDLE-X HANDLE-Y HANDLE-WIDTH
-HANDLE-HEIGHT)'.  Windows and dividers share `etaf-desktop--layout-partition',
-so a handle never covers a pane's title row."
+HANDLE-HEIGHT EXTENT)'.  EXTENT is the allocated first-pane size on the split
+axis.  Windows and dividers share `etaf-desktop--layout-partition', so a handle
+never covers a pane's title row."
   (when (etaf-desktop--layout-split-p tree)
     (pcase-let* ((orientation (nth 1 tree))
                  (`(,first-rect ,divider-rect ,second-rect)
@@ -98,7 +99,8 @@ so a handle never covers a pane's title row."
          (list (list path orientation (nth 2 tree) span
                      (+ divider-x (floor (/ (- divider-width handle-width) 2)))
                      (+ divider-y (floor (/ (- divider-height handle-height) 2)))
-                     handle-width handle-height)))
+                     handle-width handle-height
+                     (nth (if (eq orientation 'horizontal) 2 3) first-rect))))
        (etaf-desktop--layout-divider-facts
         state (nth 3 tree) spacing
         (nth 0 first-rect) (nth 1 first-rect) (nth 2 first-rect) (nth 3 first-rect)
@@ -119,8 +121,9 @@ so a handle never covers a pane's title row."
 
 (defun etaf-desktop--layout-write-divider (divider fact)
   "Write FACT's allocation into the retained DIVIDER record."
-  (pcase-let ((`(,_path ,orientation ,ratio ,span ,x ,y ,width ,height) fact))
-    (setf (etaf-desktop--layout-divider-orientation divider) orientation)
+  (pcase-let ((`(,_path ,orientation ,ratio ,span ,x ,y ,width ,height ,extent) fact))
+    (setf (etaf-desktop--layout-divider-orientation divider) orientation
+          (etaf-desktop--layout-divider-extent divider) extent)
     (setf (etaf-value (etaf-desktop--layout-divider-left divider)) (list 'px x)
           (etaf-value (etaf-desktop--layout-divider-top divider)) (list 'lh y)
           (etaf-value (etaf-desktop--layout-divider-width divider)) (list 'px width)
@@ -426,8 +429,19 @@ publication callback from recursively publishing forever.  Return DESKTOP."
         (let* ((ids (append (etaf-desktop--layout-tree-leaves tree) pending))
                (visible (etaf-desktop--layout-all-visible-ids state workspace)))
           (setq ids (cl-remove-if-not (lambda (id) (member id visible)) ids))
-          (setf tree (etaf-desktop--layout-master-tree (delete-dups ids))
-                (etaf-desktop--layout-workspace-tree policy) tree
+          ;; Existing splits are authoritative after a resize or swap.
+          ;; Membership additions need a new stack; ordinary publications do
+          ;; not reset the user's ratios to the mode's initial defaults.
+          (when (or pending
+                    (and (etaf-desktop--layout-split-p tree)
+                         (not (eq (nth 1 tree) 'horizontal))))
+            (let ((next (etaf-desktop--layout-master-tree (delete-dups ids))))
+              (when (and (etaf-desktop--layout-split-p tree)
+                         (eq (nth 1 tree) 'horizontal)
+                         (etaf-desktop--layout-split-p next))
+                (setf (nth 2 next) (nth 2 tree)))
+              (setq tree next)))
+          (setf (etaf-desktop--layout-workspace-tree policy) tree
                 (etaf-desktop--layout-workspace-floating policy) nil
                 (etaf-desktop--layout-workspace-pending policy) nil)
           tree)
@@ -472,6 +486,24 @@ during render.  Mutation entry points synchronize membership through
     (etaf-desktop--layout-copy-tree
      (etaf-desktop--layout-workspace-tree
       (etaf-desktop--layout-ensure-workspace desktop workspace)))))
+
+(defun etaf-desktop--layout-swap-windows (desktop first second)
+  "Exchange FIRST and SECOND leaves without changing membership policy."
+  (let* ((workspace (etaf-desktop-active-workspace desktop))
+         (policy (etaf-desktop--layout-ensure-workspace desktop workspace)))
+    (cl-labels
+        ((swap (node)
+           (if (etaf-desktop--layout-leaf-p node)
+               (etaf-desktop--layout-leaf
+                (cond ((equal (nth 1 node) first) second)
+                      ((equal (nth 1 node) second) first)
+                      (t (nth 1 node))))
+             (etaf-desktop--layout-split-node
+              (nth 1 node) (nth 2 node)
+              (swap (nth 3 node)) (swap (nth 4 node))))))
+      (setf (etaf-desktop--layout-workspace-tree policy)
+            (swap (etaf-desktop--layout-workspace-tree policy))))
+    (etaf-desktop-layout-apply desktop workspace)))
 
 (defun etaf-desktop-layout-set-tree (desktop tree &optional workspace)
   "Set WORKSPACE's detached layout TREE and apply it.

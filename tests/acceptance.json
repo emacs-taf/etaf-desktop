@@ -374,6 +374,46 @@
       "name": "etaf-desktop-mounted-geometry-survives-membership-and-settings",
       "file": "tests/etaf-desktop-tests.el",
       "purpose": "Mounted window geometry remains live across membership and settings changes while nested input and detached prior snapshots retain their behavior."
+    },
+    {
+      "name": "etaf-desktop-shortcuts-traverse-visible-windows-both-directions",
+      "file": "tests/etaf-desktop-shortcut-tests.el",
+      "purpose": "Repeated mounted next/previous shortcuts visit every visible same-workspace window independently of paint order."
+    },
+    {
+      "name": "etaf-desktop-shortcuts-split-skips-hidden-windows",
+      "file": "tests/etaf-desktop-shortcut-tests.el",
+      "purpose": "The mounted split shortcut selects a visible same-workspace neighbor without restoring minimized windows."
+    },
+    {
+      "name": "etaf-desktop-shortcuts-swap-tiled-leaves-retains-policy",
+      "file": "tests/etaf-desktop-shortcut-tests.el",
+      "purpose": "The mounted swap shortcut exchanges tiled leaves while retaining topology, ratios, focus and floating or minimized windows."
+    },
+    {
+      "name": "etaf-desktop-shortcuts-swap-floating-visible-rectangles",
+      "file": "tests/etaf-desktop-shortcut-tests.el",
+      "purpose": "The mounted floating swap shortcut exchanges visible rectangles without changing minimized windows."
+    },
+    {
+      "name": "etaf-desktop-master-stack-keeps-user-split-ratios",
+      "file": "tests/etaf-desktop-shortcut-tests.el",
+      "purpose": "Master-stack preserves resized horizontal and vertical splits across focus, refresh and workspace switches, and keeps its master ratio when adding a window."
+    },
+    {
+      "name": "etaf-desktop-shortcuts-close-observes-confirmation",
+      "file": "tests/etaf-desktop-shortcut-tests.el",
+      "purpose": "The mounted close key opens the configured confirmation card, cancel keeps the window, and confirming closes it."
+    },
+    {
+      "name": "etaf-desktop-dividers-drag-from-constrained-edges-on-both-axes",
+      "file": "tests/etaf-desktop-shortcut-tests.el",
+      "purpose": "Horizontal and vertical divider gestures start from the actual minimum/maximum-constrained edge and cancellation restores the accepted ratio."
+    },
+    {
+      "name": "etaf-desktop-native-title-click-only-focuses",
+      "file": "tests/etaf-desktop-shortcut-tests.el",
+      "purpose": "A zero-displacement native title press/release focuses a normal or maximized window while preserving its coordinates, dimensions and mode."
     }
   ]
 }

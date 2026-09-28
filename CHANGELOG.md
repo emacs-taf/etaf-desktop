@@ -51,6 +51,16 @@ All notable changes to ETAF Desktop are documented here.
 
 ### Fixed
 
+- Clicking a maximized window's title without dragging keeps it maximized;
+  unchanged gesture proposals focus the window without changing its geometry.
+- Tiled `x` swaps now exchange layout leaves and preserve split ratios; `s` and
+  `x` skip hidden and minimized windows. Repeated `n`/`p` visits every visible
+  window without focus raises changing the traversal order.
+- The close shortcut honors the configured in-desktop close confirmation.
+- Left/right and top/bottom divider drags begin at their actual visible edge
+  after minimum or maximum size constraints. Master-stack ratios survive focus
+  changes and workspace refreshes.
+
 - Resizing the Emacs window now refits windows on every workspace. Floating
   windows parked on an inactive workspace previously kept their old canvas
   geometry and reappeared off-canvas when that workspace was switched to.

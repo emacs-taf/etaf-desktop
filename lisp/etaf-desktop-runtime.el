@@ -23,6 +23,8 @@
                   (desktop mode &optional workspace))
 (declare-function etaf-desktop-layout-tree "etaf-desktop-layout"
                   (desktop &optional workspace))
+(declare-function etaf-desktop--layout-swap-windows "etaf-desktop-layout"
+                  (desktop first second))
 (declare-function etaf-desktop-toggle-layout-mode "etaf-desktop-layout"
                   (desktop &optional workspace))
 (declare-function etaf-desktop-layout-refresh "etaf-desktop-layout"
@@ -45,6 +47,7 @@
 (declare-function etaf-desktop--layout-divider-visible "etaf-desktop-layout" (divider))
 (declare-function etaf-desktop--layout-divider-ratio "etaf-desktop-layout" (divider))
 (declare-function etaf-desktop--layout-divider-span "etaf-desktop-layout" (divider))
+(declare-function etaf-desktop--layout-divider-extent "etaf-desktop-layout" (divider))
 (declare-function etaf-desktop-app "etaf-desktop-apps" (id))
 
 (define-error 'etaf-desktop-error "Invalid ETAF Desktop operation")
@@ -308,26 +311,33 @@ immediately; other settings project through the next retained shell publication.
     (setq bindings (plist-put bindings key value))
     (etaf-desktop-set-setting desktop :keybindings bindings)))
 
+(defun etaf-desktop--visible-window-ids (desktop)
+  "Return visible active-workspace IDs in stable opening order.
+Raising a window changes its paint order, not keyboard traversal order."
+  (let ((state (etaf-desktop--state desktop)))
+    (mapcar
+     #'etaf-desktop--window-id
+     (reverse
+      (cl-remove-if-not
+       (lambda (window)
+         (and (equal (etaf-desktop--window-workspace window)
+                     (etaf-desktop--state-active-workspace state))
+              (etaf-desktop--window-visible window)
+              (not (etaf-desktop--window-minimized window))))
+       (etaf-desktop--state-windows state))))))
+
+(defun etaf-desktop--relative-window-id (active ids direction)
+  "Return the ID DIRECTION steps from ACTIVE in the circular IDS order."
+  (let ((index (or (cl-position active ids :test #'equal)
+                   (if (> direction 0) -1 (length ids)))))
+    (and ids (nth (mod (+ index direction) (length ids)) ids))))
+
 (defun etaf-desktop--focus-relative (desktop direction)
   "Focus the next or previous visible window in the active workspace."
-  (let* ((state (etaf-desktop--state desktop))
-         (windows (sort
-                   (cl-remove-if-not
-                    (lambda (window)
-                      (and (equal (etaf-desktop--window-workspace window)
-                                  (etaf-desktop--state-active-workspace state))
-                           (etaf-desktop--window-visible window)
-                           (not (etaf-desktop--window-minimized window))))
-                    (copy-sequence (etaf-desktop--state-windows state)))
-                   (lambda (left right)
-                     (< (etaf-desktop--window-z-index left)
-                        (etaf-desktop--window-z-index right)))))
-         (ids (mapcar #'etaf-desktop--window-id windows))
-         (active (etaf-desktop--state-active-window state))
-         (index (or (cl-position active ids :test #'equal)
-                    (if (> direction 0) -1 (length ids))))
-         (next (and ids (nth (mod (+ index direction) (length ids)) ids))))
-    (when next (etaf-desktop-focus-window desktop next))))
+  (when-let* ((next (etaf-desktop--relative-window-id
+                    (etaf-desktop--active-window-id desktop)
+                    (etaf-desktop--visible-window-ids desktop) direction)))
+    (etaf-desktop-focus-window desktop next)))
 
 (defun etaf-desktop--active-window-id (desktop)
   "Return the active window ID or nil."
@@ -336,51 +346,49 @@ immediately; other settings project through the next retained shell publication.
 (defun etaf-desktop--split-active-window (desktop)
   "Split the active window beside the next visible workspace window."
   (let* ((active (etaf-desktop--active-window-id desktop))
-         (windows (etaf-desktop-windows desktop))
-         (other (cl-find-if
-                 (lambda (window)
-                   (and (equal (plist-get window :workspace)
-                               (etaf-desktop-active-workspace desktop))
-                        (not (equal (plist-get window :id) active))))
-                 windows)))
-    (when (and active other (fboundp 'etaf-desktop-layout-split))
-      (etaf-desktop-layout-split desktop active (plist-get other :id)
-                                  'horizontal 0.5)
+         (ids (etaf-desktop--visible-window-ids desktop))
+         (other (etaf-desktop--relative-window-id active ids 1)))
+    (when (and (member active ids) other (not (equal active other)))
+      (etaf-desktop-layout-split desktop active other 'horizontal 0.5)
       (etaf-desktop-set-layout-mode desktop 'tiling)))
   desktop)
 
 (defun etaf-desktop--swap-active-window (desktop)
-  "Swap the active window's floating rectangle with the next window."
+  "Swap the active window with the next visible window in its layout group.
+Tiled windows exchange tree leaves while floating windows exchange rectangles."
   (let* ((state (etaf-desktop--state desktop))
          (active (etaf-desktop--state-active-window state))
-         (windows (etaf-desktop--state-windows state))
-         (other
-          (cl-find-if
-           (lambda (window)
-             (and (equal (etaf-desktop--window-workspace window)
-                         (etaf-desktop--state-active-workspace state))
-                  (not (equal (etaf-desktop--window-id window) active))))
-           windows)))
-    (when-let* ((first (etaf-desktop--window-for state active))
-                (second other))
-      (let ((first-geometry (etaf-desktop--geometry first))
-            (second-geometry (etaf-desktop--geometry second)))
-        (etaf-desktop--update
-         desktop
-         (lambda (next)
-           (let ((left (etaf-desktop--window-for next active))
-                 (right (etaf-desktop--window-for next
-                                                   (etaf-desktop--window-id second))))
-             (dolist (pair (list (cons left second-geometry)
-                                 (cons right first-geometry)))
-               (setf (etaf-desktop--window-x (car pair)) (nth 0 (cdr pair))
-                     (etaf-desktop--window-y (car pair)) (nth 1 (cdr pair))
-                     (etaf-desktop--window-width (car pair)) (nth 2 (cdr pair))
-                     (etaf-desktop--window-height (car pair)) (nth 3 (cdr pair))
-                     (etaf-desktop--window-normal-geometry (car pair))
-                     (copy-sequence (cdr pair))))
-             (etaf-desktop--raise next left))))))
-  desktop))
+         (tree (etaf-desktop-layout-tree desktop))
+         (leaves (unless (eq (etaf-desktop-layout-mode desktop) 'floating)
+                   (etaf-desktop--layout-tree-leaves tree)))
+         (tiled (member active leaves))
+         (ids (cl-remove-if-not
+               (lambda (id) (if tiled (member id leaves)
+                              (not (member id leaves))))
+               (etaf-desktop--visible-window-ids desktop)))
+         (other (etaf-desktop--relative-window-id active ids 1)))
+    (when (and (member active ids) other (not (equal active other)))
+      (if tiled
+          (etaf-desktop--layout-swap-windows desktop active other)
+        (let ((first-geometry
+               (etaf-desktop--geometry (etaf-desktop--window-for state active)))
+              (second-geometry
+               (etaf-desktop--geometry (etaf-desktop--window-for state other))))
+          (etaf-desktop--update
+           desktop
+           (lambda (next)
+             (let ((left (etaf-desktop--window-for next active))
+                   (right (etaf-desktop--window-for next other)))
+               (dolist (pair (list (cons left second-geometry)
+                                   (cons right first-geometry)))
+                 (setf (etaf-desktop--window-x (car pair)) (nth 0 (cdr pair))
+                       (etaf-desktop--window-y (car pair)) (nth 1 (cdr pair))
+                       (etaf-desktop--window-width (car pair)) (nth 2 (cdr pair))
+                       (etaf-desktop--window-height (car pair)) (nth 3 (cdr pair))
+                       (etaf-desktop--window-normal-geometry (car pair))
+                       (copy-sequence (cdr pair))))
+               (etaf-desktop--raise next left))))))))
+  desktop)
 
 (defun etaf-desktop--buffer-keymap (desktop)
   "Build the current Desktop buffer keymap from user settings."
@@ -410,7 +418,7 @@ immediately; other settings project through the next retained shell publication.
                               (etaf-desktop-minimize-window desktop id))))
            (cons :close-window
                  (lambda () (when-let* ((id (funcall active)))
-                              (etaf-desktop-close-window desktop id)))))))
+                              (etaf-desktop--request-close-window desktop id)))))))
     (let ((map (make-sparse-keymap)))
       (cl-loop for (key action) on bindings by #'cddr do
                (let ((callback (cdr (assq key actions))))
@@ -921,9 +929,14 @@ at this boundary."
      (let ((state (etaf-desktop-window-state desktop id)))
        (list :x (plist-get state :x) :y (plist-get state :y))))
    (lambda (next)
-     (etaf-desktop-move-window desktop id
-                              (plist-get next :x)
-                              (plist-get next :y)))
+     (let ((window (etaf-desktop--window-for (etaf-desktop--state desktop) id))
+           (x (plist-get next :x))
+           (y (plist-get next :y)))
+       ;; A title click still focuses on start.  Its unchanged end proposal
+       ;; must not turn a maximized window into an explicit move request.
+       (unless (and window (= x (etaf-desktop--window-x window))
+                    (= y (etaf-desktop--window-y window)))
+         (etaf-desktop-move-window desktop id x y))))
    :axis 'both :delta #'etaf-desktop--delta
    :on-start (lambda (_gesture)
                (etaf-desktop-focus-window desktop id))))
@@ -1263,15 +1276,16 @@ update instead of re-rendering the desktop."
 (defun etaf-desktop--splitter-ratio-change (desktop workspace path divider gesture)
   "Apply one controlled SPLITTER GESTURE to the layout ratio at PATH.
 The gesture remains an ETAF UI input fact; this application callback converts
-its axis delta, using DIVIDER's ratio and span at the gesture start, into the
-caller-owned layout tree ratio through the public layout API.  Ebox reports
-`:delta' as the displacement from the press, so every move maps that total
-onto the start ratio rather than onto the ratio the previous move produced.
-A cancelled gesture restores the start ratio."
+its axis delta, using DIVIDER's allocated first-pane extent and span at the
+gesture start, into the caller-owned layout tree ratio through the public API.
+Ebox reports `:delta' as the displacement from the press.  The allocated extent
+keeps a fresh gesture responsive when minimum or maximum sizes constrained the
+requested ratio.  A cancelled gesture restores the original requested ratio."
   (let* ((phase (plist-get gesture :phase))
          (current (lambda ()
-                    (cons (etaf-value (etaf-desktop--layout-divider-ratio divider))
-                          (etaf-value (etaf-desktop--layout-divider-span divider)))))
+                    (list (etaf-value (etaf-desktop--layout-divider-ratio divider))
+                          (etaf-value (etaf-desktop--layout-divider-span divider))
+                          (etaf-desktop--layout-divider-extent divider))))
          (stored (etaf-desktop--controller-divider-drag-origin desktop)))
     (when (eq phase 'start)
       (setq stored (cons divider (funcall current)))
@@ -1284,9 +1298,16 @@ A cancelled gesture restores the start ratio."
              (delta (etaf-desktop--delta gesture))
              (offset (if (eq orientation 'horizontal)
                          (car delta) (cdr delta)))
-             (next (max 0.1 (min 0.9 (+ (car origin)
-                                        (/ (float offset)
-                                           (max 1 (cdr origin))))))))
+             (span (max 2 (nth 1 origin)))
+             (requested (* (car origin) span))
+             ;; Keep subpixel intent when allocation only rounded it.  A
+             ;; size constraint instead needs the visible edge as its origin.
+             (extent (if (> (abs (- (nth 2 origin) requested)) 0.500001)
+                         (nth 2 origin) requested))
+             (next (if (zerop offset)
+                       (car origin)
+                     (/ (float (max 1 (min (1- span) (+ extent offset))))
+                        span))))
         (when (fboundp 'etaf-desktop-layout-resize-split)
           (etaf-desktop-layout-resize-split desktop path next workspace))))
     (when (and (eq phase 'cancel)
@@ -2045,6 +2066,11 @@ its position and size together."
     (unless (etaf-desktop--window-resizable window)
       (etaf-desktop--fail "Desktop window is not resizable: %S" id))
     (cond
+     ((and (= x (etaf-desktop--window-x window))
+           (= y (etaf-desktop--window-y window))
+           (= width (etaf-desktop--window-width window))
+           (= height (etaf-desktop--window-height window)))
+      (etaf-desktop--window-plist window))
      ((etaf-desktop--tiled-window-p desktop window)
       (etaf-desktop--focus-tiled-window desktop state window))
      ((etaf-desktop--floating-window-p desktop state window)

@@ -101,7 +101,11 @@ theme/accent presentation, typography, tile spacing, resize and locked-drag
 behavior, taskbar grouping, close confirmation, and keyboard actions. Session
 restore remains the explicit public save/restore workflow. Keyboard callbacks are
 installed in the mounted Desktop buffer through its local overriding map;
-they do not become global Emacs bindings.
+they do not become global Emacs bindings. Traversal and neighbor selection use
+visible window membership in stable opening order, independently of mutable
+paint order. Swapping tiled windows changes leaf identities in the authoritative
+layout tree; changing their rectangles alone would be overwritten by allocation.
+The close shortcut and chrome use the same confirmation request path.
 
 The layout allocator converts the controller's cell-based spacing settings to
 horizontal pixel widths and vertical text rows. It first insets the canvas by
@@ -118,7 +122,11 @@ minimums on each axis because retained splits consume no space in that mode.
 Spacing changes refresh the active workspace through the existing layout
 publication path and persist in the settings snapshot. Window records remain
 authoritative for their rectangles; the splitter owns only presentation and
-gestures.
+gestures. A divider retains both the requested ratio for cancellation and the
+allocated first-pane extent for pointer motion. This separates size-constrained
+geometry from user intent without a second layout authority. Master-stack
+refresh retains existing ratios; membership additions rebuild the stack while
+preserving the master width ratio.
 
 A layout mode transition updates policy and window geometry in one Desktop
 state publication. It clears temporary maximization before allocating the new

@@ -51,6 +51,9 @@ the last accepted geometry; a replaced window is never restored by an old
 gesture. Generic ETAF Behaviors retain their caller-owned cancel semantics.
 The desktop package uses Ebox's event loop and the existing controlled geometry
 writer; it does not introduce a second input or geometry authority.
+A title press/release without displacement focuses the window and preserves its
+rectangle and maximized state. Unchanged gesture geometry proposals do not act
+as explicit move or resize requests.
 
 `etaf-desktop-maximize-window` saves the normal rectangle and fills the desktop
 canvas. `etaf-desktop-restore-window` returns that rectangle. Minimized windows
@@ -128,6 +131,14 @@ Desktop surface: `n`/`p` focus next/previous, `a` opens Applications, `w`
 opens the switcher, `o` opens Settings, `l` toggles layout, `s` splits, `x`
 swaps, `m` maximizes, `r` restores, `i` minimizes, and `q` closes the active
 window. A modal or native input surface temporarily takes precedence.
+
+Traversal uses stable window opening order, skipping minimized, hidden and
+other-workspace windows. `s` pairs the active window with the next visible
+workspace window in an equal left/right split. `x` exchanges it with the next
+visible window in the same layout group: tiled windows swap places in the
+layout tree while floating windows swap rectangles. Split topology and ratios
+stay intact, and the active window keeps focus. With no other eligible window,
+split and swap do nothing.
 
 The launcher, switcher and settings dialog are unpainted modals: the shell
 stays visible and dimmed behind them, and they close on Escape, on their
@@ -216,6 +227,9 @@ whose leaves are window IDs and whose split nodes have an orientation and ratio:
 height from top to bottom. The allocator observes each window's minimum and
 maximum dimensions where the canvas permits. `master-stack` gives the first
 visible window a wide master region and stacks the remaining leaves vertically.
+Adjusted master-stack ratios survive focus, workspace switches and ordinary
+refreshes. Adding a window retains the master width ratio and redistributes the
+stack; removing the master promotes a remaining window.
 `monocle` keeps the tree but gives every leaf the inset canvas rectangle and
 raises the focused window, allowing a quick return to tiling.
 
@@ -227,7 +241,10 @@ If those minimums still cannot fit, the allocator reduces pane sizes and inner
 gaps as needed to keep panes inside the canvas where possible. Divider handles
 stay centered and confined to their gaps, including in nested trees; a gap
 reduced to zero has no handle. Splitter gestures change the ratio within that
-split's own span. Monocle uses the same outer spacing without reserving inner
+split's own span, starting from its visible edge even when minimum or maximum
+sizes constrained the requested ratio. Cancelling restores the requested ratio
+from the start of the gesture. Both left/right and top/bottom dividers use this
+policy. Monocle uses the same outer spacing without reserving inner
 gaps for its retained split tree.
 
 Use Desktop Settings or the public settings API to adjust spacing. For example,
