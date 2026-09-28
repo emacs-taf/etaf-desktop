@@ -772,8 +772,8 @@ republishes the desktop tree even if every rectangle stays equal.
 
 Every rectangle, divider allocation and divider visibility is written through
 retained cells in one batch, so an unchanged structure publishes as prepared
-geometry.  The desktop republishes structurally only when FORCE-PUBLICATION is
-set or a divider path appears that has no retained node yet."
+geometry.  The desktop republishes structurally when FORCE-PUBLICATION is set,
+a divider path is new, or an existing path changes orientation."
   (let* ((desktop (etaf-desktop--controller desktop))
          (state (etaf-desktop--state desktop))
          (workspace (or workspace (etaf-desktop--state-active-workspace state))))
@@ -802,12 +802,19 @@ set or a divider path appears that has no retained node yet."
                      state tree spacing canvas-rect)))
            (paths (mapcar #'car dividers))
            (table (etaf-desktop--layout-workspace-dividers policy))
-           ;; Only a divider path never rendered before needs a new node;
-           ;; a path leaving the tree hides its retained node until the
-           ;; next structural publication drops it.
+           ;; Orientation is a scalar Component prop, unlike the retained
+           ;; rectangle/content refs.  A changed axis must republish that
+           ;; prop together with the new rectangle and pointer semantics.
+           ;; Missing paths stay hidden until structural publication drops them.
            (structural (or force-publication
-                           (cl-some (lambda (path) (null (gethash path table)))
-                                    paths)))
+                           (cl-some
+                            (lambda (fact)
+                              (let ((divider (gethash (car fact) table)))
+                                (or (null divider)
+                                    (not (eq (nth 1 fact)
+                                             (etaf-desktop--layout-divider-orientation
+                                              divider))))))
+                            dividers)))
            (result
             (mapcar
              (lambda (rectangle)
@@ -841,17 +848,17 @@ set or a divider path appears that has no retained node yet."
                       (setf (etaf-value (etaf-desktop--layout-divider-visible
                                          divider))
                             nil)))
-                  table)))
-      (setf (etaf-desktop--layout-workspace-divider-paths policy) paths)
-      (when structural
-        ;; A republished tree carries only the current dividers; hidden
-        ;; nodes are retained solely between structural publications.
-        (let (stale)
-          (maphash (lambda (path _divider)
-                     (unless (member path paths) (push path stale)))
-                   table)
-          (dolist (path stale) (remhash path table)))
-        (etaf-desktop--update desktop #'ignore t))
+                  table)
+         (setf (etaf-desktop--layout-workspace-divider-paths policy) paths)
+         (when structural
+           ;; A republished tree carries only the current dividers; hidden
+           ;; nodes are retained solely between structural publications.
+           (let (stale)
+             (maphash (lambda (path _divider)
+                        (unless (member path paths) (push path stale)))
+                      table)
+             (dolist (path stale) (remhash path table)))
+           (etaf-desktop--update desktop #'ignore t))))
       result)))
 
 (defun etaf-desktop-layout-apply (desktop &optional workspace)

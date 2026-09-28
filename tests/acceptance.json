@@ -257,6 +257,11 @@
       "purpose": "Two tiled workspaces publish their own divider nodes in one canvas without key collisions."
     },
     {
+      "name": "etaf-desktop-divider-orientation-refreshes-rendered-input",
+      "file": "tests/etaf-desktop-layout-tests.el",
+      "purpose": "Changing an existing split between horizontal and vertical refreshes its visible accessible label, pointer, handle dimensions and subsequent controlled gesture."
+    },
+    {
       "name": "etaf-desktop-nested-splitters-occupy-reserved-gaps",
       "file": "tests/etaf-desktop-layout-tests.el",
       "purpose": "Nested divider handles center in custom inner gaps and drag changes only the selected subtree ratio."

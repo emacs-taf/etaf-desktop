@@ -77,6 +77,59 @@
                                                (point-min) (point-max)))))))
       (etaf-desktop-close desktop))))
 
+(ert-deftest etaf-desktop-divider-orientation-refreshes-rendered-input ()
+  "Changing a retained split direction updates its visible input and gesture."
+  (let ((desktop (etaf-desktop-create :name " *desktop-divider-orientation*"
+                                     :canvas-width 400 :canvas-height 30)))
+    (unwind-protect
+        (progn
+          (dolist (id '(one two))
+            (etaf-desktop-open-window desktop id :title (symbol-name id)
+                                     :width 100 :height 8
+                                     :min-width 20 :min-height 2))
+          (etaf-desktop-set-layout-mode desktop 'tiling)
+          (etaf-desktop-layout-set-tree
+           desktop '(:split horizontal 0.5 (:leaf one) (:leaf two)))
+          (let* ((buffer (etaf-desktop-mount desktop))
+                 (runtime (etaf-runtime-for-buffer buffer)))
+            (dolist (orientation '(vertical horizontal vertical))
+              (etaf-desktop-layout-set-tree
+               desktop (list :split orientation 0.5 '(:leaf one) '(:leaf two)))
+              (let* ((horizontal (eq orientation 'horizontal))
+                     (entries
+                      (cl-loop for (ref . props)
+                               in (etaf-runtime-host-props-entries runtime)
+                               when (and (equal "etaf-splitter-divider"
+                                                (plist-get props :class))
+                                         (etaf-host-ref-position runtime ref))
+                               collect (cons ref props)))
+                     (entry (car entries))
+                     (dimension (if horizontal :width :height))
+                     (axis (if horizontal :x :y))
+                     (before (etaf-desktop-window-state desktop 'one))
+                     (peer (etaf-desktop-window-state desktop 'two))
+                     (delta (if horizontal '(2 . 0) '(0 . 2))))
+                (should (= 1 (length entries)))
+                (should (equal (if horizontal "Resize columns" "Resize rows")
+                               (plist-get (cdr entry) :aria-label)))
+                (should (eq (if horizontal 'hdrag 'vdrag)
+                            (plist-get (cdr entry) :pointer)))
+                (should (equal (if horizontal '(px 3) '(lh 1))
+                               (plist-get (cdr entry) dimension)))
+                (etaf-dispatch-event runtime (car entry) 'drag
+                                     '(:phase start :delta (0 . 0)) t)
+                (etaf-dispatch-event runtime (car entry) 'drag
+                                     (list :phase 'move :delta delta) t)
+                (etaf-dispatch-event runtime (car entry) 'drag
+                                     (list :phase 'end :delta delta) t)
+                (should (= (+ 2 (plist-get before dimension))
+                           (plist-get (etaf-desktop-window-state desktop 'one)
+                                      dimension)))
+                (should (= (+ 2 (plist-get peer axis))
+                           (plist-get (etaf-desktop-window-state desktop 'two)
+                                      axis)))))))
+      (etaf-desktop-close desktop))))
+
 (ert-deftest etaf-desktop-layout-floating-and-untile ()
   "Untiling preserves a window as a floating overlay while tree leaves reflow."
   (let ((desktop (etaf-desktop-create :canvas-width 80 :canvas-height 16)))

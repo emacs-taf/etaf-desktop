@@ -57,6 +57,8 @@ All notable changes to ETAF Desktop are documented here.
 
 ### Fixed
 
+- Changing an existing split between columns and rows now updates its divider
+  label and mouse pointer together with the new geometry.
 - Demo applications scroll their body content when resized, keeping the app
   header and footer actions visible instead of clipping longer content.
 - Clicking a maximized window's title without dragging keeps it maximized;
@@ -131,8 +133,8 @@ All notable changes to ETAF Desktop are documented here.
 - Tiling layouts publish window rectangles and divider positions, labels and
   visibility through retained geometry cells. Ratio drags, focus changes,
   maximize and minimize under tiling update the affected windows in place;
-  the desktop tree is rebuilt only when a new divider appears. Performance
-  scenarios `etaf-desktop.policy.tiled-{focus,maximize,minimize,close}`
+  the desktop tree is rebuilt when a divider appears or changes direction.
+  Performance scenarios `etaf-desktop.policy.tiled-{focus,maximize,minimize,close}`
   cover these paths.
 
 - Toggling between floating and tiling layouts publishes through retained

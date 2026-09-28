@@ -132,6 +132,12 @@ geometry from user intent without a second layout authority. Master-stack
 refresh retains existing ratios; membership additions rebuild the stack while
 preserving the master width ratio.
 
+Divider rectangles, content and visibility are retained reactive sources;
+orientation is a scalar ETAF UI Component prop. Adding a divider or changing
+an existing path's orientation republishes the shell in the same batch as
+its allocated geometry, so labels and pointer semantics describe the new axis.
+Ordinary ratio changes keep the existing presentation and update its sources.
+
 A layout mode transition updates policy and window geometry in one Desktop
 state publication. It clears temporary maximization before allocating the new
 rectangles; ordinary tiling refreshes preserve a maximized window's full canvas
