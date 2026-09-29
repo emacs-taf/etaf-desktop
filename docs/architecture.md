@@ -100,6 +100,14 @@ to title and content. When both are explicit, the positioned host uses their
 maximum for the shared line-height basis; if either inherits, the host retains
 its inherited basis so one override cannot impose a size on the other region.
 
+The Settings panel retains its tab row and footer while a structural View
+expression replaces the active field grid. Section-dependent dialog height,
+tab variants and hint text have their own reactive property expressions;
+changing a tab does not reconstruct the surrounding Desktop View or its
+callbacks. Only the active section's fields are mounted. Closing releases the
+dialog and field controls while the panel's selected section remains available
+for the next opening; field values always come from the controller.
+
 The settings form owns only policies already supported by the application:
 theme/accent presentation, typography, tile spacing, resize and locked-drag
 behavior, taskbar grouping, close confirmation, and keyboard actions. Session

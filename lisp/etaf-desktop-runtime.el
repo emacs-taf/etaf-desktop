@@ -1532,77 +1532,81 @@ footer.  Shortcuts fill two label/control column pairs."
                                   (length fields)))))))
     (list 'lh (+ rows 9))))
 
+(defun etaf-desktop--settings-grid (desktop section)
+  "Return DESKTOP's labelled field grid for the active settings SECTION."
+  (let* ((settings
+          (let ((settings (etaf-desktop--settings desktop)))
+            ;; Layout mode is active-workspace state that the bar control and
+            ;; workspace switches change without touching the settings ref;
+            ;; the label cell tracks it, so reading it keeps this form live.
+            (etaf-value (etaf-desktop--controller-layout-label-ref desktop))
+            (if (fboundp 'etaf-desktop-layout-mode)
+                (plist-put settings :layout-mode
+                           (etaf-desktop-layout-mode desktop))
+              settings)))
+         (bindings (plist-get settings :keybindings))
+         (fields (etaf-desktop--settings-fields section))
+         (shortcuts (eq section 'shortcuts)))
+    (etaf-node
+     'grid (list :class "etaf-desktop-settings-fields" :width 'stretch
+                 :grid-template-columns (if shortcuts
+                                            '((ch 16) (fr 1) (ch 16) (fr 1))
+                                          '((ch 18) (fr 1)))
+                 :column-gap '(ch 2) :row-gap '(lh 1)
+                 :align-items 'center)
+     (mapcan
+      (lambda (field)
+        (let* ((key (nth 1 field))
+               (value (plist-get (if shortcuts bindings settings) key))
+               ;; `light' and `dark' select the built-in theme of that mode.
+               (value (if (and (eq key :theme) (memq value '(light dark)))
+                          (plist-get (etaf-desktop--theme-entry value) :name)
+                        value)))
+          (etaf-desktop--settings-field-nodes desktop section field value)))
+      fields))))
+
 (etaf-define-component etaf-desktop--settings-panel (&key desktop)
-  "Render DESKTOP's settings as one card with tabs and a labelled field grid."
+  "Render DESKTOP's settings with retained tabs and one active field grid."
   :bindings
-  ((section (etaf-ref 'appearance)))
+  ((controller (etaf-prop 'desktop))
+   (section (etaf-ref 'appearance))
+   (tab-actions
+    (mapcar
+     (lambda (entry)
+       (let ((key (car entry)))
+         (cons key (lambda () (etaf-set-value section key)))))
+     etaf-desktop--settings-sections))
+   (close-settings
+    (lambda () (etaf-desktop-close-settings (etaf-value controller))))
+   (reset-settings
+    (lambda () (etaf-desktop-reset-settings (etaf-value controller)))))
   :render
   (when (etaf-desktop-settings-open-p desktop)
-   (let* ((settings
-           (let ((settings (etaf-desktop--settings desktop)))
-             ;; Layout mode is active-workspace state that the bar control and
-             ;; workspace switches change without touching the settings ref;
-             ;; the label cell tracks it, so reading it keeps this form live.
-             (etaf-value (etaf-desktop--controller-layout-label-ref desktop))
-             (if (fboundp 'etaf-desktop-layout-mode)
-                 (plist-put settings :layout-mode
-                            (etaf-desktop-layout-mode desktop))
-               settings)))
-         (active (etaf-value section))
-         (bindings (plist-get settings :keybindings))
-         (fields (etaf-desktop--settings-fields active))
-         (shortcuts (eq active 'shortcuts)))
-    (etaf-node
-     'etaf-dialog
-     (list :open (etaf-desktop-settings-open-p desktop)
-           :title "Desktop Settings" :width '(ch 76)
-           :height (etaf-desktop--settings-height active fields)
-           :close-label "Done" :backdrop nil
-           :on-close (lambda () (etaf-desktop-close-settings desktop)))
-     (list
-      (etaf-node
-       'flex (list :class "etaf-desktop-settings-tabs" :role 'tablist
-                   :flex-direction 'row :gap '((lh 0) (ch 1)) :width 'stretch)
-       (mapcar
-        (lambda (entry)
-          (let ((key (car entry)))
-            (etaf-node 'etaf-button
-                       (list :ref (intern (format "settings-tab-%s" key))
-                             :label (cdr entry) :aria-label (cdr entry)
-                             :variant (if (eq active key) 'secondary 'ghost)
-                             :on-press (lambda () (etaf-set-value section key)))
-                       nil)))
-        etaf-desktop--settings-sections))
-      (etaf-node
-       'grid (list :class "etaf-desktop-settings-fields" :width 'stretch
-                   :grid-template-columns (if shortcuts
-                                              '((ch 16) (fr 1) (ch 16) (fr 1))
-                                            '((ch 18) (fr 1)))
-                   :column-gap '(ch 2) :row-gap '(lh 1)
-                   :align-items 'center)
-       (mapcan
-        (lambda (field)
-          (let* ((key (nth 1 field))
-                 (value (plist-get (if shortcuts bindings settings) key))
-                 ;; `light' and `dark' select the built-in theme of that mode.
-                 (value (if (and (eq key :theme) (memq value '(light dark)))
-                            (plist-get (etaf-desktop--theme-entry value) :name)
-                          value)))
-            (etaf-desktop--settings-field-nodes desktop active field value)))
-        fields))
-      (etaf-node 'etaf-label
-                 (list :text (pcase active
-                               ('layout "Gaps use character widths across and text rows down.")
-                               ('shortcuts "Keys apply while the desktop is active.")
-                               (_ "Changes are saved with your desktop session."))
-                       :variant 'muted) nil))
-     (list
-      (cons 'footer
-            (list (etaf-node 'etaf-button
-                             (list :label "Reset settings" :variant 'ghost
-                                   :aria-label "Reset settings"
-                                   :on-press (lambda () (etaf-desktop-reset-settings desktop)))
-                             nil))))))))
+    (etaf-view
+     (etaf-dialog
+      :open t :title "Desktop Settings" :width '(ch 76)
+      :height (let ((active (etaf-value section)))
+                (etaf-desktop--settings-height
+                 active (etaf-desktop--settings-fields active)))
+      :close-label "Done" :backdrop nil :on-close close-settings
+      (flex :class "etaf-desktop-settings-tabs" :role 'tablist
+            :flex-direction 'row :gap '((lh 0) (ch 1)) :width 'stretch
+       (etaf-button
+        :for (entry etaf-desktop--settings-sections) :key (car entry)
+        :ref (intern (format "settings-tab-%s" (car entry)))
+        :label (cdr entry) :aria-label (cdr entry)
+        :variant (if (eq (etaf-value section) (car entry)) 'secondary 'ghost)
+        :on-press (alist-get (car entry) tab-actions)))
+      (expr (etaf-desktop--settings-grid desktop (etaf-value section)))
+      (etaf-label
+       :text (pcase (etaf-value section)
+               ('layout "Gaps use character widths across and text rows down.")
+               ('shortcuts "Keys apply while the desktop is active.")
+               (_ "Changes are saved with your desktop session."))
+       :variant 'muted)
+      (slot :name 'footer
+       (etaf-button :label "Reset settings" :variant 'ghost
+                    :aria-label "Reset settings" :on-press reset-settings))))))
 
 (defun etaf-desktop--settings-node (desktop)
   "Render DESKTOP's settings through its retained section controller."

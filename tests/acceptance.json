@@ -10,6 +10,21 @@
   ],
   "support": [],
   "cases": [
+    {
+      "name": "etaf-desktop-settings-dismiss-restores-entry-focus",
+      "file": "tests/etaf-desktop-settings-tests.el",
+      "purpose": "Done and the installed Escape command restore focus to the Settings entry after editing Layout values, reopening the panel and resetting settings."
+    },
+    {
+      "name": "etaf-desktop-settings-tabs-retain-controls-and-active-fields",
+      "file": "tests/etaf-desktop-settings-tests.el",
+      "purpose": "All four Settings tabs preserve focus and usable shell controls, publish their selected state, height, hint and only active controls, keep desktop geometry unchanged, and release controls on close."
+    },
+    {
+      "name": "etaf-desktop-settings-reopen-retains-section-and-current-values",
+      "file": "tests/etaf-desktop-settings-tests.el",
+      "purpose": "Closing Settings removes its fields; reopening retains the selected tab with current controller values and working reset and close actions."
+    },
     {"name": "etaf-desktop-demo-body-scroll-keeps-header-footer-live", "file": "tests/etaf-desktop-demo-tests.el", "purpose": "The public six-app demo keeps Notes header and footer controls fixed while its bounded body scrolls, resizes, returns to the top and accepts edits; closing cancels its mounted timers."},
     {
       "name": "etaf-desktop-locked-resize-confirms-controlled-geometry",

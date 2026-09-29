@@ -31,6 +31,8 @@ All notable changes to ETAF Desktop are documented here.
 
 ### Changed
 
+- Settings tab changes retain the dialog controls and callbacks while replacing
+  the active field grid; selection, height and guidance update independently.
 - New desktops inherit the Emacs font size for window titles and application
   content instead of forcing 14 CSS pixels (10.5 points). Appearance font
   fields show "Emacs default" or offer to restore it for an existing override,
