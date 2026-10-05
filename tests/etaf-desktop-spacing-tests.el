@@ -19,6 +19,25 @@
     (should (etaf-host-ref-position runtime (car entry)))
     (etaf-dispatch-event runtime (car entry) 'press)))
 
+(defun etaf-desktop-test-spacing-edit (runtime buffer label old text)
+  "Replace LABEL's field value OLD with TEXT in BUFFER.
+Activation opens the native editing session at the end of the field's value,
+so the caller passes the value being replaced and the edit backspaces exactly
+those characters: deleting the box padding outside the session's span would
+mark the surface stale.  Typing drives the component's change callback,
+which updates the setting."
+  (let ((entry (cl-find-if
+                (lambda (item) (equal label (plist-get (cdr item) :aria-label)))
+                (etaf-runtime-host-props-entries runtime))))
+    (should entry)
+    (etaf-dispatch-event runtime (car entry) 'press)
+    (should (etaf-text-input-active-p runtime))
+    (with-current-buffer buffer
+      (delete-region (- (point) (length old)) (point))
+      (insert text))
+    (etaf-text-input-end)
+    (should-not (etaf-text-input-active-p runtime))))
+
 (ert-deftest etaf-desktop-tile-spacing-defaults-and-reset ()
   "New controllers and reset settings use detached one-cell gap preferences."
   (let* ((cell (frame-char-width))
@@ -348,10 +367,16 @@
                  (runtime (etaf-runtime-for-buffer buffer)))
             (etaf-desktop-toggle-settings desktop t)
             (etaf-desktop-test-spacing-press runtime "Layout")
-            (cl-letf (((symbol-function 'read-number) (lambda (&rest _) 0)))
-              (etaf-desktop-test-spacing-press runtime "Outer gap"))
-            (cl-letf (((symbol-function 'read-number) (lambda (&rest _) 3)))
-              (etaf-desktop-test-spacing-press runtime "Inner gap"))
+            (etaf-desktop-test-spacing-edit
+             runtime buffer "Outer gap"
+             (format "%s" (plist-get (etaf-desktop-settings desktop)
+                                      :tile-outer-gap))
+             "0")
+            (etaf-desktop-test-spacing-edit
+             runtime buffer "Inner gap"
+             (format "%s" (plist-get (etaf-desktop-settings desktop)
+                                      :tile-inner-gap))
+             "3")
             (should (= 0 (plist-get (etaf-desktop-settings desktop) :tile-outer-gap)))
             (should (= 3 (plist-get (etaf-desktop-settings desktop) :tile-inner-gap)))
             (let ((one (etaf-desktop-window-state desktop 'one))
