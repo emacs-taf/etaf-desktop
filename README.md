@@ -6,6 +6,10 @@ normal/minimized/maximized lifecycle. Ebox remains the retained layout and
 incremental publication provider; ETAF UI's `etaf-window` is the controlled
 presentation shell.
 
+The demo desktop at a wide frame:
+
+![The demo desktop at a wide frame](examples/etaf-desktop-wide.png)
+
 ## Minimal example
 
 ```elisp
