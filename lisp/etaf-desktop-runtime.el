@@ -144,7 +144,7 @@ shell and taskbar receive stable reactive inputs for the window's lifetime."
 (defun etaf-desktop--retain-window-shown (state window previous)
   "Retain WINDOW's presentation source in STATE, reusing PREVIOUS's.
 The computed reads the retained visible, workspace and active-workspace
-cells, so a workspace switch hides and reveals windows through prepared
+cells, so a workspace switch hides and reveals windows through bound
 visibility instead of remounting them."
   (let ((visible (etaf-desktop--window-visible-source window))
         (workspace (etaf-desktop--window-workspace-source window))
@@ -1242,8 +1242,8 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
   "Write the active workspace's layout label into DESKTOP's retained cell.
 WORKSPACE, when given, names the workspace whose mode changed; another
 workspace's change leaves the visible label alone.  The label is a Text
-payload of the workspace bar, so a mode change publishes as a prepared
-update instead of re-rendering the desktop."
+payload of the workspace bar, so a mode change updates that text in place
+instead of re-rendering the desktop."
   (let* ((desktop (etaf-desktop--controller desktop))
          (active (etaf-desktop--state-active-workspace
                   (etaf-desktop--state desktop))))
@@ -1260,7 +1260,7 @@ update instead of re-rendering the desktop."
                      ;; The right side reports the focused application and the
                      ;; workspace's window-management mode, which the trailing
                      ;; control switches without leaving the desktop.  The
-                     ;; label is a retained cell so toggling stays prepared.
+                     ;; label is a retained cell so toggling updates only its text.
                      :status status
                      :layout-label (etaf-desktop--controller-layout-label-ref desktop)
                      :layout-action
@@ -1324,9 +1324,9 @@ requested ratio.  A cancelled gesture restores the original requested ratio."
 The layout policy owns every divider rectangle and visibility as retained
 refs and rewrites them when it applies the layout; ETAF UI owns only each
 divider's presentation and input.  A split that left the tree keeps its
-hidden node so membership changes stay prepared.  Dividers occupy the inner
-gaps between tiles, so they stack beneath every window and a maximized
-window covers them."
+hidden node so membership changes only update its visibility.  Dividers
+occupy the inner gaps between tiles, so they stack beneath every window and
+a maximized window covers them."
   (mapcar
    (lambda (entry)
      (let ((path (car entry))
@@ -1675,8 +1675,8 @@ Theme paint slots without re-rendering the desktop tree."
 The `workspace-bar' slot fills the top row, the `canvas' slot holds the
 positioned window layer and the default slot appends the taskbar and modal
 surfaces.  Every size read happens inside a Host property binding, so a
-window-fitted canvas republishes the frame through prepared geometry instead
-of re-rendering the desktop tree."
+window-fitted canvas updates the frame's bound geometry instead of
+re-rendering the desktop tree."
   :view
   (column
    ;; The shell width fits the render viewport when one exists: the concrete
@@ -2280,7 +2280,7 @@ its position and size together."
   "Make WORKSPACE the active desktop workspace.
 The switch writes the retained active-workspace, active-window and layout
 label cells in one batch: every workspace's windows and dividers stay
-mounted and follow through prepared visibility, so no desktop structure is
+mounted and follow through bound visibility, so no desktop structure is
 republished.  Focus passes to WORKSPACE's highest visible window."
   (let* ((desktop (etaf-desktop--controller desktop))
          (state (etaf-desktop--state desktop)))

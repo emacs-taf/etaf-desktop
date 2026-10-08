@@ -14,13 +14,23 @@
     (should (etaf-host-ref-position runtime ref))
     ref))
 
-(defun etaf-desktop-demo-test--body-state (buffer id)
-  "Read the public scroll state of window ID's demo body in BUFFER."
-  (with-current-buffer buffer
-    (let ((match (car (ebox-selector-query-buffer
-                      buffer (format "[id=%S] .etaf-desktop-demo-app-body" id)))))
-      (should match)
-      (ebox-scroll-state (plist-get match :region-id)))))
+(defun etaf-desktop-demo-test--body (buffer id)
+  "Return the mounted node of window ID's demo body in BUFFER."
+  (let ((node (car (ebox-selector-query-buffer
+                    buffer (format "[id=%S] .etaf-desktop-demo-app-body" id)))))
+    (should node)
+    node))
+
+(defun etaf-desktop-demo-test--scroll-offset (buffer id)
+  "Return the scroll offset of window ID's demo body in BUFFER."
+  (ebox-node-scroll-offset (etaf-desktop-demo-test--body buffer id)))
+
+(defun etaf-desktop-demo-test--scrollable-p (buffer id)
+  "Return non-nil when window ID's demo body in BUFFER can scroll further."
+  (let* ((node (etaf-desktop-demo-test--body buffer id))
+         (offset (ebox-node-scroll-offset node)))
+    (prog1 (> (ebox-node-set-scroll node (1+ offset)) offset)
+      (ebox-node-set-scroll node offset))))
 
 (ert-deftest etaf-desktop-demo-body-scroll-keeps-header-footer-live ()
   "The real Notes app scrolls inside resized chrome and retains input/actions."
@@ -56,10 +66,7 @@
             (dotimes (_ 6)
               (etaf-dispatch-event
                runtime (etaf-desktop-demo-test--control runtime "Add line") 'press))
-            (let* ((state (etaf-desktop-demo-test--body-state buffer id))
-                   (height (plist-get state :content-height)))
-              (should (> height 0))
-              (should (> (length (plist-get state :content-lines)) height)))
+            (should (etaf-desktop-demo-test--scrollable-p buffer id))
             (with-current-buffer buffer
               (goto-char (point-min))
               (search-forward "Ideas worth keeping:")
@@ -71,8 +78,7 @@
                                   (etaf-host-ref-position
                                    runtime (etaf-desktop-demo-test--control runtime "Add line")))))
                 (ebox-scroll-down 2)
-                (should (= 2 (plist-get (etaf-desktop-demo-test--body-state buffer id)
-                                       :scroll-offset)))
+                (should (= 2 (etaf-desktop-demo-test--scroll-offset buffer id)))
                 (should (= header-line
                            (line-number-at-pos
                             (etaf-host-ref-position
@@ -82,13 +88,11 @@
                             (etaf-host-ref-position
                              runtime (etaf-desktop-demo-test--control runtime "Add line")))))
                 (ebox-scroll-up 2)
-                (should (= 0 (plist-get (etaf-desktop-demo-test--body-state buffer id)
-                                       :scroll-offset)))))
+                (should (= 0 (etaf-desktop-demo-test--scroll-offset buffer id)))))
             (etaf-desktop-resize-window desktop id 300 30)
-            (should-not (etaf-desktop-demo-test--body-state buffer id))
+            (should-not (etaf-desktop-demo-test--scrollable-p buffer id))
             (etaf-desktop-resize-window desktop id 300 9)
-            (should (= 0 (plist-get (etaf-desktop-demo-test--body-state buffer id)
-                                   :scroll-offset)))
+            (should (= 0 (etaf-desktop-demo-test--scroll-offset buffer id)))
             (let* ((ref (etaf-desktop-demo-test--control runtime "Title"))
                    (old (with-current-buffer buffer
                           (let ((bounds (etaf-host-ref-bounds runtime ref)))

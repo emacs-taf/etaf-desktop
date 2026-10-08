@@ -626,13 +626,7 @@ can always be grabbed again."
                            (cl-loop for (_ref . props) in
                                     (etaf-runtime-host-props-entries runtime)
                                     when (equal "Close" (plist-get props :aria-label))
-                                    collect (let ((color (plist-get props :color)))
-                                              ;; Theme-bound colors publish
-                                              ;; through retained paint slots.
-                                              (if (ebox-paint-slot-p color)
-                                                  (plist-get (ebox-paint-slot-spec color)
-                                                             :foreground)
-                                                color))))))
+                                    collect (plist-get props :color)))))
             (let ((first (funcall colors)))
               (should (= 2 (length first)))
               (should (= 1 (cl-count active-color first :test #'equal)))
@@ -994,17 +988,18 @@ restores the full shell without a structural re-render."
             (should (eq 'tiling (etaf-desktop-layout-mode desktop)))
             (should (funcall label-visible-p "Tiled"))
             (should-not (funcall label-visible-p "Floating"))
-            ;; Later toggles rewrite retained cells only: the runtime
-            ;; generation, and so every prepared cohort, stays the same.
-            (let ((generation (etaf-runtime-current-generation runtime)))
+            ;; Later toggles rewrite retained rows in one commit each.
+            (let ((revision (etaf-runtime-revision runtime)))
               (etaf-dispatch-event runtime 'etaf-workspace-layout 'press)
               (should (eq 'floating (etaf-desktop-layout-mode desktop)))
-              (should (eq generation (etaf-runtime-current-generation runtime)))
+              (should (= (1+ revision) (etaf-runtime-revision runtime)))
+              (should (eq 'lines (plist-get (ebox-buffer-update-report buffer) :strategy)))
               (should (funcall label-visible-p "Floating"))
               (should-not (funcall label-visible-p "Tiled"))
               (etaf-dispatch-event runtime 'etaf-workspace-layout 'press)
               (should (eq 'tiling (etaf-desktop-layout-mode desktop)))
-              (should (eq generation (etaf-runtime-current-generation runtime)))
+              (should (= (+ 2 revision) (etaf-runtime-revision runtime)))
+              (should (eq 'lines (plist-get (ebox-buffer-update-report buffer) :strategy)))
               (should (funcall label-visible-p "Tiled"))
               (should (= 2 (length (etaf-desktop-layout-apply desktop)))))
             ;; The label follows the active workspace, whose mode is its own.
@@ -1082,14 +1077,21 @@ restores the full shell without a structural re-render."
                   (lambda (text)
                     (with-current-buffer buffer
                       (string-match-p (regexp-quote text) (buffer-string)))))
-                 (generation (etaf-runtime-current-generation runtime)))
+                 (revision (etaf-runtime-revision runtime))
+                 (retained-p
+                  ;; A retained switch commits once and rewrites changed rows.
+                  (lambda ()
+                    (prog1 (and (= (1+ revision) (etaf-runtime-revision runtime))
+                                (eq 'lines (plist-get (ebox-buffer-update-report buffer)
+                                                      :strategy)))
+                      (setq revision (etaf-runtime-revision runtime))))))
             (should (funcall visible-p "Main body one"))
             (should (funcall visible-p "Main body two"))
             (should-not (funcall visible-p "Dev body three"))
             ;; The taskbar lists every workspace's windows.
             (should (funcall visible-p "Three"))
             (etaf-desktop-switch-workspace desktop 'dev)
-            (should (eq generation (etaf-runtime-current-generation runtime)))
+            (should (funcall retained-p))
             (should (eq 'dev (etaf-desktop-active-workspace desktop)))
             (should (eq 'three (etaf-desktop-active-window desktop)))
             (should (funcall visible-p "Dev body three"))
@@ -1097,7 +1099,7 @@ restores the full shell without a structural re-render."
             (should-not (funcall visible-p "Main body two"))
             (should (funcall visible-p "Floating"))
             (etaf-desktop-switch-workspace desktop 'main)
-            (should (eq generation (etaf-runtime-current-generation runtime)))
+            (should (funcall retained-p))
             (should (eq 'two (etaf-desktop-active-window desktop)))
             (should (funcall visible-p "Main body one"))
             (should (funcall visible-p "Main body two"))
@@ -1105,7 +1107,7 @@ restores the full shell without a structural re-render."
             (should (funcall visible-p "Tiled"))
             ;; Focusing a window of another workspace switches to it retained.
             (etaf-desktop-focus-window desktop 'three)
-            (should (eq generation (etaf-runtime-current-generation runtime)))
+            (should (funcall retained-p))
             (should (eq 'dev (etaf-desktop-active-workspace desktop)))
             (should (funcall visible-p "Dev body three"))
             (should-not (funcall visible-p "Main body two"))))

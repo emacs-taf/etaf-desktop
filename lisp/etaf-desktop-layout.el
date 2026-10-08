@@ -6,7 +6,7 @@
 ;; small immutable-looking tree owned by a desktop controller.  Applying it
 ;; writes every allocated rectangle through the runtime's retained window
 ;; cells and the policy's retained divider records in one batch, so ratio
-;; drags, focus and mode-preserving reflows publish as prepared geometry.
+;; drags, focus and mode-preserving reflows update bound geometry in place.
 ;; Only a change in the set of dividers or in the layout mode republishes the
 ;; desktop structurally.  The tree never becomes a second geometry store:
 ;; window records remain authoritative for currently published rectangles.
@@ -41,10 +41,10 @@ LEFT, TOP, WIDTH, HEIGHT, CONTENT and VISIBLE are refs read by the divider's
 Host bindings; RATIO and SPAN are refs the gesture callback reads when it maps
 a pointer delta onto the caller-owned tree.  A record outlives its split: a
 path that leaves the tree keeps its retained node hidden, so membership
-changes publish through prepared visibility instead of desktop structure.
+changes update bound visibility instead of desktop structure.
 SHOWN is the computed the Host binds: VISIBLE narrowed to the divider's
 workspace being active, so a workspace switch hides and reveals dividers
-through the same prepared visibility."
+through the same bound visibility."
   orientation left top width height content visible ratio span extent shown)
 
 (defun etaf-desktop--layout-divider-for (desktop workspace path)
@@ -771,9 +771,10 @@ temporary maximized view during a mode transition; FORCE-PUBLICATION
 republishes the desktop tree even if every rectangle stays equal.
 
 Every rectangle, divider allocation and divider visibility is written through
-retained cells in one batch, so an unchanged structure publishes as prepared
-geometry.  The desktop republishes structurally when FORCE-PUBLICATION is set,
-a divider path is new, or an existing path changes orientation."
+retained cells in one batch, so an unchanged structure updates bound
+geometry in place.  The desktop republishes structurally when
+FORCE-PUBLICATION is set, a divider path is new, or an existing path changes
+orientation."
   (let* ((desktop (etaf-desktop--controller desktop))
          (state (etaf-desktop--state desktop))
          (workspace (or workspace (etaf-desktop--state-active-workspace state))))

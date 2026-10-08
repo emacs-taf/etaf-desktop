@@ -154,7 +154,7 @@ A `tiled-' prefix runs the remaining operation on a tiled workspace.  In
          (step 0)
          (target (car ids))
          (runtime nil)
-         (generation nil)
+         (revision nil)
          (event-window nil)
          (before nil)
          (expected nil)
@@ -260,7 +260,7 @@ A `tiled-' prefix runs the remaining operation on a tiled workspace.  In
                               'tiling 'floating))))
          (flush)
          (setq before (etaf-desktop-windows desktop)
-               generation (etaf-runtime-generation runtime)
+               revision (etaf-runtime-revision runtime)
                event-window (get-buffer-window buffer t))
          (when (or edge moving)
            (let* ((direction (if (cl-evenp (/ (1- step) 4)) 1 -1))
@@ -315,7 +315,7 @@ A `tiled-' prefix runs the remaining operation on a tiled workspace.  In
              ('layout-ratio (etaf-desktop-layout-resize-split desktop nil expected 'main))
              ('layout-mode (etaf-desktop-set-layout-mode desktop expected 'main)))))
          (flush))
-       :settled (lambda () (> (etaf-runtime-generation runtime) generation))
+       :settled (lambda () (> (etaf-runtime-revision runtime) revision))
        :verify
        (lambda ()
          (or
@@ -323,7 +323,7 @@ A `tiled-' prefix runs the remaining operation on a tiled workspace.  In
            (shell (eq (not (null (shell-visible-p))) shell-open))
            ((or edge moving)
             (and (equal expected (etaf-desktop-benchmark--rectangle (state)))
-                 (> (etaf-runtime-generation runtime) generation)
+                 (> (etaf-runtime-revision runtime) revision)
                  (etaf-desktop-benchmark--focused-p desktop target)
                  (etaf-desktop-benchmark--content-p buffer target)
                  (or (not native)
@@ -391,8 +391,8 @@ A `tiled-' prefix runs the remaining operation on a tiled workspace.  In
                  :workspace (format "%s" (etaf-desktop-active-workspace desktop))
                  :layout (format "%s" (etaf-desktop-layout-mode desktop 'main))
                  :rectangle (and window (vconcat (etaf-desktop-benchmark--rectangle window)))
-                 :publication-before generation
-                 :publication-after (etaf-runtime-generation runtime)
+                 :revision-before revision
+                 :revision-after (etaf-runtime-revision runtime)
                  :native-input
                  (when native
                    (list :route "execute-kbd-macro" :queue "prequeued"
@@ -429,7 +429,7 @@ A `tiled-' prefix runs the remaining operation on a tiled workspace.  In
            operation)
    :version 4 :modes '(batch gui) :isolation 'series :required-providers '(ebox)
    :budget-ms 10 :impact 'mixed
-   :description (format "Four-window Desktop %s with completed publication" operation)
+   :description (format "Four-window Desktop %s with the committed buffer update" operation)
    :setup (let ((selected-operation operation))
             (lambda (mode) (etaf-desktop-benchmark--fixture selected-operation mode)))))
 
@@ -524,7 +524,7 @@ run outside timing; the native click and its completed publication are timed."
                             :id)
                            (error "Real demo window is absent: %s" title)))
                      '("Notes" "Tasks")))
-         before active-before generation target target-window target-instance
+         before active-before revision target target-window target-instance
          events section ready)
     (unless (and notes-app (= (length baseline-ids) 6))
       (error "Real demo did not create its six application windows"))
@@ -585,7 +585,7 @@ run outside timing; the native click and its completed publication are timed."
          (flush)
          (setq before (etaf-desktop-windows desktop)
                active-before (etaf-desktop-active-window desktop)
-               generation (etaf-runtime-generation runtime)
+               revision (etaf-runtime-revision runtime)
                target
                (pcase operation
                  ('app-open
@@ -615,7 +615,7 @@ run outside timing; the native click and its completed publication are timed."
          (execute-kbd-macro events)
          (flush)
          (cl-incf step))
-       :settled (lambda () (> (etaf-runtime-generation runtime) generation))
+       :settled (lambda () (> (etaf-runtime-revision runtime) revision))
        :verify
        (lambda ()
          (let* ((windows (etaf-desktop-windows desktop))
@@ -623,7 +623,7 @@ run outside timing; the native click and its completed publication are timed."
                 (added (cl-set-difference ids baseline-ids :test #'equal))
                 (active (etaf-desktop-active-window desktop)))
            (if
-            (and (> (etaf-runtime-generation runtime) generation)
+            (and (> (etaf-runtime-revision runtime) revision)
                  (eq (etaf-desktop-active-workspace desktop) 'main)
                  (unchanged-p)
                  (not (ebox-selector-query-buffer buffer ":active"))
@@ -664,8 +664,8 @@ run outside timing; the native click and its completed publication are timed."
                :section (car section) :input-route "native-keymap"
                :active (format "%s" (etaf-desktop-active-window desktop))
                :settings-open (if (etaf-desktop-settings-open-p desktop) t :false)
-               :publication-before generation
-               :publication-after (etaf-runtime-generation runtime)
+               :revision-before revision
+               :revision-after (etaf-runtime-revision runtime)
                :windows
                (vconcat
                 (mapcar (lambda (window)

@@ -31,6 +31,10 @@ All notable changes to ETAF Desktop are documented here.
 
 ### Changed
 
+- The desktop runs on ETAF's retained runtime: moving, resizing and focusing
+  a window update only the affected buffer lines, and opening or closing a
+  shell surface no longer re-renders the desktop. The public desktop API is
+  unchanged.
 - Settings tab changes retain the dialog controls and callbacks while replacing
   the active field grid; selection, height and guidance update independently.
 - New desktops inherit the Emacs font size for window titles and application
