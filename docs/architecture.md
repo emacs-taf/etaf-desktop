@@ -3,9 +3,9 @@
 ETAF Desktop is the top application layer in the ETAF ecosystem.
 
 - **Ebox** owns measured geometry, overlap, z-index rendering, hit testing and
-  incremental publication. It supplies the retained gesture phases.
-- **ETAF** owns reactive application state, Component lifecycle, event batching
-  and Runtime publication.
+  incremental buffer updates. It supplies the retained gesture phases.
+- **ETAF** owns reactive application state, fine-grained Host bindings,
+  Component lifecycle and event batching.
 - **ETAF UI** owns the reusable controlled `etaf-window` and
   `etaf-resizable-panel` presentation components. They expose title-bar and
   resize gestures but retain no window policy.
@@ -28,8 +28,8 @@ Structural publications prepare reusable geometry and focus writers with
 private invocation storage. Floating mutations reuse those writers and the
 record's normal rectangle; public snapshots still return detached copies.
 ETAF batches the coordinated fields so observers see the completed geometry
-and focus change. A publication failure leaves application writes queryable
-and the previous committed Ebox target active.
+and focus change. A failed update leaves application writes queryable and
+the buffer showing the last flushed windows and targets.
 
 The desktop View depends on structural membership and workspace selection.
 Window geometry sources pass directly through the public `etaf-window` props
