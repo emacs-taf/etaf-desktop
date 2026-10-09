@@ -93,16 +93,10 @@
             (should-not (etaf-desktop-demo-test--scrollable-p buffer id))
             (etaf-desktop-resize-window desktop id 300 9)
             (should (= 0 (etaf-desktop-demo-test--scroll-offset buffer id)))
-            (let* ((ref (etaf-desktop-demo-test--control runtime "Title"))
-                   (old (with-current-buffer buffer
-                          (let ((bounds (etaf-host-ref-bounds runtime ref)))
-                            (buffer-substring-no-properties (1+ (car bounds))
-                                                            (1- (cdr bounds)))))))
+            (let ((ref (etaf-desktop-demo-test--control runtime "Title")))
               (etaf-dispatch-event runtime ref 'press)
               (should (etaf-text-input-active-p runtime))
-              (with-current-buffer buffer
-                (delete-region (- (point) (length old)) (point))
-                (insert "Edited note"))
+              (execute-kbd-macro (vconcat (kbd "C-a C-k") "Edited note"))
               (etaf-text-input-end))
             (etaf-dispatch-event
              runtime (etaf-desktop-demo-test--control runtime "Clear") 'press)
