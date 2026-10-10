@@ -77,6 +77,9 @@ All notable changes to ETAF Desktop are documented here.
 
 ### Fixed
 
+- The minibuffer and echo area borrow window lines without shrinking or
+  reflowing the canvas: the desktop keeps the canvas it committed until the
+  prompt closes.
 - Changing an existing split between columns and rows now updates its divider
   label and mouse pointer together with the new geometry.
 - Demo applications scroll their body content when resized, keeping the app

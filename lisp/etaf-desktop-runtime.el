@@ -168,7 +168,7 @@ minimized state only when every member window is minimized."
 
 (cl-defstruct (etaf-desktop--controller
                (:constructor etaf-desktop--controller-create))
-  name canvas-width canvas-height canvas-size-ref state-ref buffer runtime
+  name canvas-width canvas-height canvas-size-ref state-ref fit-timer buffer runtime
   launcher-ref switcher-ref settings-ref settings-open-ref layout-label-ref
   close-request-ref owns-runtime-p owns-buffer-p divider-drag-origin)
 
@@ -2434,17 +2434,30 @@ Emacs."
                    (etaf-desktop-layout-refresh desktop workspace))))))
           size)))))
 
+(defun etaf-desktop--transient-space-borrowed-p (desktop window)
+  "Whether WINDOW is shorter because transient UI borrows its lines.
+The committed rows are the fitted canvas height plus the workspace bar and
+taskbar rows `etaf-desktop-fit-canvas' adds on top of it; a desktop with an
+explicit canvas keeps that geometry anyway."
+  (let* ((ref (etaf-desktop--controller-canvas-size-ref desktop))
+         (canvas (and ref (etaf-value ref))))
+    (and canvas
+         (etaf-transient-space-borrowed-p window (+ 2 (cdr canvas))))))
+
 (defun etaf-desktop--fit-pending-desktops ()
-  "Refit every desktop whose Emacs window changed size since the last task."
+  "Refit every desktop whose Emacs window changed size since the last task.
+A borrowed minibuffer keeps the committed canvas until the prompt closes."
   (let ((desktops (nreverse etaf-desktop--fit-pending))
         first-error)
     (setq etaf-desktop--fit-pending nil
           etaf-desktop--fit-timer nil)
     (dolist (desktop desktops)
-      (when (etaf-desktop--display-window desktop)
-        (condition-case failure
-            (etaf-desktop-fit-canvas desktop)
-          (error (unless first-error (setq first-error failure))))))
+      (let ((window (etaf-desktop--display-window desktop)))
+        (when (and window
+                   (not (etaf-desktop--transient-space-borrowed-p desktop window)))
+          (condition-case failure
+              (etaf-desktop-fit-canvas desktop)
+            (error (unless first-error (setq first-error failure)))))))
     (when first-error (signal (car first-error) (cdr first-error)))))
 
 (defun etaf-desktop--window-size-change (frame)
@@ -2512,18 +2525,21 @@ callers use `etaf-desktop-close' to release the Runtime."
             (etaf-desktop--controller-owns-runtime-p desktop) t
             (etaf-desktop--controller-owns-buffer-p desktop) (not target))
       ;; Displaying a buffer can resize its window after the first render.
-      ;; Fit the default canvas to the settled window so the shell and the
-      ;; layout match it.
-      (when (and mount-window
-                 (null (etaf-desktop--controller-canvas-width desktop))
+      ;; Fit the default canvas to the settled window so the shell, the
+      ;; layout and the retained canvas-size cell match it; the buffer may
+      ;; only be displayed after the mount, so this does not depend on the
+      ;; display window being known here.
+      (when (and (null (etaf-desktop--controller-canvas-width desktop))
                  (null (etaf-desktop--controller-canvas-height desktop)))
-        (run-at-time
-         0.2 nil
-         (lambda ()
-           (when (buffer-live-p buffer)
-             (with-current-buffer buffer
-               (unless (etaf-desktop-fit-canvas desktop)
-                 (etaf-desktop-layout-refresh desktop)))))))
+        (setf (etaf-desktop--controller-fit-timer desktop)
+              (run-at-time
+               0.2 nil
+               (lambda ()
+                 (setf (etaf-desktop--controller-fit-timer desktop) nil)
+                 (when (buffer-live-p buffer)
+                   (with-current-buffer buffer
+                     (unless (etaf-desktop-fit-canvas desktop)
+                       (etaf-desktop-layout-refresh desktop))))))))
       buffer)))
 
 (defun etaf-desktop-close (desktop)
@@ -2536,6 +2552,9 @@ Runtime and buffer.  Closing is idempotent."
         (buffer (etaf-desktop--controller-buffer desktop))
         (owns-runtime (etaf-desktop--controller-owns-runtime-p desktop))
         (owns-buffer (etaf-desktop--controller-owns-buffer-p desktop)))
+    (when-let* ((timer (etaf-desktop--controller-fit-timer desktop)))
+      (cancel-timer timer)
+      (setf (etaf-desktop--controller-fit-timer desktop) nil))
     (when owns-runtime
       (when runtime (etaf-unmount runtime))
       (when (and owns-buffer (buffer-live-p buffer))
