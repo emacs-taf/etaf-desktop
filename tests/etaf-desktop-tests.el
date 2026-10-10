@@ -254,7 +254,7 @@ can always be grabbed again."
       (etaf-desktop-close desktop))))
 
 (ert-deftest etaf-desktop-mounted-buffer-uses-configured-local-shortcuts ()
-  "Mounted Desktop buffers dispatch configured single-letter actions locally."
+  "Mounted Desktop buffers bind configured single-key actions locally."
   (let ((desktop (etaf-desktop-create :name " *desktop-keymap-test*"
                                       :canvas-width 80 :canvas-height 16)))
     (unwind-protect
@@ -268,7 +268,17 @@ can always be grabbed again."
                        (plist-get (etaf-desktop-settings desktop) :keybindings))
                       :focus-next "f"))
           (with-current-buffer buffer
-            (should (commandp (key-binding (kbd "f"))))))
+            (should (commandp (key-binding (kbd "f")))))
+          ;; Sequences work unless they start with a printing key or one
+          ;; binding prefixes another.
+          (etaf-desktop-set-setting
+           desktop :keybindings '(:focus-next "C-c n" :launcher "a"))
+          (with-current-buffer buffer
+            (should (commandp (key-binding (kbd "C-c n")))))
+          (dolist (bindings '((:focus-next "g n")
+                              (:focus-next "C-c" :launcher "C-c a")))
+            (should-error (etaf-desktop-set-setting desktop :keybindings bindings)
+                          :type 'etaf-desktop-error)))
       (etaf-desktop-close desktop))))
 
 (ert-deftest etaf-desktop-view-installs-shortcuts-in-named-target-buffer ()

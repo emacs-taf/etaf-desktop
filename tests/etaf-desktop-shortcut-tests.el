@@ -222,6 +222,76 @@
                     (should (= ratio (nth 2 (etaf-desktop-layout-tree desktop)))))))))
         (etaf-desktop-close desktop)))))
 
+;; Keyboard focus resolves Host keys from the focused node, so these
+;; scenarios press keys where Tab or a shortcut left focus.
+(defun etaf-desktop-shortcut-test--key (buffer key)
+  "Run KEY's current binding in BUFFER without moving point."
+  (with-current-buffer buffer
+    (let ((command (key-binding (kbd key))))
+      (should (commandp command))
+      (call-interactively command))))
+
+(ert-deftest etaf-desktop-keyboard-cycling-focuses-the-activated-window ()
+  "Window cycling moves keyboard focus so window keys act on the new window."
+  (let ((desktop (etaf-desktop-create :name " *desktop-cycle-focus*"
+                                     :canvas-width 400 :canvas-height 40)))
+    (unwind-protect
+        (progn
+          (etaf-desktop-open-window desktop 'one :x 0 :y 0 :width 160 :height 10)
+          (etaf-desktop-open-window desktop 'two :x 0 :y 0 :width 160 :height 10)
+          (let ((buffer (etaf-desktop-mount desktop)))
+            (etaf-desktop-shortcut-test--press buffer "n")
+            (should (eq 'one (etaf-desktop-active-window desktop)))
+            (etaf-desktop-shortcut-test--key buffer "M-<right>")
+            (should (< 0 (plist-get (etaf-desktop-window-state desktop 'one) :x)))
+            (should (= 0 (plist-get (etaf-desktop-window-state desktop 'two) :x)))))
+      (etaf-desktop-close desktop))))
+
+(ert-deftest etaf-desktop-keyboard-tab-activates-tiled-windows ()
+  "Tab traversal into a tiled window activates that window."
+  (let ((desktop (etaf-desktop-create :name " *desktop-tab-activate*"
+                                     :canvas-width 400 :canvas-height 40))
+        seen)
+    (unwind-protect
+        (progn
+          (etaf-desktop-open-window desktop 'one)
+          (etaf-desktop-open-window desktop 'two)
+          (etaf-desktop-set-layout-mode desktop 'tiling)
+          (let ((runtime (etaf-runtime-for-buffer (etaf-desktop-mount desktop))))
+            (should (eq 'two (etaf-desktop-active-window desktop)))
+            (dotimes (_ 12)
+              (etaf-focus-next runtime)
+              (cl-pushnew (etaf-desktop-active-window desktop) seen))
+            (should (memq 'one seen))
+            (should (memq 'two seen))))
+      (etaf-desktop-close desktop))))
+
+(ert-deftest etaf-desktop-keyboard-steps-tiling-divider ()
+  "A focused tiling divider moves its split with the arrow keys."
+  (let ((desktop (etaf-desktop-create :name " *desktop-divider-keys*"
+                                     :canvas-width 400 :canvas-height 40)))
+    (unwind-protect
+        (progn
+          (etaf-desktop-open-window desktop 'one)
+          (etaf-desktop-open-window desktop 'two)
+          (etaf-desktop-set-layout-mode desktop 'tiling)
+          (etaf-desktop-layout-set-tree
+           desktop '(:split vertical 0.5 (:leaf one) (:leaf two)))
+          (let* ((buffer (etaf-desktop-mount desktop))
+                 (runtime (etaf-runtime-for-buffer buffer)))
+            (dotimes (_ 12)
+              (unless (equal "separator"
+                             (format "%s" (plist-get (etaf-runtime-host-props-for
+                                                      runtime (etaf-focused-host-ref runtime))
+                                                     :role)))
+                (etaf-focus-next runtime)))
+            (etaf-desktop-shortcut-test--key buffer "<down>")
+            (should (< 0.5 (nth 2 (etaf-desktop-layout-tree desktop))))
+            (etaf-desktop-shortcut-test--key buffer "<up>")
+            (should (< (abs (- 0.5 (nth 2 (etaf-desktop-layout-tree desktop))))
+                       0.001))))
+      (etaf-desktop-close desktop))))
+
 (ert-deftest etaf-desktop-native-title-click-only-focuses ()
   "A title press/release without displacement preserves normal/maximized geometry."
   (let ((desktop (etaf-desktop-create :name " *desktop-title-click*"

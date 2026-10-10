@@ -6,6 +6,13 @@ All notable changes to ETAF Desktop are documented here.
 
 ### Added
 
+- Full keyboard operation through ETAF's key layer: Tab reaches the workspace
+  bar, window controls, tiling dividers and taskbar; `M-`arrows move and
+  `M-S-`arrows resize the focused window; arrows move a focused divider; Esc
+  closes the launcher, switcher, settings and close card; `?` lists commands.
+  Tab entering a window activates it, and `n`/`p` move keyboard focus into the
+  window they raise.
+
 - `etaf-desktop-demo-open` (examples/etaf-desktop-demo.el) mounts a
   standalone demo desktop with six sample applications — Notes, Tasks,
   Clock, Calculator, Chat and Monitor — spread over two workspaces. Each
@@ -30,6 +37,13 @@ All notable changes to ETAF Desktop are documented here.
   `split-window` in batch Emacs).
 
 ### Changed
+
+- Desktop shortcuts are ETAF Host keys on the shell instead of a buffer-local
+  overriding keymap. Keys bound by focused application content now take
+  precedence, and shortcuts are suspended while a dialog is open.
+  `:keybindings` now rejects sequences starting with a printing key (such as
+  `"g n"`) and bindings that prefix another; rebind them to a single key or a
+  sequence such as `"C-c n"`.
 
 - The desktop runs on ETAF's retained runtime: moving, resizing and focusing
   a window update only the affected buffer lines, and opening or closing a

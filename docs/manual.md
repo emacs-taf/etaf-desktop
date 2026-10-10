@@ -179,6 +179,32 @@ caller owns the enclosing Runtime and buffer and unmounts them; closing the
 Desktop controller leaves that shared surface mounted. Closing is idempotent.
 A controller can be mounted only once at a time.
 
+## Keyboard operation
+
+Every desktop interaction is available from the keyboard through ETAF's
+shared key layer; the desktop adds no global Emacs bindings.
+
+| Keys | Action |
+| --- | --- |
+| `n` / `p` | Raise the next or previous visible window and focus it |
+| `a`, `w`, `o` | Toggle the launcher, window switcher or settings |
+| `l`, `s`, `x` | Toggle layout mode, split, swap with the next window |
+| `m`, `r`, `i`, `q` | Maximize, restore, minimize, close the active window |
+| Tab / S-Tab | Move between the workspace bar, windows, dividers and taskbar |
+| Arrows, `C-n`/`C-p`/`C-b`/`C-f` | Move within a group or to the nearest control |
+| `M-`arrows / `M-S-`arrows | Move / resize the window holding focus |
+| Arrows on a divider | Move a tiling split |
+| Esc or `C-g` | Close the launcher, switcher, settings or close card |
+| `?` | List the available commands with `etaf-palette` |
+
+The single-key shortcuts are configured in the Shortcuts tab or through the
+`:keybindings` setting; a binding is a key or a sequence such as `C-c n` that
+does not start with a printing key. They yield
+to keys bound by the focused application's content, are suspended while text is
+being edited and while a dialog is open. Tab entering a window activates it, as
+a pointer press does. A window covered by another has no reachable controls
+until it is raised, so use `n`/`p`, the switcher or the taskbar to reach it.
+
 ## Applications and instances
 
 `etaf-desktop` is an application host. Register an application once with a

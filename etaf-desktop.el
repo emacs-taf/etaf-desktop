@@ -203,6 +203,16 @@
 ;; or numbers 8..32 in CSS reference pixels, independently for each region.
 ;; These are not point sizes: 16 CSS pixels is 12 points. `:font-family' is
 ;; nil to inherit or a font family string. Reset restores font inheritance.
+;; `:keybindings' is a plist from action keyword (`:focus-next',
+;; `:focus-previous', `:launcher', `:switcher', `:settings', `:toggle-layout',
+;; `:split-window', `:swap-window', `:maximize-window', `:restore-window',
+;; `:minimize-window', `:close-window') to a `kbd' string such as "n" or
+;; "C-c n".  A sequence may not start with a printing key, and no binding may
+;; be a prefix of another.  The bindings are the mounted shell's ETAF Host
+;; keys: they are local to the Desktop buffer, listed by `etaf-palette', yield
+;; to keys of focused application content and native input, and are inactive
+;; while a modal dialog is open.  Focusing the next or previous window raises
+;; it and moves keyboard focus into it.
 
 ;; Function: etaf-desktop-reset-settings (desktop)
 ;;;###autoload (autoload 'etaf-desktop-reset-settings "etaf-desktop" nil nil)

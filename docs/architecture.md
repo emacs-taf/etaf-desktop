@@ -111,9 +111,13 @@ for the next opening; field values always come from the controller.
 The settings form owns only policies already supported by the application:
 theme/accent presentation, typography, tile spacing, resize and locked-drag
 behavior, taskbar grouping, close confirmation, and keyboard actions. Session
-restore remains the explicit public save/restore workflow. Keyboard callbacks are
-installed in the mounted Desktop buffer through its local overriding map;
-they do not become global Emacs bindings. Traversal and neighbor selection use
+restore remains the explicit public save/restore workflow. Keyboard actions are
+the shell root's ETAF Host `:keys`, computed from the keybindings setting, so
+only a binding change re-renders the shell; ETAF scopes them to the Desktop
+buffer, lets focused application content override them and suspends them under
+modal dialogs. Window cycling raises the target before moving keyboard focus
+into it, because a covered window exposes no focus stops; the window's
+focus-enter handler performs the same activation as a pointer press. Traversal and neighbor selection use
 visible window membership in stable opening order, independently of mutable
 paint order. Swapping tiled windows changes leaf identities in the authoritative
 layout tree; changing their rectangles alone would be overwritten by allocation.

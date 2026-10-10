@@ -267,11 +267,25 @@ Settings are caller-visible configuration, not a second geometry store.  Use
      (and (listp value)
           (cl-loop for (name binding) on value by #'cddr
                    always (and (keywordp name) (stringp binding)
-                               (not (string-empty-p binding))
-                               (condition-case nil
-                                   (progn (ignore (kbd binding)) t)
-                                 (error nil))))))
+                               (etaf-desktop--valid-key-p binding)))
+          ;; One key cannot both run an action and start a longer sequence.
+          (let ((keys (cl-loop for (_name binding) on value by #'cddr
+                               collect (kbd binding))))
+            (cl-loop for key in keys
+                     never (cl-some (lambda (other)
+                                      (and (< (length key) (length other))
+                                           (equal key (substring other 0 (length key)))))
+                                    keys)))))
     (_ nil)))
+
+(defun etaf-desktop--valid-key-p (binding)
+  "Return non-nil when BINDING is a usable shortcut key or key sequence.
+A sequence may not start with a printing key, which is a single-key command."
+  (let ((events (condition-case nil (kbd binding) (error nil))))
+    (and (> (length events) 0)
+         (or (= (length events) 1)
+             (not (and (characterp (aref events 0))
+                       (<= ?\s (aref events 0) ?~)))))))
 
 (defun etaf-desktop-set-setting (desktop key value)
   "Set DESKTOP setting KEY to VALUE and return its detached settings.
@@ -291,8 +305,6 @@ from 8 through 32 in CSS reference pixels (not points)."
          desktop value (etaf-desktop-active-workspace desktop)))
       (when (memq key '(:tile-outer-gap :tile-inner-gap))
         (etaf-desktop-layout-refresh desktop))
-      (when (eq key :keybindings)
-        (etaf-desktop--refresh-buffer-keymap desktop))
       (etaf-desktop-settings desktop))))
 
 (defun etaf-desktop-reset-settings (desktop)
@@ -335,11 +347,19 @@ Raising a window changes its paint order, not keyboard traversal order."
     (and ids (nth (mod (+ index direction) (length ids)) ids))))
 
 (defun etaf-desktop--focus-relative (desktop direction)
-  "Focus the next or previous visible window in the active workspace."
+  "Activate the next or previous visible window in the active workspace.
+Keyboard focus follows into the raised window once it is published, because a
+window below another has no reachable focus stops until it is raised."
   (when-let* ((next (etaf-desktop--relative-window-id
                     (etaf-desktop--active-window-id desktop)
                     (etaf-desktop--visible-window-ids desktop) direction)))
-    (etaf-desktop-focus-window desktop next)))
+    (etaf-desktop-focus-window desktop next)
+    (when-let* ((runtime (etaf-desktop--controller-runtime desktop)))
+      (etaf-next-tick
+       (lambda ()
+         (when (etaf-runtime-mounted-p runtime)
+           (ignore-error user-error
+             (etaf-focus-within runtime (etaf-desktop--window-ref next)))))))))
 
 (defun etaf-desktop--active-window-id (desktop)
   "Return the active window ID or nil."
@@ -392,50 +412,45 @@ Tiled windows exchange tree leaves while floating windows exchange rectangles."
                (etaf-desktop--raise next left))))))))
   desktop)
 
-(defun etaf-desktop--buffer-keymap (desktop)
-  "Build the current Desktop buffer keymap from user settings."
-  (let* ((bindings (plist-get (etaf-desktop--settings desktop) :keybindings))
-         (active (lambda () (etaf-desktop--active-window-id desktop)))
-         (actions
-          (list
-           (cons :focus-next (lambda () (etaf-desktop--focus-relative desktop 1)))
-           (cons :focus-previous (lambda () (etaf-desktop--focus-relative desktop -1)))
-           (cons :launcher (lambda () (etaf-desktop-toggle-launcher desktop)))
-           (cons :switcher (lambda () (etaf-desktop-toggle-switcher desktop)))
-           (cons :settings (lambda () (etaf-desktop-toggle-settings desktop)))
-           (cons :toggle-layout
-                 (lambda () (etaf-desktop-toggle-layout-mode desktop)))
-           (cons :split-window
-                 (lambda () (etaf-desktop--split-active-window desktop)))
-           (cons :swap-window
-                 (lambda () (etaf-desktop--swap-active-window desktop)))
-           (cons :maximize-window
-                 (lambda () (when-let* ((id (funcall active)))
-                              (etaf-desktop-maximize-window desktop id))))
-           (cons :restore-window
-                 (lambda () (when-let* ((id (funcall active)))
-                              (etaf-desktop-restore-window desktop id))))
-           (cons :minimize-window
-                 (lambda () (when-let* ((id (funcall active)))
-                              (etaf-desktop-minimize-window desktop id))))
-           (cons :close-window
-                 (lambda () (when-let* ((id (funcall active)))
-                              (etaf-desktop--request-close-window desktop id)))))))
-    (let ((map (make-sparse-keymap)))
-      (cl-loop for (key action) on bindings by #'cddr do
-               (let ((callback (cdr (assq key actions))))
-                 (when (and callback (stringp action))
-                   (condition-case nil
-                       (define-key map (kbd action)
-                                   (let ((handler callback))
-                                     (lambda ()
-                                       (interactive)
-                                       (funcall handler))))
-                     (error nil)))))
-      map)))
+(defconst etaf-desktop--settings-shortcuts
+  '((:focus-next . "Focus next") (:focus-previous . "Focus previous")
+    (:launcher . "Applications") (:switcher . "Window switcher")
+    (:settings . "Settings") (:toggle-layout . "Toggle layout")
+    (:split-window . "Split window") (:swap-window . "Swap windows")
+    (:maximize-window . "Maximize") (:restore-window . "Restore")
+    (:minimize-window . "Minimize") (:close-window . "Close window"))
+  "Editable desktop shortcuts and their captions.")
 
-(defvar-local etaf-desktop--keymap-active nil
-  "Non-nil while the Desktop buffer-local keymap is active.")
+(defun etaf-desktop--shortcut-actions (desktop)
+  "Return DESKTOP's shortcut actions as an alist of (KEY . FUNCTION)."
+  (let ((active (lambda (action)
+                  (lambda ()
+                    (when-let* ((id (etaf-desktop--active-window-id desktop)))
+                      (funcall action desktop id))))))
+    (list
+     (cons :focus-next (lambda () (etaf-desktop--focus-relative desktop 1)))
+     (cons :focus-previous (lambda () (etaf-desktop--focus-relative desktop -1)))
+     (cons :launcher (lambda () (etaf-desktop-toggle-launcher desktop)))
+     (cons :switcher (lambda () (etaf-desktop-toggle-switcher desktop)))
+     (cons :settings (lambda () (etaf-desktop-toggle-settings desktop)))
+     (cons :toggle-layout (lambda () (etaf-desktop-toggle-layout-mode desktop)))
+     (cons :split-window (lambda () (etaf-desktop--split-active-window desktop)))
+     (cons :swap-window (lambda () (etaf-desktop--swap-active-window desktop)))
+     (cons :maximize-window (funcall active #'etaf-desktop-maximize-window))
+     (cons :restore-window (funcall active #'etaf-desktop-restore-window))
+     (cons :minimize-window (funcall active #'etaf-desktop-minimize-window))
+     (cons :close-window (funcall active #'etaf-desktop--request-close-window)))))
+
+(defun etaf-desktop--shortcut-keys (desktop bindings)
+  "Return the shell's Host `:keys' for DESKTOP's settings BINDINGS.
+Each entry is labeled with its settings caption so the ETAF palette lists it."
+  (let ((actions (etaf-desktop--shortcut-actions desktop)))
+    (cl-loop for (key binding) on bindings by #'cddr
+             for action = (cdr (assq key actions))
+             when (and action (stringp binding))
+             collect (list binding action
+                           (or (cdr (assq key etaf-desktop--settings-shortcuts))
+                               (substring (symbol-name key) 1))))))
 
 (defun etaf-desktop--lifecycle-buffer (desktop)
   "Return the buffer owned by DESKTOP's current lifecycle Runtime.
@@ -447,34 +462,6 @@ fall back to DESKTOP's recorded buffer for callbacks outside a live Runtime."
         (etaf-runtime-buffer runtime))
       (etaf-desktop--controller-buffer desktop)
       (current-buffer)))
-
-(defun etaf-desktop--refresh-buffer-keymap (desktop &optional buffer)
-  "Install DESKTOP's settings keymap in BUFFER or its owned mount."
-  (when-let* ((buffer (or buffer (etaf-desktop--controller-buffer desktop)))
-              ((buffer-live-p buffer)))
-    (with-current-buffer buffer
-      ;; `minor-mode-overriding-map-alist' activates an entry only while the
-      ;; corresponding buffer-local mode variable is non-nil.  Desktop is a
-      ;; mounted surface rather than a user-visible minor mode, so retain the
-      ;; same local precedence contract with a private marker variable.
-      (setq-local etaf-desktop--keymap-active t)
-      (let ((entry (assq 'etaf-desktop--keymap-active
-                         minor-mode-overriding-map-alist)))
-        (if entry
-            (setcdr entry (etaf-desktop--buffer-keymap desktop))
-          (push (cons 'etaf-desktop--keymap-active
-                      (etaf-desktop--buffer-keymap desktop))
-                minor-mode-overriding-map-alist))))))
-
-(defun etaf-desktop--clear-buffer-keymap (desktop &optional buffer)
-  "Remove DESKTOP's local keymap from BUFFER or its owned mount."
-  (when-let* ((buffer (or buffer (etaf-desktop--controller-buffer desktop)))
-              ((buffer-live-p buffer)))
-    (with-current-buffer buffer
-      (setq minor-mode-overriding-map-alist
-            (assq-delete-all 'etaf-desktop--keymap-active
-                             minor-mode-overriding-map-alist)
-            etaf-desktop--keymap-active nil))))
 
 (defvar etaf-desktop--mount-window nil
   "Window mounting the current desktop while its first View renders.")
@@ -1166,7 +1153,10 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
            :on-maximize (lambda () (etaf-desktop-maximize-window desktop id))
            :on-restore (lambda () (etaf-desktop-restore-window desktop id))
            :on-close (lambda () (etaf-desktop--request-close-window desktop id))
-           :on-focus (lambda () (etaf-desktop-focus-window desktop id)))
+           ;; Keyboard focus entering the active window needs no activation.
+           :on-focus (lambda ()
+                       (unless (equal id (etaf-desktop--active-window-id desktop))
+                         (etaf-desktop-focus-window desktop id))))
      (list body))))
 
 (defun etaf-desktop--taskbar-key (id grouping)
@@ -1442,15 +1432,6 @@ TRANSFORM, when given, maps the resolved color to the final property value."
     (behavior . "Behavior") (shortcuts . "Shortcuts"))
   "Settings dialog sections in tab order.")
 
-(defconst etaf-desktop--settings-shortcuts
-  '((:focus-next . "Focus next") (:focus-previous . "Focus previous")
-    (:launcher . "Applications") (:switcher . "Window switcher")
-    (:settings . "Settings") (:toggle-layout . "Toggle layout")
-    (:split-window . "Split window") (:swap-window . "Swap windows")
-    (:maximize-window . "Maximize") (:restore-window . "Restore")
-    (:minimize-window . "Minimize") (:close-window . "Close window"))
-  "Editable desktop shortcuts and their captions.")
-
 (defun etaf-desktop--settings-fields (section)
   "Return the (KIND KEY LABEL . PROPS) field specs of settings SECTION."
   (pcase section
@@ -1657,7 +1638,9 @@ footer.  Shortcuts fill two label/control column pairs."
 
 The Theme is a computed source over the settings and modal-visibility refs:
 selecting a theme or accent, or opening a dialog, repaints the shell through
-Theme paint slots without re-rendering the desktop tree."
+Theme paint slots without re-rendering the desktop tree.  The configured
+shortcuts become the shell root's Host `:keys'; only editing a binding
+re-renders the shell."
   :bindings
   ((theme
     (etaf-computed
@@ -1665,9 +1648,18 @@ Theme paint slots without re-rendering the desktop tree."
        (etaf-desktop--theme-for-settings
         (etaf-desktop--settings desktop)
         (etaf-desktop--modal-open-p desktop)))
+     :test #'equal))
+   (shortcuts
+    (etaf-computed
+     (lambda () (plist-get (etaf-desktop--settings desktop) :keybindings))
      :test #'equal)))
   :setup (etaf-theme-provide theme)
-  :render (etaf-node 'etaf-desktop--shell (list :desktop desktop) nil))
+  :render
+  (etaf-node 'etaf-desktop--shell
+             (list :desktop desktop
+                   :keys (etaf-desktop--shortcut-keys
+                          desktop (etaf-value shortcuts)))
+             nil))
 
 (etaf-define-component etaf-desktop--shell-frame (&key desktop)
   "Size DESKTOP's shell column and canvas box from its retained canvas size.
@@ -1724,14 +1716,10 @@ re-rendering the desktop tree."
                (etaf-runtime-buffer runtime)
                (etaf-desktop--controller-owns-runtime-p desktop) nil
                (etaf-desktop--controller-owns-buffer-p desktop) nil))
-       (etaf-desktop--refresh-buffer-keymap
-        desktop (etaf-desktop--lifecycle-buffer desktop))
        (etaf-desktop--attach-window-fit
         desktop (etaf-desktop--lifecycle-buffer desktop))))
     (etaf-on-unmounted
      (lambda ()
-       (etaf-desktop--clear-buffer-keymap
-        desktop (etaf-desktop--lifecycle-buffer desktop))
        (etaf-desktop--detach-window-fit
         desktop (etaf-desktop--lifecycle-buffer desktop))
        (when (eq (etaf-desktop--controller-runtime desktop)
@@ -2523,7 +2511,6 @@ callers use `etaf-desktop-close' to release the Runtime."
             (etaf-desktop--controller-runtime desktop) runtime
             (etaf-desktop--controller-owns-runtime-p desktop) t
             (etaf-desktop--controller-owns-buffer-p desktop) (not target))
-      (etaf-desktop--refresh-buffer-keymap desktop)
       ;; Displaying a buffer can resize its window after the first render.
       ;; Fit the default canvas to the settled window so the shell and the
       ;; layout match it.

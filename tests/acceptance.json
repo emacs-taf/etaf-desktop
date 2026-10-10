@@ -84,7 +84,7 @@
     {
       "name": "etaf-desktop-mounted-buffer-uses-configured-local-shortcuts",
       "file": "tests/etaf-desktop-tests.el",
-      "purpose": "Mounted Desktop buffers dispatch configured single-letter actions and update the local map when bindings change."
+      "purpose": "Mounted Desktop buffers bind configured keys and key sequences, follow binding changes and reject printing-key prefixes and prefix conflicts."
     },
     {
       "name": "etaf-desktop-view-installs-shortcuts-in-named-target-buffer",
@@ -430,6 +430,21 @@
       "name": "etaf-desktop-dividers-drag-from-constrained-edges-on-both-axes",
       "file": "tests/etaf-desktop-shortcut-tests.el",
       "purpose": "Horizontal and vertical divider gestures start from the actual minimum/maximum-constrained edge and cancellation restores the accepted ratio."
+    },
+    {
+      "name": "etaf-desktop-keyboard-cycling-focuses-the-activated-window",
+      "file": "tests/etaf-desktop-shortcut-tests.el",
+      "purpose": "The next-window shortcut raises a covered window and moves keyboard focus into it, so window move keys act on that window."
+    },
+    {
+      "name": "etaf-desktop-keyboard-tab-activates-tiled-windows",
+      "file": "tests/etaf-desktop-shortcut-tests.el",
+      "purpose": "Tab traversal entering a tiled window activates it without a pointer press."
+    },
+    {
+      "name": "etaf-desktop-keyboard-steps-tiling-divider",
+      "file": "tests/etaf-desktop-shortcut-tests.el",
+      "purpose": "A tiling divider reached with Tab moves its split ratio with the arrow keys."
     },
     {
       "name": "etaf-desktop-native-title-click-only-focuses",
