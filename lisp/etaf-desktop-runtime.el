@@ -1589,14 +1589,14 @@ footer.  Shortcuts fill two label/control column pairs."
                 (etaf-desktop--settings-height
                  active (etaf-desktop--settings-fields active)))
       :close-label "Done" :backdrop nil :on-close close-settings
-      (flex :class "etaf-desktop-settings-tabs" :role 'tablist
-            :flex-direction 'row :gap '((lh 0) (ch 1)) :width 'stretch
-       (etaf-button
-        :for (entry etaf-desktop--settings-sections) :key (car entry)
-        :ref (intern (format "settings-tab-%s" (car entry)))
-        :label (cdr entry) :aria-label (cdr entry)
-        :variant (if (eq (etaf-value section) (car entry)) 'secondary 'ghost)
-        :on-press (alist-get (car entry) tab-actions)))
+      (etaf-tabs
+       :items (mapcar (lambda (entry)
+                        (list :key (car entry)
+                              :label (cdr entry)
+                              :ref (intern (format "settings-tab-%s" (car entry)))))
+                      etaf-desktop--settings-sections)
+       :active (etaf-value section)
+       :on-change (lambda (key) (funcall (alist-get key tab-actions))))
       (expr (etaf-desktop--settings-grid desktop (etaf-value section)))
       (etaf-label
        :text (pcase (etaf-value section)
