@@ -12,7 +12,7 @@
 (require 'etaf-desktop)
 
 (defun etaf-desktop-resize-lock-test--run (ending)
-  "Verify every Desktop resize edge with ENDING, either confirm or cancel."
+  "Verify every enabled Desktop resize edge with ENDING, confirm or cancel."
   (let* ((last-input-event nil) (last-command-event nil)
          (buffer (generate-new-buffer " *desktop-resize-lock*"))
          (desktop (etaf-desktop-create :name (buffer-name buffer)
@@ -29,7 +29,7 @@
             (let ((runtime (etaf-runtime-for-buffer buffer))
                   (window (selected-window))
                   (lh (frame-char-height)))
-              (dolist (edge '(left right top bottom top-left top-right bottom-left bottom-right))
+              (dolist (edge '(top top-left top-right))
                 (etaf-desktop-move-window desktop 'notes 20 4)
                 (etaf-desktop-resize-window desktop 'notes 240 12)
                 (etaf-runtime-flush runtime)

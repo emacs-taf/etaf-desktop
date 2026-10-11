@@ -40,8 +40,11 @@ surface.
 state update paths used by ETAF's controlled geometry Behaviors. Resize is
 clamped to each window's minimum and optional maximum, and Ebox pixel deltas
 are converted to desktop text-row units before application state is changed.
-The built-in shell exposes all four edges and all four corners through the
-reusable ETAF UI shell. The configured drag-lock modifier applies to both
+The built-in shell keeps the window body free of handle strips so window
+content reaches the window edges: the title row's top edge and its corners own
+the mouse resize gestures, and `M-S-<arrow>` from anywhere inside a focused
+window resizes through the bottom-right handle. The configured drag-lock
+modifier applies to both
 the title and every resize handle: the first release keeps tracking, and the
 next primary-button press confirms at that press's position. The default is
 Shift; Desktop Settings → Behavior → Drag lock modifier can select Super.

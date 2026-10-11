@@ -504,16 +504,18 @@ keeps the shell frame following the window without a structural re-render."
 (defun etaf-desktop--window-canvas-size (window)
   "Return the (WIDTH . HEIGHT) an unconfigured desktop filling WINDOW uses.
 
-WIDTH is the window body's pixel width on the character grid and HEIGHT leaves
-one row for the workspace bar and one for the taskbar, so a default desktop
-owns exactly the visible window body."
-  (let ((char-width (max 1 (frame-char-width (window-frame window))))
-        (width (or (ebox-viewport-window-width window)
-                   (let ((pixel-width (window-body-width window t)))
-                     (if (> pixel-width 10)
-                         pixel-width
-                       (* (max 1 (window-body-width window))
-                          (max 1 (frame-char-width))))))))
+WIDTH is the window body's display-safe pixel width rounded down to the
+character grid and HEIGHT leaves one row for the workspace bar and one for the
+taskbar, so a default desktop owns exactly the visible window body.  The shell
+leaves the character the display reserves for its truncation glyph to the
+canvas colour, so that column does not read as a right margin."
+  (let* ((char-width (max 1 (frame-char-width (window-frame window))))
+         (width (or (ebox-viewport-window-width window)
+                    (let ((pixel-width (window-body-width window t)))
+                      (if (> pixel-width 10)
+                          pixel-width
+                        (* (max 1 (window-body-width window))
+                           (max 1 (frame-char-width))))))))
     (cons (max char-width (* char-width (floor (/ width char-width))))
           (max 8 (- (window-body-height window) 2)))))
 
@@ -1134,7 +1136,12 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
            :max-height (and (etaf-desktop--window-max-height window)
                             (list 'lh (etaf-desktop--window-max-height window)))
            :resizable (and (etaf-desktop--window-resizable window) resize-enabled)
-           :resize-edges '(top right bottom left top-left top-right bottom-right bottom-left)
+           ;; Only the title-row cells own mouse resize gestures: the body
+           ;; reaches the panel edges instead of reserving handle strips.  The
+           ;; bottom-right handle stays for the keyboard M-S-<arrow> resize,
+           ;; which drives its Host ref from anywhere inside the window.
+           :resize-edges '(top top-left top-right bottom-right)
+           :full-bleed t
            :resize-refs
            (mapcar (lambda (edge)
                      (cons edge (intern (format "etaf-desktop-resize-%s-%s" id edge))))
@@ -1678,6 +1685,8 @@ re-rendering the desktop tree."
    ;; keep canvas-height rows between the workspace bar and the taskbar.
    :width (etaf-desktop--canvas-box-width desktop)
    :height (list 'lh (+ (etaf-desktop--canvas-height-value desktop) 2))
+   ;; The desktop surface carries the canvas color behind everything; the
+   ;; workspace bar and taskbar set their own background.
    :background-color (etaf-desktop--theme-token :ui-shell-bg)
    :color (etaf-desktop--theme-token :ui-shell-fg)
    ;; Presses on shell background and, through capture, on any control close
@@ -1692,9 +1701,18 @@ re-rendering the desktop tree."
         :height (list 'lh (etaf-desktop--canvas-height-value desktop))
         :background-color (etaf-desktop--theme-token :ui-canvas-bg)
         :color (etaf-desktop--theme-token :ui-canvas-fg)
-        :border (etaf-desktop--theme-token
-                 :ui-canvas-border
-                 (lambda (color) (list '(px 1) 'solid color)))
+        ;; No right border: a row's last piece colours the character the
+        ;; display reserves for its truncation glyph, so a right border there
+        ;; would tint that column and read as a margin beside the canvas.
+        :border-top (etaf-desktop--theme-token
+                     :ui-canvas-border
+                     (lambda (color) (list '(px 1) 'solid color)))
+        :border-left (etaf-desktop--theme-token
+                      :ui-canvas-border
+                      (lambda (color) (list '(px 1) 'solid color)))
+        :border-bottom (etaf-desktop--theme-token
+                        :ui-canvas-border
+                        (lambda (color) (list '(px 1) 'solid color)))
      (slot :name 'canvas))
    (slot :name 'default)))
 

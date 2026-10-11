@@ -4,6 +4,13 @@ All notable changes to ETAF Desktop are documented here.
 
 ## Unreleased
 
+### Changed
+
+- Window bodies are handle-free: the canvas reaches the visible window body
+  and window content reaches the window edges.  Mouse resizing uses the title
+  row's top edge and its corners; `M-S-<arrow>` keeps resizing every edge
+  through the bottom-right handle from anywhere inside the window.
+
 ### Added
 
 - Full keyboard operation through ETAF's key layer: Tab reaches the workspace

@@ -58,7 +58,9 @@ caller-owned in either case.
 A desktop without explicit dimensions fills its Emacs window.
 `etaf-desktop-fit-canvas` measures the display window, writes the retained
 canvas-size cell and reflows workspaces, maximized windows and floating
-windows in one batch; `etaf-desktop-mount` schedules one fit once the display
+windows in one batch; the default canvas takes the window body's full pixel
+width rounded down to the character grid, so no window background shows beside
+the last column.  `etaf-desktop-mount` schedules one fit once the display
 settles and `etaf-desktop-close` cancels it.  Lines borrowed by a transient
 minibuffer are not a resize: the committed canvas stays until the prompt
 closes.

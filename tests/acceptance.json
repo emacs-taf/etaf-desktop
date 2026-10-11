@@ -25,7 +25,11 @@
       "file": "tests/etaf-desktop-settings-tests.el",
       "purpose": "Closing Settings removes its fields; reopening retains the selected tab with current controller values and working reset and close actions."
     },
-    {"name": "etaf-desktop-demo-body-scroll-keeps-header-footer-live", "file": "tests/etaf-desktop-demo-tests.el", "purpose": "The public six-app demo keeps Notes header and footer controls fixed while its bounded body scrolls, resizes, returns to the top and accepts edits; closing cancels its mounted timers."},
+    {
+      "name": "etaf-desktop-demo-body-scroll-keeps-header-footer-live",
+      "file": "tests/etaf-desktop-demo-tests.el",
+      "purpose": "The public six-app demo keeps Notes header and footer controls fixed while its bounded body scrolls, resizes, returns to the top and accepts edits; closing cancels its mounted timers."
+    },
     {
       "name": "etaf-desktop-locked-resize-confirms-controlled-geometry",
       "file": "tests/etaf-desktop-resize-lock-tests.el",
@@ -137,9 +141,9 @@
       "purpose": "Closing and reopening a window releases the old retained gesture component and starts cleanly."
     },
     {
-      "name": "etaf-desktop-gesture-resizes-every-rendered-edge-and-corner",
+      "name": "etaf-desktop-gesture-resizes-every-enabled-edge-and-corner",
       "file": "tests/etaf-desktop-gesture-tests.el",
-      "purpose": "Every rendered resize cell updates controlled geometry: side and bottom edges, all four corner cells, while the title row keeps the window move gesture."
+      "purpose": "Every enabled edge and corner publishes one controlled geometry update; body edges keep no handle."
     },
     {
       "name": "etaf-desktop-gesture-clamps-resize-at-desktop-origin",

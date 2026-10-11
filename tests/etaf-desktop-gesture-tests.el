@@ -89,48 +89,31 @@
                                    (plist-get state :y)))))))
       (etaf-desktop-close desktop))))
 
-(ert-deftest etaf-desktop-gesture-resizes-every-rendered-edge-and-corner ()
-  "Every rendered edge and corner publishes one controlled geometry update.
+(ert-deftest etaf-desktop-gesture-resizes-every-enabled-edge-and-corner ()
+  "The title row's edge and corners publish controlled resize updates.
 
-The mounted title bar owns the first row, so the top edge is offered by its
-two corner cells while the title row's middle stays the window move gesture."
+The body edges carry no handle so window content reaches the window edge; the
+bottom-right handle stays solely as the keyboard M-S-<arrow> resize anchor."
   (let ((desktop (etaf-desktop-create :name " *desktop-gesture-edges*")))
     (unwind-protect
         (progn
-          (dolist (id '(left right bottom top-left top-right bottom-right))
+          (dolist (id '(top top-left top-right bottom-right))
             (etaf-desktop-open-window desktop id :x 10 :y 4
                                       :width 100 :height 12
                                       :min-width 20 :min-height 3))
           (let* ((buffer (etaf-desktop-mount desktop))
                  (runtime (etaf-runtime-for-buffer buffer)))
             (etaf-desktop-gesture-test--dispatch
-             runtime 'etaf-desktop-resize-left-left
-             '((:phase start :delta (0 . 0)) (:phase end :delta (10 . 0))))
-            (etaf-desktop-gesture-test--dispatch
-             runtime 'etaf-desktop-resize-right-right
-             '((:phase start :delta (0 . 0)) (:phase end :delta (10 . 0))))
-            (etaf-desktop-gesture-test--dispatch
-             runtime 'etaf-desktop-resize-bottom-bottom
-             '((:phase start :delta (0 . 0)) (:phase end :delta (0 . 2))))
+             runtime 'etaf-desktop-resize-top-top
+             '((:phase start :delta (0 . 0)) (:phase end :delta (0 . 1))))
             (etaf-desktop-gesture-test--dispatch
              runtime 'etaf-desktop-resize-top-left-top-left
              '((:phase start :delta (0 . 0)) (:phase end :delta (5 . 1))))
             (etaf-desktop-gesture-test--dispatch
              runtime 'etaf-desktop-resize-top-right-top-right
              '((:phase start :delta (0 . 0)) (:phase end :delta (5 . 1))))
-            (etaf-desktop-gesture-test--dispatch
-             runtime 'etaf-desktop-resize-bottom-right-bottom-right
-             '((:phase start :delta (0 . 0)) (:phase end :delta (5 . 2))))
-            (should (equal '(20 4 90 12)
-                           (let ((s (etaf-desktop-window-state desktop 'left)))
-                             (list (plist-get s :x) (plist-get s :y)
-                                   (plist-get s :width) (plist-get s :height)))))
-            (should (equal '(10 4 110 12)
-                           (let ((s (etaf-desktop-window-state desktop 'right)))
-                             (list (plist-get s :x) (plist-get s :y)
-                                   (plist-get s :width) (plist-get s :height)))))
-            (should (equal '(10 4 100 14)
-                           (let ((s (etaf-desktop-window-state desktop 'bottom)))
+            (should (equal '(10 5 100 11)
+                           (let ((s (etaf-desktop-window-state desktop 'top)))
                              (list (plist-get s :x) (plist-get s :y)
                                    (plist-get s :width) (plist-get s :height)))))
             (should (equal '(15 5 95 11)
@@ -141,17 +124,20 @@ two corner cells while the title row's middle stays the window move gesture."
                            (let ((s (etaf-desktop-window-state desktop 'top-right)))
                              (list (plist-get s :x) (plist-get s :y)
                                    (plist-get s :width) (plist-get s :height)))))
-            (should (equal '(10 4 105 14)
-                           (let ((s (etaf-desktop-window-state desktop 'bottom-right)))
-                             (list (plist-get s :x) (plist-get s :y)
-                                   (plist-get s :width) (plist-get s :height)))))
+            ;; The bottom-right handle stays as the keyboard resize anchor;
+            ;; every other body edge keeps no handle at all.
+            (should (etaf-host-ref-position
+                     runtime 'etaf-desktop-resize-top-bottom-right))
+            (dolist (edge '(left right bottom bottom-left))
+              (should-not (etaf-host-ref-position
+                           runtime (intern (format "etaf-desktop-resize-top-%s" edge)))))
             ;; The title row's middle is the move gesture, not a second top
             ;; edge: the same drag moves the window instead of resizing it.
             (etaf-desktop-gesture-test--dispatch
-             runtime 'etaf-desktop-chrome-left
+             runtime 'etaf-desktop-chrome-top
              '((:phase start :delta (0 . 0)) (:phase end :delta (0 . 1))))
-            (should (equal '(20 5 90 12)
-                           (let ((s (etaf-desktop-window-state desktop 'left)))
+            (should (equal '(10 6 100 11)
+                           (let ((s (etaf-desktop-window-state desktop 'top)))
                              (list (plist-get s :x) (plist-get s :y)
                                    (plist-get s :width) (plist-get s :height)))))))
       (etaf-desktop-close desktop))))
@@ -169,7 +155,7 @@ Neither gesture aborts, and each preserves its opposite edge."
           (let* ((buffer (etaf-desktop-mount desktop))
                  (runtime (etaf-runtime-for-buffer buffer)))
             (etaf-desktop-gesture-test--dispatch
-             runtime 'etaf-desktop-resize-notes-left
+             runtime 'etaf-desktop-resize-notes-top-left
              '((:phase start :delta (0 . 0)) (:phase end :delta (-20 . 0))))
             (etaf-desktop-gesture-test--dispatch
              runtime 'etaf-desktop-resize-notes-top
