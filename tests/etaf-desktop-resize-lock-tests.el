@@ -23,7 +23,9 @@
           (etaf-desktop-set-setting desktop :drag-lock-modifier 'super)
           (etaf-desktop-open-window desktop 'notes :x 20 :y 4
                                     :width 240 :height 12 :min-width 80 :min-height 4
-                                    :title "Locked resize" :view (etaf-view (text "Kept content")))
+                                    :title "Locked resize" :view (etaf-view (box :width 'stretch :height 'stretch
+                                                    :padding '((lh 0) (ch 2) (lh 1) (ch 2))
+                                             (text "Kept content"))))
           (etaf-desktop-mount desktop buffer)
           (with-current-buffer buffer
             (let ((runtime (etaf-runtime-for-buffer buffer))

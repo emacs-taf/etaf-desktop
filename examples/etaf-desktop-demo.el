@@ -50,7 +50,10 @@ the title label."
     (etaf-view
      (flex :class "etaf-desktop-demo-app" :width 'stretch :height 'stretch
            :flex-direction 'column :align-items 'stretch
-           :padding '((lh 0) (ch 2)) :row-gap '(lh 0)
+           ;; The desktop window is seamless: its resize strips cover the
+           ;; frame's outermost body row and columns, so the application keeps
+           ;; that margin clear for them instead of losing a control.
+           :padding '((lh 0) (ch 2) (lh 1) (ch 2)) :row-gap '(lh 0)
        (expr
         (when (or header title status)
           (etaf-view

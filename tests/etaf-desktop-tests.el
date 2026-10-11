@@ -5,6 +5,14 @@
 (require 'etaf-desktop)
 (require 'etaf)
 (require 'ebox)
+(defun etaf-desktop-test--app-body (text)
+  "Return a window body showing TEXT inside the application-owned margin.
+A window frame is seamless: its resize strips cover the outermost body row
+and columns, so an application leaves those cells clear of controls."
+  (etaf-view (box :width 'stretch :height 'stretch
+                  :padding '((lh 0) (ch 2) (lh 1) (ch 2))
+             (text (expr text)))))
+
 (ert-deftest etaf-desktop-window-lifecycle-and-state-isolation ()
   "Public mutations preserve identity and detached reads cannot mutate state."
   (let ((desktop (etaf-desktop-create)))
@@ -190,7 +198,7 @@ can always be grabbed again."
     (unwind-protect
         (progn
           (etaf-desktop-open-window desktop 'notes :title "Notes"
-                                    :view (etaf-view (text "Hello desktop")))
+                                    :view (etaf-desktop-test--app-body "Hello desktop"))
           (let ((buffer (etaf-desktop-mount desktop)))
             (should (buffer-live-p buffer))
             (with-current-buffer buffer
@@ -1070,14 +1078,14 @@ restores the full shell without a structural re-render."
     (unwind-protect
         (progn
           (etaf-desktop-open-window desktop 'one :title "One"
-                                    :view (etaf-view (text "Main body one"))
+                                    :view (etaf-desktop-test--app-body "Main body one")
                                     :min-width 10 :min-height 2)
           (etaf-desktop-open-window desktop 'two :title "Two"
-                                    :view (etaf-view (text "Main body two"))
+                                    :view (etaf-desktop-test--app-body "Main body two")
                                     :min-width 10 :min-height 2)
           (etaf-desktop-switch-workspace desktop 'dev)
           (etaf-desktop-open-window desktop 'three :title "Three"
-                                    :view (etaf-view (text "Dev body three"))
+                                    :view (etaf-desktop-test--app-body "Dev body three")
                                     :min-width 10 :min-height 2)
           (etaf-desktop-switch-workspace desktop 'main)
           (etaf-desktop-set-layout-mode desktop 'tiling 'main)
@@ -1130,10 +1138,10 @@ restores the full shell without a structural re-render."
     (unwind-protect
         (progn
           (etaf-desktop-open-window desktop 'one :title "One"
-                                    :view (etaf-view (text "First tile body"))
+                                    :view (etaf-desktop-test--app-body "First tile body")
                                     :min-width 10 :min-height 2)
           (etaf-desktop-open-window desktop 'two :title "Two"
-                                    :view (etaf-view (text "Second tile body"))
+                                    :view (etaf-desktop-test--app-body "Second tile body")
                                     :min-width 10 :min-height 2)
           (let* ((buffer (etaf-desktop-mount desktop))
                  (runtime (etaf-runtime-for-buffer buffer)))
@@ -1155,13 +1163,13 @@ restores the full shell without a structural re-render."
     (unwind-protect
         (progn
           (etaf-desktop-open-window desktop 'notes :title "Notes"
-                                    :view (etaf-view (text "Notes body"))
+                                    :view (etaf-desktop-test--app-body "Notes body")
                                     :min-width 10 :min-height 2)
           (etaf-desktop-open-window desktop 'files :title "Files"
-                                    :view (etaf-view (text "Files body"))
+                                    :view (etaf-desktop-test--app-body "Files body")
                                     :min-width 10 :min-height 2)
           (etaf-desktop-open-window desktop 'chat :title "Chat"
-                                    :view (etaf-view (text "Chat body"))
+                                    :view (etaf-desktop-test--app-body "Chat body")
                                     :workspace 'dev :min-width 10 :min-height 2)
           (etaf-desktop-register-app
            app :title "Broken"
@@ -1213,7 +1221,7 @@ restores the full shell without a structural re-render."
     (unwind-protect
         (progn
           (etaf-desktop-open-window desktop 'files :title "Files"
-                                    :view (etaf-view (text "Files body"))
+                                    :view (etaf-desktop-test--app-body "Files body")
                                     :min-width 10 :min-height 2)
           (etaf-desktop-register-app
            app :title "Broken"

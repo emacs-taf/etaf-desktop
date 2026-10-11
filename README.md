@@ -19,7 +19,11 @@ The demo desktop at a wide frame:
 (require 'etaf-desktop)
 (let ((desktop (etaf-desktop-open)))
   (etaf-desktop-open-window desktop 'notes
-    :title "Notes" :view (etaf-view (text "Hello"))))
+    :title "Notes"
+    ;; A window is seamless; the application keeps the frame margin clear.
+    :view (etaf-view
+           (box :padding '((lh 0) (ch 2) (lh 1) (ch 2))
+                (text "Hello")))))
 ```
 
 Use the public mutation functions to move, resize, focus, maximize, minimize,

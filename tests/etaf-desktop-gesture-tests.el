@@ -97,7 +97,9 @@
         (progn
           (etaf-desktop-open-window desktop 'notes :x 10 :y 4 :width 240 :height 12
                                     :min-width 20 :min-height 3
-                                    :view (etaf-view (text "Kept content")))
+                                    :view (etaf-view (box :width 'stretch :height 'stretch
+                                                    :padding '((lh 0) (ch 2) (lh 1) (ch 2))
+                                             (text "Kept content"))))
           (let* ((buffer (etaf-desktop-mount desktop))
                  (runtime (etaf-runtime-for-buffer buffer)))
             (dolist (edge '(left right top bottom top-left top-right bottom-left bottom-right))

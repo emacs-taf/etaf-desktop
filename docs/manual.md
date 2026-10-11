@@ -15,7 +15,9 @@ size limits, workspace, visibility, minimized/maximized mode and z-index.
 (let ((desktop (etaf-desktop-create :workspaces '(main dev))))
   (etaf-desktop-open-window
    desktop 'editor :title "Editor" :x 2 :y 1 :width 70 :height 20
-   :view (etaf-view (text "Application content")))
+   ;; A window is seamless; the application keeps the frame margin clear.
+   :view (etaf-view (box :padding '((lh 0) (ch 2) (lh 1) (ch 2))
+                         (text "Application content"))))
 (etaf-desktop-mount desktop))
 ```
 
@@ -218,7 +220,10 @@ until it is raised, so use `n`/`p`, the switcher or the taskbar to reach it.
 manifest, then launch one or more independent instances. The manifest's
 `:open` callback receives a context plist and returns one window spec or a
 `:windows` list. A spec uses the same public geometry options as
-`etaf-desktop-open-window`; its `:view` remains application-owned.
+`etaf-desktop-open-window`; its `:view` remains application-owned.  A window
+body reaches the window border, and the frame's resize strips cover its
+outermost body row and columns, so an application view keeps that margin cell
+clear of controls.
 
 ```elisp
 (etaf-desktop-register-app
@@ -227,7 +232,9 @@ manifest, then launch one or more independent instances. The manifest's
          (list :state '(:document "welcome")
                :windows (list
                          (list :id 'main :title "Notes"
-                               :view (etaf-view (text "Welcome"))))))
+                               :view (etaf-view
+                                      (box :padding '((lh 0) (ch 2) (lh 1) (ch 2))
+                                           (text "Welcome"))))))))
  :close (lambda (_context reason) (message "Notes closed: %s" reason))
  :serialize (lambda (context) (plist-get context :state)))
 

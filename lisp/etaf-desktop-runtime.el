@@ -1091,6 +1091,16 @@ the controller and clears on either answer."
                                            (etaf-desktop-close-window desktop id))))
                                  nil)))))))))
 
+(defun etaf-desktop--frame-body (text)
+  "Return a desktop-owned window body showing TEXT inside the frame margin.
+A desktop window is seamless: its resize strips cover the outermost body
+row and columns, so content the desktop authors itself keeps the margin
+cell clear for them."
+  (etaf-node 'box
+             (list :width 'stretch :height 'stretch
+                   :padding '((lh 0) (ch 2) (lh 1) (ch 2)))
+             (list (etaf-node 'text nil (list text)))))
+
 (defun etaf-desktop--window-shell
     (desktop window active move resize-left resize-right resize-top resize-bottom
              resize-top-left resize-top-right resize-bottom-left resize-bottom-right)
@@ -1100,7 +1110,7 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
          (settings (etaf-desktop--settings desktop))
          (title (or (etaf-desktop--window-title window) (format "%s" id)))
          (body (or (etaf-desktop--window-view window)
-                   (etaf-node 'text nil (list title))))
+                   (etaf-desktop--frame-body title)))
          (resize-enabled (plist-get settings :resize-enabled))
          (mode (etaf-desktop--window-mode-source window))
          (move (and (etaf-desktop--window-movable window) move))
@@ -1138,6 +1148,10 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
            :resizable (and (etaf-desktop--window-resizable window) resize-enabled)
            :resize-edges '(left right top bottom top-left top-right
                                 bottom-left bottom-right)
+           ;; The window owns no inset: the body reaches the window edges and
+           ;; the resize strips cover its edge cells.  Applications keep their
+           ;; own margin cells clear so the strips never cover a control.
+           :full-bleed t
            :resize-refs
            (mapcar (lambda (edge)
                      (cons edge (intern (format "etaf-desktop-resize-%s-%s" id edge))))

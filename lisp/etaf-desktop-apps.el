@@ -242,7 +242,7 @@ When WORKSPACE is non-nil it fills a missing spec workspace."
                      desktop (format "%s/error" (etaf-desktop--instance-id instance))
                      :title (format "ETAF app error: %s"
                                     (etaf-desktop--instance-app-id instance))
-                     :view (etaf-view (text (expr message)))
+                     :view (etaf-desktop--frame-body message)
                      :min-width 260 :min-height 4)))
         (setf (etaf-desktop--instance-windows instance)
               (list (plist-get window :id))))
@@ -711,9 +711,9 @@ other applications continue restoring."
               (etaf-desktop-open-window
                desktop id
                :title (plist-get saved-window :title)
-               :view (etaf-view
-                      (text (expr (or (plist-get saved-window :title)
-                                      (format "%s" id)))))
+               :view (etaf-desktop--frame-body
+                      (or (plist-get saved-window :title)
+                          (format "%s" id)))
                :x (or (plist-get saved-window :x) 0)
                :y (or (plist-get saved-window :y) 0)
                :width (max (or (plist-get saved-window :width) 400)

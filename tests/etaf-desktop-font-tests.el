@@ -39,10 +39,15 @@
           (should-not (plist-get (etaf-desktop-settings desktop) :content-font-size))
           (etaf-desktop-open-window
            desktop 'sample :title "FontTitle" :width 600 :height 20
+           ;; A desktop window is seamless: its resize strips cover the
+           ;; frame's outermost body row and columns, so the application here
+           ;; keeps that margin cell clear of its controls.
            :view (etaf-view
-                  (column (etaf-label :text "FontBody")
-                          (etaf-button :label "FontButton")
-                          (etaf-text-input :value "FontInput" :hide-label t))))
+                  (box :width 'stretch :height 'stretch
+                       :padding '((lh 0) (ch 2) (lh 1) (ch 2))
+                    (column (etaf-label :text "FontBody")
+                            (etaf-button :label "FontButton")
+                            (etaf-text-input :value "FontInput" :hide-label t)))))
           (let ((buffer (etaf-desktop-mount desktop)))
             (dolist (text '("FontTitle" "FontBody" "FontButton" "FontInput"))
               (should-not (etaf-desktop-test-font-height
