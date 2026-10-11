@@ -55,7 +55,11 @@ direction stay inside the canvas without touching another window."
                (etaf-desktop-benchmark--window-geometry canvas index)))
     (etaf-desktop-open-window
      desktop id :workspace workspace :title (format "Window %s" id)
-     :view (etaf-view (text (expr (format "Content %s" id))))
+     ;; A desktop window is seamless: its resize strips cover the frame's
+     ;; outermost body row and columns, so the fixture body keeps that margin.
+     :view (etaf-view (box :width 'stretch :height 'stretch
+                           :padding '((lh 0) (ch 2) (lh 1) (ch 2))
+                        (text (expr (format "Content %s" id)))))
      :x x :y y :width width :height height :min-width 120 :min-height 5)))
 
 (defun etaf-desktop-benchmark--canvas (desktop)
