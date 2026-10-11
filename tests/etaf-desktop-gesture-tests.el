@@ -90,56 +90,70 @@
       (etaf-desktop-close desktop))))
 
 (ert-deftest etaf-desktop-gesture-resizes-every-enabled-edge-and-corner ()
-  "The title row's edge and corners publish controlled resize updates.
-
-The body edges carry no handle so window content reaches the window edge; the
-bottom-right handle stays solely as the keyboard M-S-<arrow> resize anchor."
-  (let ((desktop (etaf-desktop-create :name " *desktop-gesture-edges*")))
+  "Every edge owns its pointer target and changes only its controlled axes."
+  (let ((desktop (etaf-desktop-create :name " *desktop-gesture-edges*"
+                                      :canvas-width 500 :canvas-height 30)))
     (unwind-protect
         (progn
-          (dolist (id '(top top-left top-right bottom-right))
-            (etaf-desktop-open-window desktop id :x 10 :y 4
-                                      :width 100 :height 12
-                                      :min-width 20 :min-height 3))
+          (etaf-desktop-open-window desktop 'notes :x 10 :y 4 :width 240 :height 12
+                                    :min-width 20 :min-height 3
+                                    :view (etaf-view (text "Kept content")))
           (let* ((buffer (etaf-desktop-mount desktop))
                  (runtime (etaf-runtime-for-buffer buffer)))
-            (etaf-desktop-gesture-test--dispatch
-             runtime 'etaf-desktop-resize-top-top
-             '((:phase start :delta (0 . 0)) (:phase end :delta (0 . 1))))
-            (etaf-desktop-gesture-test--dispatch
-             runtime 'etaf-desktop-resize-top-left-top-left
-             '((:phase start :delta (0 . 0)) (:phase end :delta (5 . 1))))
-            (etaf-desktop-gesture-test--dispatch
-             runtime 'etaf-desktop-resize-top-right-top-right
-             '((:phase start :delta (0 . 0)) (:phase end :delta (5 . 1))))
-            (should (equal '(10 5 100 11)
-                           (let ((s (etaf-desktop-window-state desktop 'top)))
-                             (list (plist-get s :x) (plist-get s :y)
-                                   (plist-get s :width) (plist-get s :height)))))
-            (should (equal '(15 5 95 11)
-                           (let ((s (etaf-desktop-window-state desktop 'top-left)))
-                             (list (plist-get s :x) (plist-get s :y)
-                                   (plist-get s :width) (plist-get s :height)))))
-            (should (equal '(10 5 105 11)
-                           (let ((s (etaf-desktop-window-state desktop 'top-right)))
-                             (list (plist-get s :x) (plist-get s :y)
-                                   (plist-get s :width) (plist-get s :height)))))
-            ;; The bottom-right handle stays as the keyboard resize anchor;
-            ;; every other body edge keeps no handle at all.
-            (should (etaf-host-ref-position
-                     runtime 'etaf-desktop-resize-top-bottom-right))
-            (dolist (edge '(left right bottom bottom-left))
-              (should-not (etaf-host-ref-position
-                           runtime (intern (format "etaf-desktop-resize-top-%s" edge)))))
-            ;; The title row's middle is the move gesture, not a second top
-            ;; edge: the same drag moves the window instead of resizing it.
-            (etaf-desktop-gesture-test--dispatch
-             runtime 'etaf-desktop-chrome-top
-             '((:phase start :delta (0 . 0)) (:phase end :delta (0 . 1))))
-            (should (equal '(10 6 100 11)
-                           (let ((s (etaf-desktop-window-state desktop 'top)))
-                             (list (plist-get s :x) (plist-get s :y)
-                                   (plist-get s :width) (plist-get s :height)))))))
+            (dolist (edge '(left right top bottom top-left top-right bottom-left bottom-right))
+              (etaf-desktop-move-window desktop 'notes 10 4)
+              (etaf-desktop-resize-window desktop 'notes 240 12)
+              (etaf-runtime-flush runtime)
+              (let* ((ref (intern (format "etaf-desktop-resize-notes-%s" edge)))
+                     (position (etaf-host-ref-position runtime ref))
+                     (left (memq edge '(left top-left bottom-left)))
+                     (right (memq edge '(right top-right bottom-right)))
+                     (top (memq edge '(top top-left top-right)))
+                     (bottom (memq edge '(bottom bottom-left bottom-right))))
+                (should position)
+                (should (eq ref (etaf-host-ref-at runtime position)))
+                (with-current-buffer buffer
+                  (should (eq (get-text-property position 'pointer)
+                              (cond ((memq edge '(left right)) 'hdrag)
+                                    ((memq edge '(top bottom)) 'vdrag)
+                                    (t 'nhdrag)))))
+                (etaf-desktop-gesture-test--dispatch
+                 runtime ref '((:phase start :delta (0 . 0))
+                               (:phase move :delta (2 . 1))
+                               (:phase end :delta (5 . 1))))
+                (should (equal (list (+ 10 (if left 5 0)) (+ 4 (if top 1 0))
+                                     (+ 240 (cond (left -5) (right 5) (t 0)))
+                                     (+ 12 (cond (top -1) (bottom 1) (t 0))))
+                               (let ((state (etaf-desktop-window-state desktop 'notes)))
+                                 (mapcar (lambda (key) (plist-get state key))
+                                         '(:x :y :width :height)))))
+                (with-current-buffer buffer
+                  (should (string-match-p "Kept content"
+                                          (buffer-substring-no-properties (point-min) (point-max)))))))))
+      (etaf-desktop-close desktop))))
+
+(ert-deftest etaf-desktop-background-uses-arrow-and-dismisses-launcher ()
+  "Background dismissal keeps the canvas pointer an arrow."
+  (let ((desktop (etaf-desktop-create :name " *desktop-background-pointer*"
+                                      :canvas-width 800 :canvas-height 30)))
+    (unwind-protect
+        (let* ((buffer (etaf-desktop-mount desktop))
+               (runtime (etaf-runtime-for-buffer buffer))
+               (root (car (cl-find-if
+                           (lambda (entry)
+                             (eq (plist-get (cdr entry) :on-press)
+                                 #'etaf-ui-dismiss-outside-press))
+                           (etaf-runtime-host-props-entries runtime)))))
+          (with-current-buffer buffer
+            (save-excursion
+              (goto-char (point-min))
+              (forward-line 5)
+              (should (eq 'arrow (get-text-property (point) 'pointer)))))
+          (should root)
+          (etaf-desktop-toggle-launcher desktop t)
+          (should (etaf-desktop-launcher-open-p desktop))
+          (etaf-dispatch-event runtime root 'press)
+          (should-not (etaf-desktop-launcher-open-p desktop)))
       (etaf-desktop-close desktop))))
 
 (ert-deftest etaf-desktop-gesture-clamps-resize-at-desktop-origin ()

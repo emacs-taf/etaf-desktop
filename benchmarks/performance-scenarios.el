@@ -109,6 +109,7 @@ keymap route with no replacement reader or direct gesture phase dispatch."
          (height (window-body-height window t))
          motions last-delta)
     (unless (and (consp xy) (numberp (car xy)) (numberp (cdr xy))
+                 (eq ref (etaf-host-ref-at runtime position))
                  (commandp (key-binding (vector press) nil nil position)))
       (error "Native Desktop drag target is not visibly bound: %s" ref))
     (cl-labels
@@ -159,9 +160,7 @@ A `tiled-' prefix runs the remaining operation on a tiled workspace.  In
          (before nil)
          (expected nil)
          (delta nil)
-         (native (memq operation '(native-move-sequence native-move-burst
-                                  native-resize-bottom-right-sequence
-                                  native-resize-bottom-right-burst)))
+         (native (string-prefix-p "native-" (symbol-name operation)))
          (moving (memq operation '(move native-move-sequence native-move-burst)))
          (motion-count (and native (if (string-suffix-p "-burst" (symbol-name operation))
                                        130 8)))
@@ -169,7 +168,11 @@ A `tiled-' prefix runs the remaining operation on a tiled workspace.  In
          (native-ref nil)
          (edge (cond ((string-prefix-p "resize-" (symbol-name operation))
                       (substring (symbol-name operation) 7))
-                     ((and native (not moving)) "bottom-right")))
+                     ((and native (not moving))
+                      (string-remove-suffix
+                       (if (string-suffix-p "-burst" (symbol-name operation))
+                           "-burst" "-sequence")
+                       (string-remove-prefix "native-resize-" (symbol-name operation))))))
          (shell (cond ((string-prefix-p "launcher-" (symbol-name operation)) 'launcher)
                       ((string-prefix-p "switcher-" (symbol-name operation)) 'switcher)
                       ((string-prefix-p "settings-" (symbol-name operation)) 'settings)))
@@ -434,7 +437,11 @@ A `tiled-' prefix runs the remaining operation on a tiled workspace.  In
             (lambda (mode) (etaf-desktop-benchmark--fixture selected-operation mode)))))
 
 (dolist (operation '(native-move-sequence native-move-burst
-                    native-resize-bottom-right-sequence native-resize-bottom-right-burst))
+                    native-resize-left-sequence native-resize-right-sequence
+                    native-resize-top-sequence native-resize-bottom-sequence
+                    native-resize-top-left-sequence native-resize-top-right-sequence
+                    native-resize-bottom-left-sequence native-resize-bottom-right-sequence
+                    native-resize-bottom-right-burst))
   (taf-benchmark-register
    (format "etaf-desktop.geometry.%s" operation)
    :version 4 :modes '(gui) :isolation 'series :required-providers '(ebox)

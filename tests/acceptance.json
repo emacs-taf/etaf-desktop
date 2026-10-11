@@ -143,7 +143,7 @@
     {
       "name": "etaf-desktop-gesture-resizes-every-enabled-edge-and-corner",
       "file": "tests/etaf-desktop-gesture-tests.el",
-      "purpose": "Every enabled edge and corner publishes one controlled geometry update; body edges keep no handle."
+      "purpose": "All eight painted edges and corners expose directional pointers and publish cumulative geometry changes on only the controlled axes, preserving body content."
     },
     {
       "name": "etaf-desktop-gesture-clamps-resize-at-desktop-origin",
@@ -464,6 +464,11 @@
       "name": "etaf-desktop-font-settings-restore-inheritance",
       "file": "tests/etaf-desktop-font-tests.el",
       "purpose": "Appearance font controls display Emacs default and restore each existing explicit override independently or through Reset settings."
+    },
+    {
+      "name": "etaf-desktop-background-uses-arrow-and-dismisses-launcher",
+      "file": "tests/etaf-desktop-gesture-tests.el",
+      "purpose": "Desktop background uses an arrow while its press still dismisses the launcher."
     }
   ]
 }

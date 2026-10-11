@@ -29,7 +29,8 @@
             (let ((runtime (etaf-runtime-for-buffer buffer))
                   (window (selected-window))
                   (lh (frame-char-height)))
-              (dolist (edge '(top top-left top-right))
+              (dolist (edge '(left right top bottom top-left top-right
+                                  bottom-left bottom-right))
                 (etaf-desktop-move-window desktop 'notes 20 4)
                 (etaf-desktop-resize-window desktop 'notes 240 12)
                 (etaf-runtime-flush runtime)

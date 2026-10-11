@@ -4,12 +4,13 @@ All notable changes to ETAF Desktop are documented here.
 
 ## Unreleased
 
-### Changed
+### Fixed
 
-- Window bodies are handle-free: the canvas reaches the visible window body
-  and window content reaches the window edges.  Mouse resizing uses the title
-  row's top edge and its corners; `M-S-<arrow>` keeps resizing every edge
-  through the bottom-right handle from anywhere inside the window.
+- Desktop background uses an arrow pointer while retaining outside-click
+  dismissal. Window body focus no longer implies a hand pointer.
+- Floating windows expose all four resize edges and four corners. Side and
+  bottom grips reserve space around application content so they remain
+  draggable without covering application controls.
 
 ### Added
 

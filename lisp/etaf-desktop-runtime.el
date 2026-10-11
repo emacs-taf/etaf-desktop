@@ -1136,12 +1136,8 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
            :max-height (and (etaf-desktop--window-max-height window)
                             (list 'lh (etaf-desktop--window-max-height window)))
            :resizable (and (etaf-desktop--window-resizable window) resize-enabled)
-           ;; Only the title-row cells own mouse resize gestures: the body
-           ;; reaches the panel edges instead of reserving handle strips.  The
-           ;; bottom-right handle stays for the keyboard M-S-<arrow> resize,
-           ;; which drives its Host ref from anywhere inside the window.
-           :resize-edges '(top top-left top-right bottom-right)
-           :full-bleed t
+           :resize-edges '(left right top bottom top-left top-right
+                                bottom-left bottom-right)
            :resize-refs
            (mapcar (lambda (edge)
                      (cons edge (intern (format "etaf-desktop-resize-%s-%s" id edge))))
@@ -1689,6 +1685,8 @@ re-rendering the desktop tree."
    ;; workspace bar and taskbar set their own background.
    :background-color (etaf-desktop--theme-token :ui-shell-bg)
    :color (etaf-desktop--theme-token :ui-shell-fg)
+   ;; Dismissal is a background policy, not a clickable-control affordance.
+   :pointer 'arrow
    ;; Presses on shell background and, through capture, on any control close
    ;; the launcher, switcher or settings dialog the press landed outside of.
    ;; Claiming the background press also keeps `mouse-drag-region' from
