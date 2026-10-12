@@ -5,9 +5,10 @@
 ;; Named color themes for the desktop shell.  A theme is a plist of semantic
 ;; ETAF Theme tokens consumed by `etaf-ui' desktop Components (bars, windows,
 ;; dividers, dialogs and pickers).  The runtime provides the selected theme to
-;; the whole desktop subtree as a reactive source, so switching themes or
-;; dimming the shell under a modal publishes through Ebox paint slots instead
-;; of re-rendering the tree.
+;; the whole desktop subtree as a reactive source, so switching themes or the
+;; accent publishes through Ebox paint slots instead of re-rendering the tree.
+;; An open modal no longer dims these tokens: the shared modal backdrop dims
+;; whatever the desktop painted, images and text included.
 
 ;;; Code:
 
@@ -18,14 +19,6 @@
   "Registered desktop themes as an ordered alist of NAME to plist.
 Each plist holds `:label', `:mode' (`light' or `dark') and `:tokens'.")
 
-(defconst etaf-desktop--theme-shell-tokens
-  '(:ui-shell-bg :ui-shell-fg :ui-shell-muted-fg :ui-shell-item-fg
-    :ui-shell-item-minimized-fg :ui-accent :ui-accent-fg :ui-accent-soft-bg
-    :ui-canvas-bg :ui-canvas-fg :ui-canvas-border
-    :ui-window-bg :ui-window-fg :ui-window-border :ui-window-title-bg
-    :ui-window-title-fg :ui-window-title-active-fg :ui-divider-bg)
-  "Tokens painting the desktop shell.  These dim while a modal is open.")
-
 (defconst etaf-desktop--theme-panel-tokens
   '(:ui-fg :ui-bg :ui-muted-fg :ui-border
     :ui-panel-bg :ui-panel-fg :ui-panel-border
@@ -34,7 +27,7 @@ Each plist holds `:label', `:mode' (`light' or `dark') and `:tokens'.")
     :ui-button-secondary-fg :ui-button-secondary-bg
     :ui-button-primary-fg :ui-button-primary-bg
     :ui-checkbox-enabled-fg)
-  "Tokens painting dialogs and pickers.  These stay crisp above a dimmed shell.")
+  "Tokens painting dialogs and pickers.  These stay crisp above a modal backdrop.")
 
 (defun etaf-desktop--theme-color-p (value)
   "Return non-nil when VALUE is a six-digit hexadecimal color string."
@@ -127,12 +120,12 @@ Each plist holds `:name', `:label' and `:mode'."
     (list :name (plist-get entry :name) :label (plist-get entry :label)
           :mode (plist-get entry :mode) :tokens tokens)))
 
-(defun etaf-desktop--theme-for-settings (settings &optional dimmed)
-  "Return the ETAF Theme plist for SETTINGS, DIMMED under an open modal.
+(defun etaf-desktop--theme-for-settings (settings)
+  "Return the ETAF Theme plist for SETTINGS.
 
 `:accent-color', when set, replaces the theme's accent and derives its soft
-background.  Dimming blends every shell token toward the canvas background
-so dialogs painted with panel tokens stay legible above it."
+background.  A modal dims the painted shell through its shared backdrop
+rather than restyling these tokens."
   (let* ((entry (etaf-desktop--theme-entry (plist-get settings :theme)))
          (tokens (plist-get entry :tokens))
          (dark (eq (plist-get entry :mode) 'dark))
@@ -147,12 +140,6 @@ so dialogs painted with panel tokens stay legible above it."
       (setq tokens (plist-put tokens :ui-button-secondary-fg accent))
       (setq tokens (plist-put tokens :ui-button-secondary-bg
                               (plist-get tokens :ui-accent-soft-bg))))
-    (when dimmed
-      (let ((veil (if dark "#0B1016" "#5B6470")))
-        (dolist (key etaf-desktop--theme-shell-tokens)
-          (setq tokens (plist-put tokens key
-                                  (etaf-desktop--theme-blend
-                                   (plist-get tokens key) veil 0.45))))))
     tokens))
 
 ;; Built-in themes.  The first light and the first dark entry are the

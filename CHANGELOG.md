@@ -46,6 +46,11 @@ All notable changes to ETAF Desktop are documented here.
 
 ### Changed
 
+- Opening settings, the launcher, the switcher or the close confirmation no
+  longer restyles shell tokens to simulate dimming: the shared modal backdrop
+  dims the painted desktop, application content and images included, and the
+  shell paint returns when the modal closes.
+
 - Desktop shortcuts are ETAF Host keys on the shell instead of a buffer-local
   overriding keymap. Keys bound by focused application content now take
   precedence, and shortcuts are suspended while a dialog is open.

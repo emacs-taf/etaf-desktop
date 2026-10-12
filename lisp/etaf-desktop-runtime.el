@@ -1081,7 +1081,7 @@ the controller and clears on either answer."
         (etaf-node
          'etaf-dialog
          (list :open t :title "Close window?" :width '(ch 60) :height '(lh 8)
-               :close-label nil :backdrop nil :on-close cancel)
+               :close-label nil :on-close cancel)
          (list (etaf-node 'etaf-label
                           (list :text (format "“%s” will close. Unsaved work in it is lost."
                                               title)
@@ -1410,7 +1410,7 @@ a maximized window covers them."
              (etaf-desktop-apps))))
       (etaf-node 'etaf-launcher
                  (list :open (etaf-desktop--controller-launcher-ref desktop)
-                       :items items :backdrop nil
+                       :items items
                        :on-select
                        (lambda (app-id)
                          (etaf-desktop-launch desktop app-id)
@@ -1438,7 +1438,7 @@ a maximized window covers them."
       (etaf-node 'etaf-switcher
                  (list :open (etaf-desktop--controller-switcher-ref desktop)
                        :selected (etaf-desktop--state-active-window state)
-                       :items items :backdrop nil
+                       :items items
                        :on-select (lambda (id)
                                     (etaf-desktop-focus-window desktop id)
                                     (etaf-desktop-close-switcher desktop))
@@ -1451,13 +1451,6 @@ a maximized window covers them."
 TRANSFORM, when given, maps the resolved color to the final property value."
   (etaf-theme-token key (plist-get (etaf-desktop-theme-tokens 'light) key)
                     transform))
-
-(defun etaf-desktop--modal-open-p (desktop)
-  "Return non-nil when a launcher, switcher, settings or confirm dialog is open."
-  (or (etaf-desktop-launcher-open-p desktop)
-      (etaf-desktop-switcher-open-p desktop)
-      (etaf-desktop-settings-open-p desktop)
-      (and (etaf-desktop--close-request desktop) t)))
 
 (defconst etaf-desktop--settings-sections
   '((appearance . "Appearance") (layout . "Layout")
@@ -1601,7 +1594,7 @@ footer.  Shortcuts fill two label/control column pairs."
       :height (let ((active (etaf-value section)))
                 (etaf-desktop--settings-height
                  active (etaf-desktop--settings-fields active)))
-      :close-label "Done" :backdrop nil :on-close close-settings
+      :close-label "Done" :on-close close-settings
       (etaf-tabs
        :items (mapcar (lambda (entry)
                         (list :key (car entry)
@@ -1668,18 +1661,16 @@ footer.  Shortcuts fill two label/control column pairs."
 (etaf-define-component etaf-desktop--application (&key desktop)
   "Provide DESKTOP's Theme to the retained shell.
 
-The Theme is a computed source over the settings and modal-visibility refs:
-selecting a theme or accent, or opening a dialog, repaints the shell through
-Theme paint slots without re-rendering the desktop tree.  The configured
-shortcuts become the shell root's Host `:keys'; only editing a binding
-re-renders the shell."
+The Theme is a computed source over the settings ref: selecting a theme or
+accent repaints the shell through Theme paint slots without re-rendering the
+desktop tree.  An open modal dims the painted shell through the shared modal
+backdrop.  The configured shortcuts become the shell root's Host `:keys';
+only editing a binding re-renders the shell."
   :bindings
   ((theme
     (etaf-computed
      (lambda ()
-       (etaf-desktop--theme-for-settings
-        (etaf-desktop--settings desktop)
-        (etaf-desktop--modal-open-p desktop)))
+       (etaf-desktop--theme-for-settings (etaf-desktop--settings desktop)))
      :test #'equal))
    (shortcuts
     (etaf-computed
