@@ -14,23 +14,37 @@
     (should (etaf-host-ref-position runtime ref))
     ref))
 
-(defun etaf-desktop-demo-test--body (buffer id)
-  "Return the mounted node of window ID's demo body in BUFFER."
-  (let ((node (car (ebox-selector-query-buffer
-                    buffer (format "[id=%S] .etaf-desktop-demo-app-body" id)))))
-    (should node)
-    node))
+(defun etaf-desktop-demo-test--body-ref (runtime id)
+  "Return the mounted app body Host reference of window ID in RUNTIME.
+The window Host carries :id; the body Host is its descendant with the demo
+app body class, found through the public ancestry table."
+  (let* ((entries (etaf-runtime-host-props-entries runtime))
+         (window (car (cl-find-if
+                       (lambda (entry)
+                         (equal (format "%s" id) (plist-get (cdr entry) :id)))
+                       entries)))
+         (bodies (cl-loop for entry in entries
+                          when (member "etaf-desktop-demo-app-body"
+                                       (split-string
+                                        (or (plist-get (cdr entry) :class) "")
+                                        " " t))
+                          collect (car entry))))
+    (should window)
+    (let ((ancestries (etaf-runtime-host-ancestries runtime bodies)))
+      (cl-loop for body in bodies
+               when (member window (gethash body ancestries))
+               return body))))
 
-(defun etaf-desktop-demo-test--scroll-offset (buffer id)
-  "Return the scroll offset of window ID's demo body in BUFFER."
-  (ebox-node-scroll-offset (etaf-desktop-demo-test--body buffer id)))
+(defun etaf-desktop-demo-test--scroll-offset (runtime id)
+  "Return the scroll offset of window ID's demo body in RUNTIME."
+  (etaf-scroll-offset runtime (etaf-desktop-demo-test--body-ref runtime id)))
 
-(defun etaf-desktop-demo-test--scrollable-p (buffer id)
-  "Return non-nil when window ID's demo body in BUFFER can scroll further."
-  (let* ((node (etaf-desktop-demo-test--body buffer id))
-         (offset (ebox-node-scroll-offset node)))
-    (prog1 (> (ebox-node-set-scroll node (1+ offset)) offset)
-      (ebox-node-set-scroll node offset))))
+(defun etaf-desktop-demo-test--scrollable-p (runtime id)
+  "Return non-nil when window ID's demo body in RUNTIME can scroll further."
+  (let* ((ref (etaf-desktop-demo-test--body-ref runtime id))
+         (offset (etaf-scroll-offset runtime ref)))
+    (prog1 (> (etaf-scroll-by runtime ref 1) offset)
+      (etaf-scroll-to runtime ref offset))))
 
 (ert-deftest etaf-desktop-demo-body-scroll-keeps-header-footer-live ()
   "The real Notes app scrolls inside resized chrome and retains input/actions."
@@ -66,7 +80,7 @@
             (dotimes (_ 6)
               (etaf-dispatch-event
                runtime (etaf-desktop-demo-test--control runtime "Add line") 'press))
-            (should (etaf-desktop-demo-test--scrollable-p buffer id))
+            (should (etaf-desktop-demo-test--scrollable-p runtime id))
             (with-current-buffer buffer
               (goto-char (point-min))
               (search-forward "Ideas worth keeping:")
@@ -77,8 +91,8 @@
                     (footer-line (line-number-at-pos
                                   (etaf-host-ref-position
                                    runtime (etaf-desktop-demo-test--control runtime "Add line")))))
-                (ebox-scroll-down 2)
-                (should (= 2 (etaf-desktop-demo-test--scroll-offset buffer id)))
+                (etaf-scroll-by runtime (etaf-desktop-demo-test--body-ref runtime id) 2)
+                (should (= 2 (etaf-desktop-demo-test--scroll-offset runtime id)))
                 (should (= header-line
                            (line-number-at-pos
                             (etaf-host-ref-position
@@ -87,12 +101,12 @@
                            (line-number-at-pos
                             (etaf-host-ref-position
                              runtime (etaf-desktop-demo-test--control runtime "Add line")))))
-                (ebox-scroll-up 2)
-                (should (= 0 (etaf-desktop-demo-test--scroll-offset buffer id)))))
+                (etaf-scroll-by runtime (etaf-desktop-demo-test--body-ref runtime id) -2)
+                (should (= 0 (etaf-desktop-demo-test--scroll-offset runtime id)))))
             (etaf-desktop-resize-window desktop id 300 30)
-            (should-not (etaf-desktop-demo-test--scrollable-p buffer id))
+            (should-not (etaf-desktop-demo-test--scrollable-p runtime id))
             (etaf-desktop-resize-window desktop id 300 9)
-            (should (= 0 (etaf-desktop-demo-test--scroll-offset buffer id)))
+            (should (= 0 (etaf-desktop-demo-test--scroll-offset runtime id)))
             (let ((ref (etaf-desktop-demo-test--control runtime "Title")))
               (etaf-dispatch-event runtime ref 'press)
               (should (etaf-text-input-active-p runtime))

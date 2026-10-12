@@ -7,9 +7,6 @@
 (require 'etaf-ui)
 (require 'etaf-desktop-theme)
 
-(declare-function ebox-viewport-window-width "ebox-viewport" (window))
-(defvar ebox-viewport-width)
-(defvar ebox-viewport-height)
 (declare-function etaf-desktop-apps "etaf-desktop-apps" ())
 (declare-function etaf-desktop-instances "etaf-desktop-apps" (desktop))
 (declare-function etaf-desktop-launch "etaf-desktop-apps"
@@ -478,6 +475,18 @@ happens to be selected."
       (and (window-live-p etaf-desktop--mount-window) etaf-desktop--mount-window)
       (selected-window)))
 
+(defun etaf-desktop--runtime-viewport (desktop)
+  "Return DESKTOP's mounted Runtime viewport (WIDTH . HEIGHT), or nil.
+Only a fully measured viewport is returned; an unmounted desktop or an
+unmeasured axis leaves the caller to its window fallback."
+  (when-let* ((buffer (etaf-desktop--controller-buffer desktop))
+              ((buffer-live-p buffer))
+              (runtime (etaf-runtime-for-buffer buffer))
+              (viewport (etaf-runtime-viewport runtime))
+              ((numberp (car viewport)))
+              ((numberp (cdr viewport))))
+    viewport))
+
 (defun etaf-desktop--canvas-box-width (desktop)
   "Return the shell/canvas width value for DESKTOP's mounted surface.
 
@@ -488,7 +497,8 @@ a headless render keeps the measured pixel canvas for deterministic geometry."
    ((etaf-desktop--controller-canvas-width desktop)
     (list 'px (etaf-desktop--controller-canvas-width desktop)))
    ((or (etaf-desktop--fitted-canvas-size desktop)
-        (and (numberp ebox-viewport-width) (> ebox-viewport-width 0)))
+        (let ((viewport (etaf-desktop--runtime-viewport desktop)))
+          (and viewport (> (car viewport) 0))))
     'stretch)
    (t (list 'px (etaf-desktop--canvas-width-value desktop)))))
 
@@ -510,7 +520,10 @@ taskbar, so a default desktop owns exactly the visible window body.  The shell
 leaves the character the display reserves for its truncation glyph to the
 canvas colour, so that column does not read as a right margin."
   (let* ((char-width (max 1 (frame-char-width (window-frame window))))
-         (width (or (ebox-viewport-window-width window)
+         (runtime (and (window-live-p window)
+                       (etaf-runtime-for-buffer (window-buffer window))))
+         (viewport (and runtime (etaf-runtime-window-viewport runtime)))
+         (width (or (car viewport)
                     (let ((pixel-width (window-body-width window t)))
                       (if (> pixel-width 10)
                           pixel-width
@@ -530,8 +543,9 @@ displayed in; the window measurement remains the fallback outside rendering."
       (car (etaf-desktop--fitted-canvas-size desktop))
       ;; The result stays on the character grid so a rounded-up pixel column
       ;; cannot push a row into Emacs continuation.
-      (let* ((viewport (and (numberp ebox-viewport-width) (> ebox-viewport-width 0)
-                            ebox-viewport-width))
+      (let* ((runtime-viewport (etaf-desktop--runtime-viewport desktop))
+             (viewport (and runtime-viewport (> (car runtime-viewport) 0)
+                            (car runtime-viewport)))
              (width (or viewport
                         (let ((window (etaf-desktop--canvas-window desktop)))
                           (if (window-live-p window)
@@ -547,8 +561,9 @@ One row is reserved for the workspace bar and one for the taskbar; the mounted
 desktop hides buffer chrome, so no extra padding row is needed at the bottom."
   (or (etaf-desktop--controller-canvas-height desktop)
       (cdr (etaf-desktop--fitted-canvas-size desktop))
-      (and (numberp ebox-viewport-height) (> ebox-viewport-height 0)
-           (max 8 (- ebox-viewport-height 2)))
+      (let ((viewport (etaf-desktop--runtime-viewport desktop)))
+        (and viewport (> (cdr viewport) 0)
+             (max 8 (- (cdr viewport) 2))))
       (let ((window (etaf-desktop--canvas-window desktop)))
         (if (window-live-p window)
             (cdr (etaf-desktop--window-canvas-size window))

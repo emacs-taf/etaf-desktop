@@ -73,6 +73,8 @@
                   (should (equal 'notes (etaf-desktop-active-window desktop)))
                   (should (etaf-host-ref-position runtime ref))
                   (should (string-match-p "Kept content" (buffer-string)))
+                  ;; The engine's derived active state has no ETAF reader; this
+                  ;; public Ebox query is the test's diagnostic for a stale gesture.
                   (should-not (ebox-selector-query-buffer buffer ":active")))))))
       (etaf-desktop-close desktop)
       (when (buffer-live-p buffer) (kill-buffer buffer)))))
