@@ -191,6 +191,41 @@ can always be grabbed again."
     (should-error (etaf-desktop-remove-workspace desktop 'main)
                   :type 'etaf-desktop-error)))
 
+(ert-deftest etaf-desktop-open-uses-current-window-without-splitting ()
+  "Interactive Open overrides side-pane routing and preserves existing windows."
+  (save-window-excursion
+    (let ((caller (generate-new-buffer " *desktop-open-caller*"))
+          (neighbor (generate-new-buffer " *desktop-open-neighbor*")))
+      (unwind-protect
+          (dolist (count '(1 2))
+            (delete-other-windows)
+            (switch-to-buffer caller)
+            (when (= count 2)
+              (set-window-buffer (split-window-right) neighbor))
+            (let* ((desktop (etaf-desktop-create :canvas-width 400 :canvas-height 12))
+                   (target " *desktop-open-current*")
+                   (selected (selected-window))
+                   (windows (window-list))
+                   (edges (mapcar #'window-edges windows))
+                   (display-buffer-alist
+                    '(("desktop-open-current" display-buffer-in-side-window
+                       (side . right))))
+                   (display-buffer-overriding-action nil))
+              (unwind-protect
+                  (progn
+                    ;; Batch Emacs normally suppresses interactive-only display.
+                    (let ((noninteractive nil))
+                      (funcall-interactively #'etaf-desktop-open desktop target))
+                    (should (eq selected (selected-window)))
+                    (should (equal target (buffer-name (window-buffer selected))))
+                    (should (equal windows (window-list)))
+                    (should (equal edges (mapcar #'window-edges (window-list))))
+                    (when (= count 2)
+                      (should (eq neighbor (window-buffer (cadr windows))))))
+                (etaf-desktop-close desktop))))
+        (kill-buffer caller)
+        (kill-buffer neighbor)))))
+
 (ert-deftest etaf-desktop-mounted-window-and-taskbar ()
   "A mounted desktop preserves its text cursor and restores windows via taskbar."
   (let ((desktop (etaf-desktop-create :name " *desktop-test*"

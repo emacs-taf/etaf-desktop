@@ -11,6 +11,11 @@
   "support": [],
   "cases": [
     {
+      "name": "etaf-desktop-open-uses-current-window-without-splitting",
+      "file": "tests/etaf-desktop-tests.el",
+      "purpose": "Interactive Open stays in the selected Emacs window despite right-side display rules, preserving both a single-window frame and an existing split with its neighboring buffer."
+    },
+    {
       "name": "etaf-desktop-image-cursor-is-window-local-and-restored",
       "file": "tests/etaf-desktop-cursor-tests.el",
       "purpose": "Native image glyphs suppress only their window cursor; text, other windows, buffer switches, unmount and an already hidden cursor retain their prior visibility. GUI runs cover native images and batch runs their text fallback."

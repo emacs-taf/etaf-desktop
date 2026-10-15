@@ -147,7 +147,9 @@
 ;; Function: etaf-desktop-open (&optional desktop buffer-or-name)
 ;;;###autoload (autoload 'etaf-desktop-open "etaf-desktop" nil t)
 ;; Create a default desktop when DESKTOP is nil, mount it, and return the
-;; controller.  Interactive calls display the mounted buffer.
+;; controller.  Interactive calls display the mounted buffer in the selected
+;; Emacs window, without splitting or deleting existing windows.  Calls from
+;; Lisp mount without changing the displayed buffer.
 
 ;; Function: etaf-desktop-demo-open (&optional buffer-or-name)
 ;;;###autoload (autoload 'etaf-desktop-demo-open "etaf-desktop" nil t)

@@ -2631,11 +2631,14 @@ Runtime and buffer.  Closing is idempotent."
 (defun etaf-desktop-open (&optional desktop buffer-or-name)
   "Create and mount DESKTOP, returning the desktop controller.
 When DESKTOP is nil, create a default desktop.  Interactive calls display its
-buffer; applications may then use the window/workspace mutation APIs."
+buffer in the selected Emacs window, without splitting or deleting windows;
+applications may then use the window/workspace mutation APIs."
   (interactive)
   (let* ((desktop (or desktop (etaf-desktop-create)))
          (buffer (etaf-desktop-mount desktop buffer-or-name)))
-    (when (called-interactively-p 'interactive) (pop-to-buffer buffer))
+    (when (called-interactively-p 'interactive)
+      (let ((display-buffer-overriding-action '((display-buffer-same-window))))
+        (pop-to-buffer buffer)))
     desktop))
 
 (provide 'etaf-desktop-runtime)

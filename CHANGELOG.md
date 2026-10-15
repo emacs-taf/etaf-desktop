@@ -6,6 +6,8 @@ All notable changes to ETAF Desktop are documented here.
 
 ### Fixed
 
+- `etaf-desktop-open` displays the desktop in the current Emacs window instead
+  of letting display rules create a side pane. Existing windows stay intact.
 - Mounted desktops hide the native cursor only over embedded image glyphs,
   preventing blinking full-width game outlines while preserving the cursor
   used to navigate launchers, menus and text. Moving off an image or leaving

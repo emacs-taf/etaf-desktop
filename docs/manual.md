@@ -6,6 +6,10 @@ floating moves and resizes publish their geometry and focus changes together
 to ETAF observers. The mounted View supplies that state to ETAF UI's
 `etaf-window`, which forwards geometry and gestures to Ebox.
 
+`M-x etaf-desktop-open` opens the desktop buffer in the current Emacs window.
+It does not create a side pane or close other Emacs windows; ordinary
+`display-buffer` routing rules do not move it elsewhere.
+
 Create a controller with `etaf-desktop-create`, add windows with
 `etaf-desktop-open-window`, and mount it with `etaf-desktop-mount`. A window's
 `:view` is caller-owned content. The controller owns its identifier, rectangle,
