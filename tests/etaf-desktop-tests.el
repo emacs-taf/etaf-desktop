@@ -474,8 +474,8 @@ can always be grabbed again."
                                    'drag '(:phase end :delta (10 . 6)) t)))
             (let ((state (etaf-desktop-window-state desktop 'notes)))
               (should (= 10 (plist-get state :x)))
-              (should (= 6 (plist-get state :y))))))
-      (etaf-desktop-close desktop)))
+              (should (= 6 (plist-get state :y)))))
+      (etaf-desktop-close desktop))))
 
 (ert-deftest etaf-desktop-application-registry-and-lifecycle ()
   "A manifest launches an isolated instance and owns lifecycle callbacks."
@@ -751,7 +751,7 @@ the minibuffer."
            :serialize (lambda (context)
                         (list :counter (plist-get (plist-get context :state)
                                                   :counter)))
-           :restore (lambda (context data)
+           :restore (lambda (_context data)
                       (setq restore-seen data)
                       (list :state '(:counter 8)
                             :windows (list (list :id 'main :title "Session restored"
@@ -1353,8 +1353,8 @@ restores the full shell without a structural re-render."
                   (should (= 16 (plist-get (etaf-desktop-settings desktop)
                                            :title-font-size)))
                   (etaf-desktop-close-settings desktop)
-                  (should-not (etaf-desktop-settings-open-p desktop))))
-      (etaf-desktop-close desktop)))))
+                  (should-not (etaf-desktop-settings-open-p desktop)))))
+      (etaf-desktop-close desktop))))
 
 (ert-deftest etaf-desktop-geometry-queries-stay-reactive-and-atomic ()
   "Public snapshots observe complete geometry and focus after floating mutations."
