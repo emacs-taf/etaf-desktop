@@ -11,6 +11,16 @@
   "support": [],
   "cases": [
     {
+      "name": "etaf-desktop-image-cursor-is-window-local-and-restored",
+      "file": "tests/etaf-desktop-cursor-tests.el",
+      "purpose": "Native image glyphs suppress only their window cursor; text, other windows, buffer switches, unmount and an already hidden cursor retain their prior visibility. GUI runs cover native images and batch runs their text fallback."
+    },
+    {
+      "name": "etaf-desktop-launcher-keeps-visible-keyboard-navigation",
+      "file": "tests/etaf-desktop-cursor-tests.el",
+      "purpose": "The real demo opens Applications with A, keeps a visible navigation cursor while Down and Up change focus, and launches the selected application with Return."
+    },
+    {
       "name": "etaf-desktop-settings-dismiss-restores-entry-focus",
       "file": "tests/etaf-desktop-settings-tests.el",
       "purpose": "Done and the installed Escape command restore focus to the Settings entry after editing Layout values, reopening the panel and resetting settings."
@@ -28,7 +38,7 @@
     {
       "name": "etaf-desktop-demo-body-scroll-keeps-header-footer-live",
       "file": "tests/etaf-desktop-demo-tests.el",
-      "purpose": "The public six-app demo keeps Notes header and footer controls fixed while its bounded body scrolls, resizes, returns to the top and accepts edits with a caret only during editing; closing cancels its mounted timers."
+      "purpose": "The public six-app demo keeps Notes header and footer controls fixed while its bounded body scrolls, resizes, returns to the top and accepts edits; editing restores the navigation cursor on exit and closing cancels its mounted timers."
     },
     {
       "name": "etaf-desktop-locked-resize-confirms-controlled-geometry",
@@ -78,7 +88,7 @@
     {
       "name": "etaf-desktop-mounted-window-and-taskbar",
       "file": "tests/etaf-desktop-tests.el",
-      "purpose": "A mounted window remains in the retained application tree while its body is hidden and returns through taskbar restore; the desktop hides only its own native text cursor without changing global cursor or blink settings."
+      "purpose": "A mounted window remains in the retained application tree while its body is hidden and returns through taskbar restore; the desktop preserves native text cursor shape and global blink settings."
     },
     {
       "name": "etaf-desktop-bars-follow-focus-and-membership",

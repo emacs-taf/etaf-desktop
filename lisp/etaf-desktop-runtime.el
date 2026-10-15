@@ -2378,6 +2378,28 @@ republished.  Focus passes to WORKSPACE's highest visible window."
 (defvar etaf-desktop--fit-timer nil
   "The single owned task scheduled to refit pending desktops.")
 
+(defun etaf-desktop--restore-window-cursor (window)
+  "Release Desktop's cursor suppression in WINDOW, if any."
+  (when-let* ((saved (window-parameter window 'etaf-desktop-image-cursor)))
+    (internal-show-cursor window (car saved))
+    (set-window-parameter window 'etaf-desktop-image-cursor nil)))
+
+(defun etaf-desktop--image-cursor (window)
+  "Hide WINDOW's native cursor only while it covers a Desktop image glyph.
+Keep cursor shape and blinking unchanged for text and keyboard navigation.
+The saved visibility belongs to the window, so switching buffers restores it."
+  (let ((display (and etaf-desktop--buffer-desktop
+                      (get-char-property (window-point window) 'display window))))
+    (if (or (eq (car-safe display) 'image)
+            ;; Native grid rows combine a slice/raise spec with the image.
+            (and (listp display) (assq 'image display)))
+        (progn
+          (unless (window-parameter window 'etaf-desktop-image-cursor)
+            (set-window-parameter window 'etaf-desktop-image-cursor
+                                  (list (internal-show-cursor-p window))))
+          (internal-show-cursor window nil))
+      (etaf-desktop--restore-window-cursor window))))
+
 (defun etaf-desktop--attach-window-fit (desktop buffer)
   "Let BUFFER's Emacs window size changes refit DESKTOP's canvas."
   (when (buffer-live-p buffer)
@@ -2390,7 +2412,9 @@ republished.  Focus passes to WORKSPACE's highest visible window."
              (eq (buffer-local-value 'etaf-desktop--buffer-desktop buffer)
                  desktop))
     (with-current-buffer buffer
-      (setq etaf-desktop--buffer-desktop nil)))
+      (setq etaf-desktop--buffer-desktop nil)
+      (dolist (window (get-buffer-window-list buffer nil t))
+        (etaf-desktop--restore-window-cursor window))))
   (setq etaf-desktop--fit-pending (delq desktop etaf-desktop--fit-pending)))
 
 (defun etaf-desktop--display-window (desktop)
@@ -2510,6 +2534,8 @@ A borrowed minibuffer keeps the committed canvas until the prompt closes."
             (run-at-time 0 nil #'etaf-desktop--fit-pending-desktops)))))
 
 (add-hook 'window-size-change-functions #'etaf-desktop--window-size-change)
+;; This also restores a window after it switches away from a Desktop image.
+(add-hook 'pre-redisplay-functions #'etaf-desktop--image-cursor)
 
 (defun etaf-desktop-view (desktop)
   "Return the root View for DESKTOP without mounting it."
@@ -2522,7 +2548,7 @@ When BUFFER-OR-NAME is nil, DESKTOP's configured name is used.  A desktop
 without explicit canvas dimensions measures the window that will display it,
 so it fills the visible Emacs window body.  A desktop can be mounted once;
 callers use `etaf-desktop-close' to release the Runtime.
-The surface hides its text cursor outside ETAF UI text editing."
+The surface hides the native cursor on images, preserving text navigation."
   (let* ((desktop (etaf-desktop--controller desktop))
          (name (or buffer-or-name (etaf-desktop--controller-name desktop)))
          (target (get-buffer name)))
@@ -2555,11 +2581,7 @@ The surface hides its text cursor outside ETAF UI text editing."
       ;; buffer mode line avoids an extra application-looking row below the
       ;; taskbar; status and app actions are projected by the desktop shell.
       (with-current-buffer buffer
-        ;; A native cursor on an image glyph outlines its full row slice.
-        ;; Embedded apps share this buffer, not their standalone settings.
-        ;; ETAF UI fields temporarily show a caret and restore this value.
-        (setq-local cursor-type nil
-                    mode-line-format nil
+        (setq-local mode-line-format nil
                     header-line-format nil))
       (setf (etaf-desktop--controller-buffer desktop) buffer
             (etaf-desktop--controller-runtime desktop) runtime

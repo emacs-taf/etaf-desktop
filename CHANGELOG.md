@@ -6,9 +6,11 @@ All notable changes to ETAF Desktop are documented here.
 
 ### Fixed
 
-- Mounted desktops hide the native text cursor outside text editing, preventing
-  blinking full-width outlines on embedded game and image rows. Text fields
-  retain their editing caret, without changing global cursor preferences.
+- Mounted desktops hide the native cursor only over embedded image glyphs,
+  preventing blinking full-width game outlines while preserving the cursor
+  used to navigate launchers, menus and text. Moving off an image or leaving
+  the desktop restores cursor visibility without changing its shape or
+  global blink preferences.
 - Desktop background uses an arrow pointer while retaining outside-click
   dismissal. Window body focus no longer implies a hand pointer.
 - Floating windows expose all four resize edges and four corners. Side and

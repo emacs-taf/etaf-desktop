@@ -36,10 +36,11 @@ deterministic geometry.
 The mounted desktop hides that buffer's header and mode lines so its workspace
 bar, canvas and taskbar occupy the complete visible body.  Application status
 and actions belong in the desktop shell or in the active application's own
-surface.  It also hides the native text cursor: on a rendered image that cursor
-would outline an entire image row instead of indicating application focus.
-ETAF UI text fields temporarily show their editing caret and hide it again
-when editing ends.  Other buffers and global cursor/blink preferences are
+surface.  The native cursor is hidden only when it covers a rendered image,
+where it would outline an entire image row.  Text, launchers and menus retain
+their normal navigation cursor; ETAF UI text fields retain their editing caret.
+Moving off the image, switching buffers or unmounting restores the window's
+previous cursor visibility.  Cursor shape and global blink preferences are
 unchanged.
 
 `etaf-desktop-move-window` and `etaf-desktop-resize-window` are the single
