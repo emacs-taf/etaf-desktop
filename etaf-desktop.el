@@ -119,7 +119,9 @@
 ;;;###autoload (autoload 'etaf-desktop-mount "etaf-desktop" nil nil)
 ;; Mount DESKTOP and return its buffer.  A desktop may have one mounted Runtime.
 ;; This call owns the Runtime it creates; an existing target buffer remains
-;; caller-owned.
+;; caller-owned.  The mounted buffer hides its header/mode lines and native
+;; text cursor; ETAF UI text fields show a caret while editing and hide it on
+;; exit.  Other buffers and the global cursor/blink settings are unchanged.
 ;; Mutations publish through ETAF's reactive path and retain Ebox's committed
 ;; target and incremental display semantics.
 ;;

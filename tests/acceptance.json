@@ -28,7 +28,7 @@
     {
       "name": "etaf-desktop-demo-body-scroll-keeps-header-footer-live",
       "file": "tests/etaf-desktop-demo-tests.el",
-      "purpose": "The public six-app demo keeps Notes header and footer controls fixed while its bounded body scrolls, resizes, returns to the top and accepts edits; closing cancels its mounted timers."
+      "purpose": "The public six-app demo keeps Notes header and footer controls fixed while its bounded body scrolls, resizes, returns to the top and accepts edits with a caret only during editing; closing cancels its mounted timers."
     },
     {
       "name": "etaf-desktop-locked-resize-confirms-controlled-geometry",
@@ -78,7 +78,7 @@
     {
       "name": "etaf-desktop-mounted-window-and-taskbar",
       "file": "tests/etaf-desktop-tests.el",
-      "purpose": "A mounted window remains in the retained application tree while its body is hidden and returns through taskbar restore."
+      "purpose": "A mounted window remains in the retained application tree while its body is hidden and returns through taskbar restore; the desktop hides only its own native text cursor without changing global cursor or blink settings."
     },
     {
       "name": "etaf-desktop-bars-follow-focus-and-membership",

@@ -2521,7 +2521,8 @@ A borrowed minibuffer keeps the committed canvas until the prompt closes."
 When BUFFER-OR-NAME is nil, DESKTOP's configured name is used.  A desktop
 without explicit canvas dimensions measures the window that will display it,
 so it fills the visible Emacs window body.  A desktop can be mounted once;
-callers use `etaf-desktop-close' to release the Runtime."
+callers use `etaf-desktop-close' to release the Runtime.
+The surface hides its text cursor outside ETAF UI text editing."
   (let* ((desktop (etaf-desktop--controller desktop))
          (name (or buffer-or-name (etaf-desktop--controller-name desktop)))
          (target (get-buffer name)))
@@ -2554,8 +2555,12 @@ callers use `etaf-desktop-close' to release the Runtime."
       ;; buffer mode line avoids an extra application-looking row below the
       ;; taskbar; status and app actions are projected by the desktop shell.
       (with-current-buffer buffer
-        (setq-local mode-line-format nil)
-        (setq-local header-line-format nil))
+        ;; A native cursor on an image glyph outlines its full row slice.
+        ;; Embedded apps share this buffer, not their standalone settings.
+        ;; ETAF UI fields temporarily show a caret and restore this value.
+        (setq-local cursor-type nil
+                    mode-line-format nil
+                    header-line-format nil))
       (setf (etaf-desktop--controller-buffer desktop) buffer
             (etaf-desktop--controller-runtime desktop) runtime
             (etaf-desktop--controller-owns-runtime-p desktop) t

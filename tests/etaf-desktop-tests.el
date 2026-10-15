@@ -192,9 +192,11 @@ can always be grabbed again."
                   :type 'etaf-desktop-error)))
 
 (ert-deftest etaf-desktop-mounted-window-and-taskbar ()
-  "A mounted desktop displays current workspace windows and restores via taskbar."
+  "A mounted desktop hides its text cursor and restores windows via taskbar."
   (let ((desktop (etaf-desktop-create :name " *desktop-test*"
-                                      :canvas-width 400 :canvas-height 20)))
+                                      :canvas-width 400 :canvas-height 20))
+        (default-cursor (default-value 'cursor-type))
+        (blink-mode blink-cursor-mode))
     (unwind-protect
         (progn
           (etaf-desktop-open-window desktop 'notes :title "Notes"
@@ -204,6 +206,8 @@ can always be grabbed again."
             (with-current-buffer buffer
               (should-not mode-line-format)
               (should-not header-line-format)
+              (should (local-variable-p 'cursor-type))
+              (should-not cursor-type)
               (should (string-match-p "Notes" (buffer-string))))
             (etaf-desktop-minimize-window desktop 'notes)
             (with-current-buffer buffer
@@ -211,8 +215,11 @@ can always be grabbed again."
               (should (string-match-p "Notes" (buffer-string))))
             (etaf-desktop-restore-window desktop 'notes)
             (with-current-buffer buffer
+              (should-not cursor-type)
               (should (string-match-p "Hello desktop" (buffer-string))))))
       (etaf-desktop-close desktop))
+    (should (equal default-cursor (default-value 'cursor-type)))
+    (should (eq blink-mode blink-cursor-mode))
     (etaf-desktop-close desktop)))
 
 (ert-deftest etaf-desktop-bars-follow-focus-and-membership ()
