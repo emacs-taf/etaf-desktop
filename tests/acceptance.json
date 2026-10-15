@@ -11,6 +11,16 @@
   "support": [],
   "cases": [
     {
+      "name": "etaf-desktop-help-preserves-scoped-keys-and-window-state",
+      "file": "tests/etaf-desktop-help-tests.el",
+      "purpose": "Help shows effective child bindings in the same buffer, blocks business commands, and restores focus without changing desktop window geometry or identity."
+    },
+    {
+      "name": "etaf-desktop-help-dismisses-only-the-top-modal",
+      "file": "tests/etaf-desktop-help-tests.el",
+      "purpose": "Help opened above Settings closes independently; a later Escape dismisses Settings rather than closing both layers at once."
+    },
+    {
       "name": "etaf-desktop-open-uses-current-window-without-splitting",
       "file": "tests/etaf-desktop-tests.el",
       "purpose": "Interactive Open stays in the selected Emacs window despite right-side display rules, preserving both a single-window frame and an existing split with its neighboring buffer."

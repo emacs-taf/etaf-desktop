@@ -212,8 +212,16 @@ shared key layer; the desktop adds no global Emacs bindings.
 | Arrows, `C-n`/`C-p`/`C-b`/`C-f` | Move within a group or to the nearest control |
 | `M-`arrows / `M-S-`arrows | Move / resize the window holding focus |
 | Arrows on a divider | Move a tiling split |
-| Esc or `C-g` | Close the launcher, switcher, settings or close card |
-| `?` | List the available commands with `etaf-palette` |
+| Esc | Close the innermost open surface |
+| `?` | Show searchable, read-only key help in this Desktop buffer |
+
+Help uses the current application's effective bindings and the Desktop keys
+that remain reachable. It opens inside the same buffer without splitting an
+Emacs window or changing desktop-window geometry. Escape first leaves search
+editing, then closes help and restores the opening focus; clicking its backdrop
+also closes only that topmost modal. Settings underneath remain open. Native
+`C-g` stays an Emacs interrupt, not a dismissal command. Use `M-x etaf-palette`
+when you want to execute a command by name rather than read its description.
 
 The single-key shortcuts are configured in the Shortcuts tab or through the
 `:keybindings` setting; a binding is a key or a sequence such as `C-c n` that

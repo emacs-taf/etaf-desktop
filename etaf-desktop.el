@@ -215,7 +215,8 @@
 ;; `:minimize-window', `:close-window') to a `kbd' string such as "n" or
 ;; "C-c n".  A sequence may not start with a printing key, and no binding may
 ;; be a prefix of another.  The bindings are the mounted shell's ETAF Host
-;; keys: they are local to the Desktop buffer, listed by `etaf-palette', yield
+;; keys: they are local to the Desktop buffer, listed by read-only `etaf-help'
+;; and the explicit execution palette `etaf-palette', yield
 ;; to keys of focused application content and native input, and are inactive
 ;; while a modal dialog is open.  Focusing the next or previous window raises
 ;; it and moves keyboard focus into it.

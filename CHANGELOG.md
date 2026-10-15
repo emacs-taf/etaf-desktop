@@ -4,6 +4,12 @@ All notable changes to ETAF Desktop are documented here.
 
 ## Unreleased
 
+### Changed
+
+- `?` shows searchable, read-only help inside the Desktop buffer, preserving
+  its windows and focused content. Escape and backdrop dismissal close only
+  the top help layer; use `M-x etaf-palette` to execute commands by name.
+
 ### Fixed
 
 - `etaf-desktop-open` displays the desktop in the current Emacs window instead

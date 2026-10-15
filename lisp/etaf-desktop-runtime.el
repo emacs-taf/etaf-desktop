@@ -440,7 +440,7 @@ Tiled windows exchange tree leaves while floating windows exchange rectangles."
 
 (defun etaf-desktop--shortcut-keys (desktop bindings)
   "Return the shell's Host `:keys' for DESKTOP's settings BINDINGS.
-Each entry is labeled with its settings caption so the ETAF palette lists it."
+Each entry carries its settings caption for ETAF help and the command palette."
   (let ((actions (etaf-desktop--shortcut-actions desktop)))
     (cl-loop for (key binding) on bindings by #'cddr
              for action = (cdr (assq key actions))
@@ -1144,7 +1144,8 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
            ;; macOS presentation: only the active window shows colored
            ;; traffic lights; every other window renders gray lights.
            :controls-active active
-           :title title :mode mode :visible (etaf-desktop--window-shown-source window)
+           :title title :aria-label title
+           :mode mode :visible (etaf-desktop--window-shown-source window)
            :title-font-size (plist-get settings :title-font-size)
            :content-font-size (plist-get settings :content-font-size)
            :font-family (plist-get settings :font-family)
@@ -1705,6 +1706,9 @@ re-rendering the desktop tree."
    ;; workspace bar and taskbar set their own background.
    :background-color (etaf-desktop--theme-token :ui-shell-bg)
    :color (etaf-desktop--theme-token :ui-shell-fg)
+   :aria-label "ETAF Desktop"
+   :help '("Desktop windows share this Emacs buffer; their focused content owns its local commands."
+           "Use the launcher, switcher or taskbar to reach a covered window. Viewing help preserves windows and workspaces.")
    ;; Dismissal is a background policy, not a clickable-control affordance.
    :pointer 'arrow
    ;; Presses on shell background and, through capture, on any control close

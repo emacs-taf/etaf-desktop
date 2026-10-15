@@ -27,7 +27,13 @@ The demo desktop at a wide frame:
 ```
 
 Use the public mutation functions to move, resize, focus, maximize, minimize,
-restore and close windows. See [the manual](docs/manual.md) for the complete
+restore and close windows. `?` shows searchable, read-only help in the Desktop
+buffer, using the focused application's bindings and reachable Desktop keys.
+Escape leaves search editing before closing help; clicking outside also closes
+it and restores focus, without splitting an Emacs window. Command execution
+remains available through `M-x etaf-palette`.
+
+See [the manual](docs/manual.md) for the complete
 contract and [architecture](docs/architecture.md) for ownership boundaries.
 
 ## Runnable demo
