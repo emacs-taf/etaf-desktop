@@ -34,6 +34,8 @@
                              (lambda (label)
                                (etaf-desktop-test-settings-control runtime label))
                              tabs))
+                   (sizes (mapcar (lambda (target) (etaf-host-ref-size runtime target))
+                                  targets))
                    (dialog (etaf-desktop-test-settings-control
                             runtime "Desktop Settings"))
                    (reset (etaf-desktop-test-settings-control runtime "Reset settings"))
@@ -62,15 +64,14 @@
                          (regexp-quote (nth 3 section))
                          (etaf-desktop-test-settings-text buffer)))
                 (cl-mapc
-                 (lambda (label target)
+                 (lambda (label target size)
                    (should (etaf-host-ref-position runtime target))
-                   (should (eq (equal label (car section))
-                               (and (string-match-p
-                                     "\\bsecondary\\b"
-                                     (plist-get
-                                      (etaf-runtime-host-props-for runtime target)
-                                      :class)) t))))
-                 tabs targets)
+                   (let ((selected (plist-get (etaf-runtime-host-props-for runtime target)
+                                              :aria-selected))
+                         (current-size (etaf-host-ref-size runtime target)))
+                     (should (eq (equal label (car section)) selected))
+                     (should (equal size current-size))))
+                 tabs targets sizes)
                 (dolist (field fields)
                   (should (eq (equal field (nth 2 section))
                               (and (etaf-desktop-test-settings-control runtime field)
