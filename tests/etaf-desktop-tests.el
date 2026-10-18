@@ -7,8 +7,8 @@
 (require 'ebox)
 (defun etaf-desktop-test--app-body (text)
   "Return a window body showing TEXT inside the application-owned margin.
-A window frame is seamless: its resize strips cover the outermost body row
-and columns, so an application leaves those cells clear of controls."
+A window frame is seamless: its resize strips are transparent pointer
+targets on the outermost body row and columns, so the body may paint them."
   (etaf-view (box :width 'stretch :height 'stretch
                   :padding '((lh 0) (ch 2) (lh 1) (ch 2))
              (text (expr text)))))
@@ -1466,6 +1466,77 @@ restores the full shell without a structural re-render."
             (should (equal '(9 4 200 10)
                            (plist-get (etaf-desktop-window-state desktop 'editor)
                                       :normal-geometry)))))
+      (etaf-desktop-close desktop))))
+
+;;; Application instances
+
+(defvar etaf-desktop-test--app-instances 0
+  "How many times the counted test application component was set up.")
+
+(etaf-define-component etaf-desktop-test--counted-app
+    ()
+  "Count its own setup so a body cannot be instantiated twice unknowingly."
+  :setup (progn (setq etaf-desktop-test--app-instances
+                      (1+ etaf-desktop-test--app-instances))
+                nil)
+  :view (text "counted"))
+
+(ert-deftest etaf-desktop-app-body-instantiates-once ()
+  "A launched application window instantiates its body once and keeps it."
+  (let* ((app 'etaf-desktop-test-counted)
+         (desktop (etaf-desktop-create :name " *desktop-app-instances*")))
+    (unwind-protect
+        (progn
+          (etaf-desktop-register-app
+           app :title "Counted"
+           :open (lambda (_context)
+                   (list :windows
+                         (list (list :id 'main :title "Counted"
+                                     :view (etaf-view
+                                            (etaf-desktop-test--counted-app))
+                                     :x 0 :y 0 :width 240 :height 8)))))
+          (etaf-desktop-mount desktop "*desktop-app-instances*")
+          (setq etaf-desktop-test--app-instances 0)
+          (etaf-desktop-launch desktop app)
+          (should (= 1 etaf-desktop-test--app-instances))
+          ;; A later desktop publication reuses the same instance: application
+          ;; state, watchers and animations must survive it.
+          (etaf-desktop-set-setting desktop :tile-inner-gap 2)
+          (should (= 1 etaf-desktop-test--app-instances)))
+      (etaf-desktop-unregister-app app t)
+      (etaf-desktop-close desktop))))
+
+(etaf-define-component etaf-desktop-test--animated-app
+    (&key target)
+  "Render TARGET's live transition so a test can watch its frames."
+  :bindings ((shown (etaf-transition target :duration 0.3 :easing 'linear
+                                     :name 'etaf-desktop-test-animated)))
+  :view
+  (box :height '(lh 1)
+    (text (expr (format "%03d" (round (* 100 (etaf-value shown))))))))
+
+(ert-deftest etaf-desktop-app-body-animates-inside-its-window ()
+  "A desktop window publishes its application's own animation frames."
+  (let* ((name " *desktop-app-animates*")
+         (desktop (etaf-desktop-create :name name))
+         (target (etaf-ref 0.0))
+         (values nil))
+    (unwind-protect
+        (progn
+          (etaf-desktop-mount desktop name)
+          (etaf-desktop-open-window desktop 'anim :title "Anim"
+                                    :view (etaf-view
+                                           (etaf-desktop-test--animated-app
+                                            :target target))
+                                    :x 0 :y 0 :width 240 :height 8)
+          (etaf-set-value target 1.0)
+          (dotimes (_ 12)
+            (sleep-for 0.05)
+            (etaf-runtime-flush (etaf-runtime-for-buffer name))
+            (push (with-current-buffer name
+                    (buffer-substring-no-properties (point-min) (point-max)))
+                  values))
+          (should (> (length (delete-dups values)) 2)))
       (etaf-desktop-close desktop))))
 
 (provide 'etaf-desktop-tests)
