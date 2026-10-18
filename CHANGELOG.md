@@ -14,11 +14,11 @@ All notable changes to ETAF Desktop are documented here.
 
 - `etaf-desktop-open` displays the desktop in the current Emacs window instead
   of letting display rules create a side pane. Existing windows stay intact.
-- Mounted desktops hide the native cursor only over embedded image glyphs,
-  preventing blinking full-width game outlines while preserving the cursor
-  used to navigate launchers, menus and text. Moving off an image or leaving
-  the desktop restores cursor visibility without changing its shape or
-  global blink preferences.
+- The native text cursor no longer appears over a desktop surface. Clicking
+  application content used to leave a cursor block wherever point landed;
+  the surface paints its own focus and selection, and the cursor returns only
+  while an ETAF text input edits. Every mounted ETAF view owns that state, so
+  the desktop no longer keeps a cursor hook of its own.
 - Desktop background uses an arrow pointer while retaining outside-click
   dismissal. Window body focus no longer implies a hand pointer.
 - Floating windows expose all four resize edges and four corners. Side and

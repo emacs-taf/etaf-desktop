@@ -10,8 +10,9 @@
     (run-hook-with-args 'pre-redisplay-functions window)))
 
 (ert-deftest etaf-desktop-image-cursor-is-window-local-and-restored ()
-  "Only native image glyphs hide cursors; text and other windows stay usable.
-GUI runs exercise native images; batch runs exercise their text fallback."
+  "A mounted surface owns the native cursor, and editing is the only caret.
+Every ETAF buffer hides the native text cursor, so a click never leaves a
+block over application content; a text input sets its own caret instead."
   (save-window-excursion
     (let* ((desktop (etaf-desktop-create :name " *desktop-cursor-test*"
                                         :canvas-width 400 :canvas-height 12))
@@ -22,64 +23,48 @@ GUI runs exercise native images; batch runs exercise their text fallback."
       (unwind-protect
           (progn
             (etaf-desktop-open-window
-             desktop 'picture :title "Picture"
+             desktop 'surface :title "Surface"
              :view (etaf-view
                     (column :padding '((lh 0) (ch 2) (lh 1) (ch 2))
                      (image :ref 'art :columns 8 :rows 2
                             :src '(image :type svg :data
                                          "<svg xmlns='http://www.w3.org/2000/svg' width='80' height='40'><rect width='80' height='40' fill='#203040'/></svg>"))
-                     (text :ref 'copy "Navigate here"))))
+                     (text :ref 'copy "Navigate here")
+                     (etaf-text-input :ref 'field :hide-label t :width '(ch 24)))))
             (let* ((buffer (etaf-desktop-mount desktop))
                    (runtime (etaf-runtime-for-buffer buffer))
                    (art (etaf-host-ref-position runtime 'art))
-                   (copy (etaf-host-ref-position runtime 'copy))
-                   (second (split-window-right))
-                   native)
+                   (copy (etaf-host-ref-position runtime 'copy)))
               (should (integerp art))
               (should (integerp copy))
               (set-window-buffer window buffer)
-              (set-window-buffer second buffer)
-              (setq native (display-graphic-p))
               (internal-show-cursor window t)
-              (internal-show-cursor second t)
-              (set-window-point window art)
-              (set-window-point second copy)
-              (etaf-desktop-cursor-test--redisplay window)
-              (etaf-desktop-cursor-test--redisplay second)
-              (should (eq (internal-show-cursor-p window) (not native)))
-              (should (internal-show-cursor-p second))
-              (should (equal shape (buffer-local-value 'cursor-type buffer)))
-              ;; Moving off the image restores the cursor without an edit session.
-              (set-window-point window copy)
-              (etaf-desktop-cursor-test--redisplay window)
-              (should (internal-show-cursor-p window))
-              ;; An already hidden cursor must not be enabled by Desktop.
-              (internal-show-cursor window nil)
-              (set-window-point window art)
-              (etaf-desktop-cursor-test--redisplay window)
-              (set-window-point window copy)
-              (etaf-desktop-cursor-test--redisplay window)
-              (should-not (internal-show-cursor-p window))
-              (internal-show-cursor window t)
-              ;; Switching to an unrelated buffer releases image suppression.
-              (set-window-point window art)
-              (etaf-desktop-cursor-test--redisplay window)
+              ;; The mounted surface owns the native cursor for all content.
+              (should-not (buffer-local-value 'cursor-type buffer))
+              (dolist (position (list art copy))
+                (set-window-point window position)
+                (etaf-desktop-cursor-test--redisplay window)
+                (should-not (buffer-local-value 'cursor-type buffer)))
+              (should (equal shape (default-value 'cursor-type)))
+              ;; Editing is the one state that installs a caret.
+              (etaf-text-input-begin runtime 'field)
+              (should (equal '(bar . 2) (buffer-local-value 'cursor-type buffer)))
+              (etaf-text-input-end)
+              (should-not (buffer-local-value 'cursor-type buffer))
+              ;; Switching to an unrelated buffer and unmounting leave the
+              ;; caller's cursor state as it was.
               (set-window-buffer window other)
-              (etaf-desktop-cursor-test--redisplay window)
-              (should (internal-show-cursor-p window))
-              ;; Unmounting also releases suppression before another redisplay.
+              (should-not (local-variable-p 'cursor-type other))
               (set-window-buffer window buffer)
-              (set-window-point window art)
-              (etaf-desktop-cursor-test--redisplay window)
               (etaf-desktop-close desktop)
-              (should (internal-show-cursor-p window))
-              (should (internal-show-cursor-p second))))
+              (should-not (local-variable-p 'cursor-type buffer))))
         (etaf-desktop-close desktop)
         (internal-show-cursor window initial-visibility)
         (kill-buffer other)))))
 
 (ert-deftest etaf-desktop-launcher-keeps-visible-keyboard-navigation ()
-  "A opens the launcher; arrows retain a cursor and RET opens the chosen app."
+  "A opens the launcher; arrows move its focus and RET opens the chosen app.
+The Desktop paints its own focus, so no native text cursor appears over it."
   (save-window-excursion
     (let ((desktop (etaf-desktop-demo-open " *desktop-cursor-launcher*")))
       (unwind-protect
@@ -90,16 +75,15 @@ GUI runs exercise native images; batch runs exercise their text fallback."
             (should (etaf-desktop-launcher-open-p desktop))
             (let ((first (etaf-focused-host-ref runtime)))
               (should first)
-              (should cursor-type)
-              (etaf-desktop-cursor-test--redisplay (selected-window))
-              (should (internal-show-cursor-p (selected-window)))
+              (should-not (buffer-local-value 'cursor-type buffer))
+              (with-current-buffer buffer
+                (should-not cursor-type))
               (execute-kbd-macro (kbd "<down>"))
               (let ((next (etaf-focused-host-ref runtime)))
                 (should (not (equal first next))))
               (execute-kbd-macro (kbd "<up>"))
               (let ((back (etaf-focused-host-ref runtime)))
                 (should (equal first back)))
-              (should cursor-type)
               (execute-kbd-macro (kbd "RET"))
               (should-not (etaf-desktop-launcher-open-p desktop))
               (let ((active (etaf-desktop-window-state

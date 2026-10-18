@@ -28,12 +28,12 @@
   {
    "name": "etaf-desktop-image-cursor-is-window-local-and-restored",
    "file": "tests/etaf-desktop-cursor-tests.el",
-   "purpose": "Native image glyphs suppress only their window cursor; text, other windows, buffer switches, unmount and an already hidden cursor retain their prior visibility. GUI runs cover native images and batch runs their text fallback."
+   "purpose": "Application content never shows a native text cursor, image or text alike; the caret appears only while an ETAF text input edits, and window switches or closing restore visibility."
   },
   {
    "name": "etaf-desktop-launcher-keeps-visible-keyboard-navigation",
    "file": "tests/etaf-desktop-cursor-tests.el",
-   "purpose": "The real demo opens Applications with A, keeps a visible navigation cursor while Down and Up change focus, and launches the selected application with Return."
+   "purpose": "A opens the launcher, arrows move its focused row and RET opens the chosen app; the Desktop never paints a native text cursor over it."
   },
   {
    "name": "etaf-desktop-settings-dismiss-restores-entry-focus",

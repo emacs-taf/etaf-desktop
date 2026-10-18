@@ -241,7 +241,8 @@ can always be grabbed again."
             (with-current-buffer buffer
               (should-not mode-line-format)
               (should-not header-line-format)
-              (should (equal cursor-type default-cursor))
+              ;; A mounted View owns the native cursor and hides it.
+              (should-not cursor-type)
               (should (string-match-p "Notes" (buffer-string))))
             (etaf-desktop-minimize-window desktop 'notes)
             (with-current-buffer buffer
@@ -249,7 +250,8 @@ can always be grabbed again."
               (should (string-match-p "Notes" (buffer-string))))
             (etaf-desktop-restore-window desktop 'notes)
             (with-current-buffer buffer
-              (should (equal cursor-type default-cursor))
+              ;; A mounted View owns the native cursor and hides it.
+              (should-not cursor-type)
               (should (string-match-p "Hello desktop" (buffer-string))))))
       (etaf-desktop-close desktop))
     (should (equal default-cursor (default-value 'cursor-type)))

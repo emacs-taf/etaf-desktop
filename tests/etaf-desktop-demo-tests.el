@@ -108,15 +108,14 @@ app body class, found through the public ancestry table."
             (etaf-desktop-resize-window desktop id 300 9)
             (should (= 0 (etaf-desktop-demo-test--scroll-offset runtime id)))
             (let ((ref (etaf-desktop-demo-test--control runtime "Title")))
-              (with-current-buffer buffer
-                (should (equal cursor-type (default-value 'cursor-type))))
+              ;; A mounted surface hides the native cursor until editing.
+              (with-current-buffer buffer (should-not cursor-type))
               (etaf-dispatch-event runtime ref 'press)
               (should (etaf-text-input-active-p runtime))
               (with-current-buffer buffer (should cursor-type))
               (execute-kbd-macro (vconcat (kbd "C-a C-k") "Edited note"))
               (etaf-text-input-end)
-              (with-current-buffer buffer
-                (should (equal cursor-type (default-value 'cursor-type)))))
+              (with-current-buffer buffer (should-not cursor-type)))
             (etaf-dispatch-event
              runtime (etaf-desktop-demo-test--control runtime "Clear") 'press)
             (with-current-buffer buffer
