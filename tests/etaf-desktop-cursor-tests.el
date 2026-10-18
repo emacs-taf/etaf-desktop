@@ -39,18 +39,26 @@ block over application content; a text input sets its own caret instead."
               (should (integerp copy))
               (set-window-buffer window buffer)
               (internal-show-cursor window t)
-              ;; The mounted surface owns the native cursor for all content.
-              (should-not (buffer-local-value 'cursor-type buffer))
+              ;; Keyboard navigation keeps the native cursor: it is how the
+              ;; user sees which element the arrows reached.
+              (should (equal (buffer-local-value 'cursor-type buffer) shape))
+              ;; A pointer press hides the stray block it would leave behind.
               (dolist (position (list art copy))
                 (set-window-point window position)
-                (etaf-desktop-cursor-test--redisplay window)
+                (with-current-buffer buffer
+                  (let ((last-command-event '(mouse-1 (nil 1 (0 . 0)))))
+                    (run-hooks 'pre-command-hook)))
                 (should-not (buffer-local-value 'cursor-type buffer)))
-              (should (equal shape (default-value 'cursor-type)))
+              ;; The next keyboard command brings the cursor back.
+              (with-current-buffer buffer
+                (let ((last-command-event ?j))
+                  (run-hooks 'pre-command-hook)))
+              (should (equal (buffer-local-value 'cursor-type buffer) shape))
               ;; Editing is the one state that installs a caret.
               (etaf-text-input-begin runtime 'field)
               (should (equal '(bar . 2) (buffer-local-value 'cursor-type buffer)))
               (etaf-text-input-end)
-              (should-not (buffer-local-value 'cursor-type buffer))
+              (should (equal (buffer-local-value 'cursor-type buffer) shape))
               ;; Switching to an unrelated buffer and unmounting leave the
               ;; caller's cursor state as it was.
               (set-window-buffer window other)
@@ -64,7 +72,7 @@ block over application content; a text input sets its own caret instead."
 
 (ert-deftest etaf-desktop-launcher-keeps-visible-keyboard-navigation ()
   "A opens the launcher; arrows move its focus and RET opens the chosen app.
-The Desktop paints its own focus, so no native text cursor appears over it."
+Keyboard navigation keeps the native cursor, which marks the focused row."
   (save-window-excursion
     (let ((desktop (etaf-desktop-demo-open " *desktop-cursor-launcher*")))
       (unwind-protect
@@ -75,9 +83,8 @@ The Desktop paints its own focus, so no native text cursor appears over it."
             (should (etaf-desktop-launcher-open-p desktop))
             (let ((first (etaf-focused-host-ref runtime)))
               (should first)
-              (should-not (buffer-local-value 'cursor-type buffer))
-              (with-current-buffer buffer
-                (should-not cursor-type))
+              ;; Keyboard navigation keeps the native cursor visible.
+              (with-current-buffer buffer (should cursor-type))
               (execute-kbd-macro (kbd "<down>"))
               (let ((next (etaf-focused-host-ref runtime)))
                 (should (not (equal first next))))

@@ -14,10 +14,9 @@ All notable changes to ETAF Desktop are documented here.
 
 - `etaf-desktop-open` displays the desktop in the current Emacs window instead
   of letting display rules create a side pane. Existing windows stay intact.
-- The native text cursor no longer appears over a desktop surface. Clicking
-  application content used to leave a cursor block wherever point landed;
-  the surface paints its own focus and selection, and the cursor returns only
-  while an ETAF text input edits. Every mounted ETAF view owns that state, so
+- A pointer press on application content no longer leaves a cursor block
+  behind, while keyboard navigation keeps the native cursor that marks the
+  focused row. Every mounted ETAF view follows the input modality itself, so
   the desktop no longer keeps a cursor hook of its own.
 - Desktop background uses an arrow pointer while retaining outside-click
   dismissal. Window body focus no longer implies a hand pointer.

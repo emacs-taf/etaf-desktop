@@ -123,9 +123,10 @@
 ;; Mount DESKTOP and return its buffer.  A desktop may have one mounted Runtime.
 ;; This call owns the Runtime it creates; an existing target buffer remains
 ;; caller-owned.  The mounted buffer hides its header/mode lines.  Its native
-;; cursor stays hidden over the whole surface, because every mounted ETAF view
-;; owns that state, and appears only while an ETAF text input edits.  Cursor
-;; shape and global blink preferences are unchanged.
+;; cursor follows the input modality, like every mounted ETAF view: a pointer
+;; press hides it and the next keyboard command restores it, so keyboard
+;; navigation keeps its marker.  Cursor shape and global blink preferences are
+;; unchanged.
 ;; Mutations publish through ETAF's reactive path and retain Ebox's committed
 ;; target and incremental display semantics.
 ;;
