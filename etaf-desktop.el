@@ -52,7 +52,9 @@
 ;;
 ;; Function: etaf-desktop-open-window (desktop id &key title view (x 0) (y 0) (width 400) (height 12) (min-width 160) (min-height 3) max-width max-height workspace (visible t) (movable t) (resizable t))
 ;;;###autoload (autoload 'etaf-desktop-open-window "etaf-desktop" nil nil)
-;; Add a window to DESKTOP.  VIEW is caller-owned ETAF View content.  The
+;; Add a window to DESKTOP.  VIEW is caller-owned ETAF View content built for
+;; this window; each window renders its own instance once, so callers never
+;; share one application instance between windows.  The
 ;; window is seamless: VIEW owns every body cell, because the frame's resize
 ;; strips are transparent pointer targets on the outermost body row and
 ;; columns rather than painted chrome.  Geometry is in logical desktop units;
