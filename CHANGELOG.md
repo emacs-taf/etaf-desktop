@@ -22,8 +22,9 @@ All notable changes to ETAF Desktop are documented here.
 - Desktop background uses an arrow pointer while retaining outside-click
   dismissal. Window body focus no longer implies a hand pointer.
 - Floating windows expose all four resize edges and four corners. Side and
-  bottom grips reserve space around application content so they remain
-  draggable without covering application controls.
+  bottom grips are transparent pointer targets on the outermost body cells, so
+  they stay draggable while the application's own background and content reach
+  the window edges.
 
 ### Added
 

@@ -53,10 +53,11 @@
 ;; Function: etaf-desktop-open-window (desktop id &key title view (x 0) (y 0) (width 400) (height 12) (min-width 160) (min-height 3) max-width max-height workspace (visible t) (movable t) (resizable t))
 ;;;###autoload (autoload 'etaf-desktop-open-window "etaf-desktop" nil nil)
 ;; Add a window to DESKTOP.  VIEW is caller-owned ETAF View content.  The
-;; window is seamless: the frame's resize strips cover the outermost body row
-;; and columns, so VIEW keeps that margin cell clear of controls.  Geometry is
-;; in logical desktop units; movable and resizable default to non-nil.  Raise
-;; and focus policy is applied when the window opens.
+;; window is seamless: VIEW owns every body cell, because the frame's resize
+;; strips are transparent pointer targets on the outermost body row and
+;; columns rather than painted chrome.  Geometry is in logical desktop units;
+;; movable and resizable default to non-nil.  Raise and focus policy is applied
+;; when the window opens.
 ;;
 ;; Function: etaf-desktop-close-window (desktop id)
 ;;;###autoload (autoload 'etaf-desktop-close-window "etaf-desktop" nil nil)
