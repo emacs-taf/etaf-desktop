@@ -2,7 +2,8 @@
 
 All notable changes to ETAF Desktop are documented here.
 
-## Unreleased
+## [0.1.2] - 2026-10-20
+
 
 ### Changed
 
