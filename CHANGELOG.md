@@ -2,6 +2,16 @@
 
 All notable changes to ETAF Desktop are documented here.
 
+## [0.1.3] - 2026-10-24
+
+### Fixed
+
+- A desktop nested in another desktop's window no longer takes over the host
+  buffer's window fit. An application embeds `etaf-desktop-view` in one of its
+  windows, so several desktops can share one buffer; resizing the Emacs window
+  still refits the enclosing desktop, while a nested desktop keeps the explicit
+  canvas it was created with.
+
 ## [0.1.2] - 2026-10-20
 
 

@@ -2373,8 +2373,11 @@ republished.  Focus passes to WORKSPACE's highest visible window."
         (etaf-desktop--notify-window-event desktop nil 'focus-cleared)))
     result))
 
-(defvar-local etaf-desktop--buffer-desktop nil
-  "Desktop controller whose shell is mounted in the current buffer.")
+(defvar-local etaf-desktop--buffer-desktops nil
+  "Desktops whose shells are mounted in the current buffer.
+Applications embed a desktop in a window of another desktop, so one buffer
+can hold the outer desktop and every desktop nested in its windows.  Each of
+them follows the Emacs window that displays the buffer.")
 
 (defvar etaf-desktop--fit-pending nil
   "Desktops whose displaying Emacs window changed size, deduplicated by EQ.")
@@ -2383,18 +2386,20 @@ republished.  Focus passes to WORKSPACE's highest visible window."
   "The single owned task scheduled to refit pending desktops.")
 
 (defun etaf-desktop--attach-window-fit (desktop buffer)
-  "Let BUFFER's Emacs window size changes refit DESKTOP's canvas."
+  "Let BUFFER's Emacs window size changes refit DESKTOP's canvas.
+A nested desktop joins the buffer it is embedded in without displacing the
+enclosing desktop that fit the same window first."
   (when (buffer-live-p buffer)
     (with-current-buffer buffer
-      (setq etaf-desktop--buffer-desktop desktop))))
+      (setq etaf-desktop--buffer-desktops
+            (cons desktop (delq desktop etaf-desktop--buffer-desktops))))))
 
 (defun etaf-desktop--detach-window-fit (desktop buffer)
   "Stop refitting DESKTOP from BUFFER's Emacs window size changes."
-  (when (and (buffer-live-p buffer)
-             (eq (buffer-local-value 'etaf-desktop--buffer-desktop buffer)
-                 desktop))
+  (when (buffer-live-p buffer)
     (with-current-buffer buffer
-      (setq etaf-desktop--buffer-desktop nil)))
+      (setq etaf-desktop--buffer-desktops
+            (delq desktop etaf-desktop--buffer-desktops))))
   (setq etaf-desktop--fit-pending (delq desktop etaf-desktop--fit-pending)))
 
 (defun etaf-desktop--display-window (desktop)
@@ -2504,8 +2509,8 @@ A borrowed minibuffer keeps the committed canvas until the prompt closes."
   "Record desktops displayed in FRAME for a refit after this redisplay hook."
   (when (frame-live-p frame)
     (dolist (window (window-list frame 'no-minibuf))
-      (let ((desktop (buffer-local-value 'etaf-desktop--buffer-desktop
-                                         (window-buffer window))))
+      (dolist (desktop (buffer-local-value 'etaf-desktop--buffer-desktops
+                                           (window-buffer window)))
         (when (and (etaf-desktop--controller-p desktop)
                    (not (memq desktop etaf-desktop--fit-pending)))
           (push desktop etaf-desktop--fit-pending))))

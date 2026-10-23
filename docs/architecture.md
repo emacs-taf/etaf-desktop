@@ -55,6 +55,14 @@ follows the mount entry: `etaf-desktop-mount` owns the Runtime it creates;
 caller unmounts the enclosing application. An existing target buffer remains
 caller-owned in either case.
 
+An application embeds a desktop View in one of its windows, so a buffer can
+host several desktops: the enclosing one and every nested one. Window fitting
+is a buffer-local set of those desktops rather than a single owner, so a
+nested desktop neither takes the enclosing desktop's refit nor loses it on
+unmount. Each desktop still decides its own geometry: an explicit canvas keeps
+the dimensions it was created with, and only a desktop without one follows the
+Emacs window.
+
 A desktop without explicit dimensions fills its Emacs window.
 `etaf-desktop-fit-canvas` measures the display window, writes the retained
 canvas-size cell and reflows workspaces, maximized windows and floating

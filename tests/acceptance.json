@@ -221,6 +221,11 @@
    "purpose": "A default desktop refits its shell, tiles, maximized and floating windows on every workspace to the Emacs window's new size through etaf-desktop-fit-canvas."
   },
   {
+   "name": "etaf-desktop-nested-desktop-keeps-the-host-window-fit",
+   "file": "tests/etaf-desktop-tests.el",
+   "purpose": "A desktop embedded in another desktop's window shares its buffer without taking over the window fit: resizing still refits the outer desktop while the nested desktop keeps its explicit canvas."
+  },
+  {
    "name": "etaf-desktop-application-errors-are-isolated",
    "file": "tests/etaf-desktop-tests.el",
    "purpose": "A failing application becomes an error placeholder while other desktop windows remain usable."

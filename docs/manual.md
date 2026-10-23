@@ -35,7 +35,10 @@ bindings, without re-rendering the desktop tree.
 `etaf-desktop-fit-canvas` runs the same refit on demand, for example after
 `split-window` in batch Emacs where no redisplay hook fires.  Pass explicit
 dimensions when a desktop embeds a fixed-size surface or when tests need
-deterministic geometry.
+deterministic geometry.  Several desktops can share one buffer, because an
+application embeds a desktop View in one of its windows: every desktop
+mounted in that buffer follows the same Emacs window, so resizing refits the
+outer desktop while a nested desktop keeps the canvas it was created with.
 
 The mounted desktop hides that buffer's header and mode lines so its workspace
 bar, canvas and taskbar occupy the complete visible body.  Application status

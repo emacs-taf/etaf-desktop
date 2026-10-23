@@ -992,6 +992,51 @@ restores the full shell without a structural re-render."
                 (etaf-unmount runtime)))))
       (etaf-desktop-close desktop))))
 
+(ert-deftest etaf-desktop-nested-desktop-keeps-the-host-window-fit ()
+  "A desktop nested in a window leaves the enclosing desktop's refit intact.
+Both desktops share one buffer.  Resizing the Emacs window refits the outer
+desktop, while the nested desktop keeps the explicit canvas it was created
+with."
+  (let* ((buffer (generate-new-buffer " *desktop-nested-fit*"))
+         (outer (etaf-desktop-create :name (buffer-name buffer)))
+         (inner (etaf-desktop-create :name " *desktop-nested-fit-inner*"
+                                     :canvas-width 320 :canvas-height 12))
+         (frame (selected-frame))
+         (frame-size (cons (frame-width frame) (frame-height frame))))
+    (unwind-protect
+        (save-window-excursion
+          (set-window-buffer (selected-window) buffer)
+          (delete-other-windows (selected-window))
+          (etaf-desktop-mount outer buffer)
+          ;; The mount schedules one window-fit; let it settle before resizing.
+          (sleep-for 0.3)
+          ;; The nested shell mounts after the outer one, as it does when an
+          ;; application opens a desktop window on a running desktop.
+          (etaf-desktop-open-window
+           outer 'nested :title "Nested" :x 8 :y 1 :width 240 :height 10
+           :min-width 20 :min-height 4
+           :view (etaf-desktop-view inner))
+          (etaf-runtime-flush (etaf-runtime-for-buffer buffer))
+          (etaf-desktop-fit-canvas outer)
+          (let* ((window (get-buffer-window buffer))
+                 (before (etaf-desktop-state outer))
+                 (inner-canvas (list (plist-get (etaf-desktop-state inner) :canvas-width)
+                                     (plist-get (etaf-desktop-state inner) :canvas-height))))
+            (set-frame-size frame (+ (car frame-size) 20) (+ (cdr frame-size) 9))
+            (run-hook-with-args 'window-size-change-functions frame)
+            (sleep-for 0.3)
+            (should (> (plist-get (etaf-desktop-state outer) :canvas-height)
+                       (plist-get before :canvas-height)))
+            (should (= (plist-get (etaf-desktop-state outer) :canvas-height)
+                       (max 8 (- (window-body-height window) 2))))
+            ;; The nested desktop keeps the canvas it was created with.
+            (should (equal (list (plist-get (etaf-desktop-state inner) :canvas-width)
+                                 (plist-get (etaf-desktop-state inner) :canvas-height))
+                           inner-canvas))))
+      (set-frame-size frame (car frame-size) (cdr frame-size))
+      (etaf-desktop-close outer)
+      (kill-buffer buffer))))
+
 (ert-deftest etaf-desktop-toggle-layout-mode-switches-the-workspace ()
   "The workspace control switches between floating and tiling."
   (let ((desktop (etaf-desktop-create :name " *desktop-toggle*"
