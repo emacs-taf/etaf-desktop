@@ -1037,6 +1037,77 @@ with."
       (etaf-desktop-close outer)
       (kill-buffer buffer))))
 
+(ert-deftest etaf-desktop-region-fit-follows-the-hosting-window ()
+  "A desktop created with `:fit \='region' fills the window that renders it.
+Maximizing or resizing the hosting window reflows the embedded desktop the way
+it reflows any application view that fills its window, instead of leaving the
+canvas at its creation size."
+  (let* ((buffer (generate-new-buffer " *desktop-region-fit*"))
+         (outer (etaf-desktop-create :name " *desktop-region-fit-outer*"
+                                     :canvas-width 1162 :canvas-height 43))
+         (inner (etaf-desktop-create :name " *desktop-region-fit-inner*"
+                                     :fit 'region
+                                     :canvas-width 1078 :canvas-height 35)))
+    (unwind-protect
+        (save-window-excursion
+          (set-window-buffer (selected-window) buffer)
+          (delete-other-windows (selected-window))
+          (etaf-desktop-open-window
+           outer 'host :title "Nested" :x 32 :y 2 :width 1098 :height 39
+           :min-width 240 :min-height 10
+           :view (etaf-desktop-view inner))
+          (etaf-desktop-open-window
+           inner 'app :title "App" :x 10 :y 1 :width 900 :height 20
+           :min-width 160 :min-height 6
+           :view (etaf-view (text "inner app")))
+          (etaf-desktop-mount outer buffer)
+          (etaf-runtime-flush (etaf-runtime-for-buffer buffer))
+          (sleep-for 0.2)
+          (let ((before (etaf-desktop-state inner)))
+            (etaf-desktop-maximize-window outer 'host)
+            (etaf-runtime-flush (etaf-runtime-for-buffer buffer))
+            (sleep-for 0.2)
+            (let ((maximized (etaf-desktop-window-state outer 'host))
+                  (after (etaf-desktop-state inner)))
+              (should (> (plist-get after :canvas-width)
+                         (plist-get before :canvas-width)))
+              (should (= (plist-get after :canvas-height)
+                         (- (plist-get maximized :height) 4)))
+              (etaf-desktop-resize-window outer 'host 700 20)
+              (etaf-runtime-flush (etaf-runtime-for-buffer buffer))
+              (sleep-for 0.2)
+              (let ((shrunk (etaf-desktop-state inner)))
+                (should (= (plist-get shrunk :canvas-height) 16))
+                (should (< (plist-get shrunk :canvas-width) 700))))))
+      (etaf-desktop-close outer)
+      (kill-buffer buffer))))
+
+(ert-deftest etaf-desktop-instance-window-ids-stay-unique-across-desktops ()
+  "Windows of one application differ between two desktops.
+The ID carries the owning desktop's token, so ETAF Host references derived
+from it cannot collide when one desktop is embedded in the other."
+  (let ((app (lambda (_context)
+               (list :windows (list (list :id 'main :title "Same"
+                                          :view (etaf-view (text "same")))))))
+        (one (etaf-desktop-create :name " *desktop-token-one*"))
+        (two (etaf-desktop-create :name " *desktop-token-two*")))
+    (unwind-protect
+        (progn
+          (etaf-desktop-register-app 'token-probe :title "Probe" :open app)
+          (let* ((first (plist-get (etaf-desktop-launch one 'token-probe) :windows))
+                 (second (plist-get (etaf-desktop-launch two 'token-probe) :windows)))
+            (should (= 1 (length first)))
+            (should (= 1 (length second)))
+            (should-not (equal (car first) (car second)))
+            (dolist (id (list (car first) (car second)))
+              (should (string-match-p "/main\\'" (format "%s" id))))
+            ;; Both desktops can still address their own window.
+            (should (etaf-desktop-window-state one (car first)))
+            (should (etaf-desktop-window-state two (car second)))))
+      (etaf-desktop-unregister-app 'token-probe t)
+      (etaf-desktop-close one)
+      (etaf-desktop-close two))))
+
 (ert-deftest etaf-desktop-toggle-layout-mode-switches-the-workspace ()
   "The workspace control switches between floating and tiling."
   (let ((desktop (etaf-desktop-create :name " *desktop-toggle*"

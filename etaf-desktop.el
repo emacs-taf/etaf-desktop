@@ -2,7 +2,7 @@
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; Author: ETAF contributors
-;; Version: 0.1.3
+;; Version: 0.1.4
 ;; Package-Requires: ((emacs "29.1") (etaf "0.2.1") (etaf-ui "0.1.0"))
 ;; Keywords: ui, desktop, tools
 ;; URL: https://github.com/emacs-taf/etaf-desktop
@@ -17,13 +17,16 @@
 ;; publication provider; ETAF owns state and lifecycle; ETAF UI supplies the
 ;; controls used by the desktop surface.
 ;;
-;; Function: etaf-desktop-create (&key (name "*ETAF Desktop*") canvas-width canvas-height (workspaces '(main)))
+;; Function: etaf-desktop-create (&key (name "*ETAF Desktop*") canvas-width canvas-height fit (workspaces '(main)))
 ;;;###autoload (autoload 'etaf-desktop-create "etaf-desktop" nil nil)
 ;; Create an unmounted desktop controller.  WORKSPACES is a nonempty list of
 ;; unique keys.  When CANVAS-WIDTH or CANVAS-HEIGHT is nil, the mounted desktop
 ;; derives its canvas from the displaying Emacs window and fills its visible
-;; body.  The controller owns a reactive state source and can be mounted with
-;; `etaf-desktop-mount'.
+;; body.  FIT is nil for that behaviour, or `region' when an application embeds
+;; `etaf-desktop-view' in a window: the desktop then follows that window body
+;; through `etaf-viewport', so resizing or maximizing the hosting window
+;; reflows this desktop.  The controller owns a reactive state source and can
+;; be mounted with `etaf-desktop-mount'.
 ;;
 ;; Error: etaf-desktop-error
 ;; Invalid desktop operation, unknown window/workspace, or rejected geometry.

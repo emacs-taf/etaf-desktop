@@ -2,6 +2,21 @@
 
 All notable changes to ETAF Desktop are documented here.
 
+## [0.1.4] - 2026-10-24
+
+### Added
+
+- `etaf-desktop-create` accepts `:fit 'region'`. A desktop embedded with
+  `etaf-desktop-view` in another application's window then follows that window
+  body through `etaf-viewport`, so moving, resizing or maximizing the hosting
+  window reflows the desktop and its windows like any application view that
+  fills its window. The desktop keeps one cell clear on each side and one row
+  at the bottom for the window's resize strips.
+
+- Application instance window IDs are `<token>/<instance-id>/<window-id>`. The
+  per-desktop token keeps ETAF Host references unique when desktops embed each
+  other, and makes the owning desktop readable from a window ID.
+
 ## [0.1.3] - 2026-10-24
 
 ### Fixed

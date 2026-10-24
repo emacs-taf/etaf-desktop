@@ -163,9 +163,14 @@ minimized state only when every member window is minimized."
          (lambda () (and (cl-every #'etaf-value sources) 'minimized))))
     (etaf-desktop--window-taskbar-state-source (car members))))
 
+(defvar etaf-desktop--next-token 0
+  "Last desktop token handed out.  Window IDs carry it so two desktops that
+embed each other keep distinct ETAF Host references.")
+
 (cl-defstruct (etaf-desktop--controller
                (:constructor etaf-desktop--controller-create))
-  name canvas-width canvas-height canvas-size-ref state-ref fit-timer buffer runtime
+  name token fit canvas-width canvas-height canvas-size-ref state-ref fit-timer
+  buffer runtime
   launcher-ref switcher-ref settings-ref settings-open-ref layout-label-ref
   close-request-ref owns-runtime-p owns-buffer-p divider-drag-origin)
 
@@ -1701,7 +1706,14 @@ re-rendering the desktop tree."
    ;; Emacs continuation.  The row count stays explicit so headless renders
    ;; keep canvas-height rows between the workspace bar and the taskbar.
    :width (etaf-desktop--canvas-box-width desktop)
-   :height (list 'lh (+ (etaf-desktop--canvas-height-value desktop) 2))
+   :height (list 'lh (+ (etaf-desktop--canvas-height-value desktop)
+                        (if (eq (etaf-desktop--controller-fit desktop) 'region)
+                            3 2)))
+   ;; A window's resize strips cover its outermost body row and columns, so an
+   ;; embedded desktop leaves those margin cells clear like any application
+   ;; content; the extra row above is the strip row itself.
+   :padding (when (eq (etaf-desktop--controller-fit desktop) 'region)
+              '((lh 0) (ch 1) (lh 1) (ch 1)))
    ;; The desktop surface carries the canvas color behind everything; the
    ;; workspace bar and taskbar set their own background.
    :background-color (etaf-desktop--theme-token :ui-shell-bg)
@@ -1738,10 +1750,42 @@ re-rendering the desktop tree."
      (slot :name 'canvas))
    (slot :name 'default)))
 
+(defun etaf-desktop--fit-render-region (desktop)
+  "Fit DESKTOP's canvas to the surface its View is rendered into.
+Reads `etaf-viewport' and `etaf-display-metrics' reactively, so a desktop
+embedded in another application's window keeps filling that window as it is
+moved, resized or maximized.  The window keeps one cell clear on each side and
+one row at the bottom for its own resize strips.
+Return the applied size, or nil before the surface has committed geometry."
+  (let ((viewport (etaf-viewport))
+        (metrics (etaf-display-metrics)))
+    (when (and (consp viewport)
+               (integerp (car viewport)) (> (car viewport) 0)
+               (integerp (cdr viewport)) (> (cdr viewport) 3))
+      (let* ((char-width (max 1 (or (plist-get metrics :char-width) 1)))
+             (usable (- (car viewport) (* 2 char-width)))
+             (width (max char-width
+                         (* char-width (max 1 (floor (/ usable char-width))))))
+             (height (max 8 (- (cdr viewport) 3))))
+        ;; An initial canvas renders the first frame at a sane size; once the
+        ;; surface is measured the region owns the size.
+        (when (or (etaf-desktop--controller-canvas-width desktop)
+                  (etaf-desktop--controller-canvas-height desktop))
+          (setf (etaf-desktop--controller-canvas-width desktop) nil
+                (etaf-desktop--controller-canvas-height desktop) nil))
+        (etaf-desktop--apply-canvas desktop width height)))))
+
 (etaf-define-component etaf-desktop--shell (&key desktop)
   "Render DESKTOP as a controlled desktop surface."
   :setup
   (progn
+    ;; A desktop embedded in another application's window follows that window
+    ;; body: the region's committed size drives its canvas, so resizing or
+    ;; maximizing the hosting window reflows this desktop like any application
+    ;; whose view fills its window.
+    (when (eq (etaf-desktop--controller-fit desktop) 'region)
+      (etaf-watch-effect
+       (lambda () (etaf-desktop--fit-render-region desktop))))
     ;; Playground mounts the public View directly instead of calling
     ;; `etaf-desktop-mount'; keep the buffer-local shortcut lifecycle at the
     ;; Desktop Component boundary so both consumers behave identically.
@@ -1804,13 +1848,20 @@ re-rendering the desktop tree."
                        (etaf-desktop--state-workspaces state)))))))))
 
 (cl-defun etaf-desktop-create
-    (&key (name "*ETAF Desktop*") canvas-width canvas-height
+    (&key (name "*ETAF Desktop*") canvas-width canvas-height fit
           (workspaces '(main)))
   "Create an application desktop with CANVAS-WIDTH and CANVAS-HEIGHT.
 WORKSPACES is a nonempty list of stable workspace keys.  The returned desktop
-owns its reactive state and does not mount a buffer until `etaf-desktop-mount'."
+owns its reactive state and does not mount a buffer until `etaf-desktop-mount'.
+
+FIT is nil to follow the Emacs window that displays the desktop, or `region'
+to follow the surface its View is rendered into.  Use `region' when an
+application embeds `etaf-desktop-view' in one of its windows: the desktop then
+keeps filling that window body as it is moved, resized or maximized."
   (unless (and (stringp name) (not (string-empty-p name)))
     (etaf-desktop--fail "Desktop name must be a nonempty string"))
+  (unless (memq fit '(nil region))
+    (etaf-desktop--fail "Desktop fit must be nil or `region', got %S" fit))
   (when canvas-width (etaf-desktop--number canvas-width "canvas-width" 1))
   (when canvas-height (etaf-desktop--number canvas-height "canvas-height" 8))
   (unless (and (listp workspaces) workspaces
@@ -1819,7 +1870,8 @@ owns its reactive state and does not mount a buffer until `etaf-desktop-mount'."
     (etaf-desktop--fail "Workspaces must be a nonempty list of unique keys"))
   (let ((controller
          (etaf-desktop--controller-create
-          :name name :canvas-width canvas-width :canvas-height canvas-height
+          :name name :token (format "d%d" (cl-incf etaf-desktop--next-token))
+          :fit fit :canvas-width canvas-width :canvas-height canvas-height
           :state-ref nil)))
     (setf (etaf-desktop--controller-state-ref controller)
           (etaf-ref
@@ -2445,39 +2497,46 @@ The desktop calls this itself from Emacs' window size hooks; consumers call
 it after resizing a window outside the redisplay cycle, for example in batch
 Emacs."
   (let* ((desktop (etaf-desktop--controller desktop))
-         (window (or window (etaf-desktop--display-window desktop)))
-         (ref (etaf-desktop--controller-canvas-size-ref desktop)))
-    (when (and ref
-               (window-live-p window)
+         (window (or window (etaf-desktop--display-window desktop))))
+    (when (and (window-live-p window)
+               (memq (etaf-desktop--controller-fit desktop) '(nil window))
                (not (and (etaf-desktop--controller-canvas-width desktop)
                          (etaf-desktop--controller-canvas-height desktop))))
       (let ((size (etaf-desktop--window-canvas-size window)))
-        (unless (equal size (etaf-value ref))
-          (let ((state (etaf-desktop--state desktop)))
-            (etaf-call-with-batch
-             (lambda ()
-               (etaf-set-value ref size)
-               ;; Every workspace shares the one canvas, so windows parked
-               ;; on inactive workspaces refit now rather than reappearing
-               ;; off-canvas when their workspace is switched to later.
-               (let ((width (etaf-desktop--canvas-width-value desktop))
-                     (height (etaf-desktop--canvas-height-value desktop)))
-                 (dolist (window (etaf-desktop--state-windows state))
-                   (cond
-                    ((etaf-desktop--window-maximized window)
-                     (setf (etaf-desktop--window-x window) 0
-                           (etaf-desktop--window-y window) 0
-                           (etaf-desktop--window-width window) width
-                           (etaf-desktop--window-height window) height))
-                    ((not (etaf-desktop--tiled-window-p desktop window))
-                     (etaf-desktop--fit-floating-window
-                      desktop window width height)))))
-               ;; The layout's own batch joins this one, so the frame, the
-               ;; windows and the dividers publish in a single projection.
-               (when (fboundp 'etaf-desktop-layout-refresh)
-                 (dolist (workspace (etaf-desktop--state-workspaces state))
-                   (etaf-desktop-layout-refresh desktop workspace))))))
-          size)))))
+        (etaf-desktop--apply-canvas desktop (car size) (cdr size))))))
+
+(defun etaf-desktop--apply-canvas (desktop width height)
+  "Resize DESKTOP's canvas to WIDTH pixels by HEIGHT rows and reflow it.
+Return the applied `(WIDTH . HEIGHT)', or nil when it already holds that size."
+  (let* ((desktop (etaf-desktop--controller desktop))
+         (ref (etaf-desktop--controller-canvas-size-ref desktop))
+         (size (cons width height)))
+    (when (and ref (not (equal size (etaf-value ref))))
+      (let ((state (etaf-desktop--state desktop)))
+        (etaf-call-with-batch
+         (lambda ()
+           (etaf-set-value ref size)
+           ;; Every workspace shares the one canvas, so windows parked on
+           ;; inactive workspaces refit now rather than reappearing off-canvas
+           ;; when their workspace is switched to later.
+           (let ((width (etaf-desktop--canvas-width-value desktop))
+                 (height (etaf-desktop--canvas-height-value desktop)))
+             (dolist (window (etaf-desktop--state-windows state))
+               (cond
+                ((etaf-desktop--window-maximized window)
+                 (setf (etaf-desktop--window-x window) 0
+                       (etaf-desktop--window-y window) 0
+                       (etaf-desktop--window-width window) width
+                       (etaf-desktop--window-height window) height))
+                ((not (etaf-desktop--tiled-window-p desktop window))
+                 (etaf-desktop--fit-floating-window
+                  desktop window width height)))))
+           ;; The layout's own batch joins this one, so the frame, the windows
+           ;; and the dividers publish in a single projection.
+           (when (fboundp 'etaf-desktop-layout-refresh)
+             (dolist (workspace (etaf-desktop--state-workspaces state))
+               (etaf-desktop-layout-refresh desktop workspace))))))
+      size)))
 
 (defun etaf-desktop--transient-space-borrowed-p (desktop window)
   "Whether WINDOW is shorter because transient UI borrows its lines.
@@ -2512,6 +2571,7 @@ A borrowed minibuffer keeps the committed canvas until the prompt closes."
       (dolist (desktop (buffer-local-value 'etaf-desktop--buffer-desktops
                                            (window-buffer window)))
         (when (and (etaf-desktop--controller-p desktop)
+                   (memq (etaf-desktop--controller-fit desktop) '(nil window))
                    (not (memq desktop etaf-desktop--fit-pending)))
           (push desktop etaf-desktop--fit-pending))))
     (when (and etaf-desktop--fit-pending (null etaf-desktop--fit-timer))

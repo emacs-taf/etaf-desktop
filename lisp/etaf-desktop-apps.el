@@ -203,7 +203,12 @@ When WORKSPACE is non-nil it fills a missing spec workspace."
             (when (and workspace (not (plist-member spec :workspace)))
               (setq spec (plist-put (copy-sequence spec) :workspace workspace)))
             (let* ((local-id (or (plist-get spec :id) index))
-                   (id (format "%s/%s" (etaf-desktop--instance-id instance) local-id))
+                   ;; The desktop token keeps this ID, and every ETAF Host
+                   ;; reference derived from it, unique when desktops embed
+                   ;; each other: two levels can otherwise both run
+                   ;; "etaf-manual-1/main" and shadow each other's Hosts.
+                   (id (format "%s/%s/%s" (etaf-desktop--controller-token desktop)
+                               (etaf-desktop--instance-id instance) local-id))
                    (window (etaf-desktop-open-window
                             desktop id
                             :title (or (plist-get spec :title)
@@ -239,7 +244,8 @@ When WORKSPACE is non-nil it fills a missing spec workspace."
   "Open a visible error placeholder for INSTANCE with MESSAGE."
   (condition-case _err
       (let ((window (etaf-desktop-open-window
-                     desktop (format "%s/error" (etaf-desktop--instance-id instance))
+                     desktop (format "%s/%s/error" (etaf-desktop--controller-token desktop)
+                                     (etaf-desktop--instance-id instance))
                      :title (format "ETAF app error: %s"
                                     (etaf-desktop--instance-app-id instance))
                      :view (etaf-desktop--frame-body message)
@@ -568,7 +574,8 @@ callbacks; View objects and Runtime internals are excluded."
                             (hash-table-values
                              (etaf-desktop--app-store-instances
                               (etaf-desktop--app-store desktop))))))
-    (list :version 1 :desktop (copy-tree state)
+    (list :version 1 :token (etaf-desktop--controller-token desktop)
+          :desktop (copy-tree state)
           :layouts (etaf-desktop--session-layouts
                     desktop (plist-get state :workspaces))
           :instances instances)))
@@ -649,6 +656,11 @@ other applications continue restoring."
     (unless (and (listp session) (= (or (plist-get session :version) 0) 1)
                  (listp saved-desktop))
       (etaf-desktop--fail "Unsupported ETAF desktop session"))
+    ;; Window IDs carry the desktop token, so a restored session keeps the
+    ;; IDs it saved instead of addressing windows that no longer exist.
+    (let ((token (plist-get session :token)))
+      (when (and (stringp token) (not (string-empty-p token)))
+        (setf (etaf-desktop--controller-token desktop) token)))
     (etaf-desktop--clear-apps desktop)
     (etaf-desktop--clear-windows desktop)
     (etaf-desktop--restore-workspaces desktop
