@@ -61,16 +61,20 @@ is a buffer-local set of those desktops rather than a single owner, so a
 nested desktop neither takes the enclosing desktop's refit nor loses it on
 unmount. Each desktop still decides its own geometry: an explicit canvas keeps
 the dimensions it was created with, a desktop without one follows the Emacs
-window, and `:fit 'region'` follows the viewport region of the window it is
+window, and `:fit 'region'` fills the viewport region of the window it is
 rendered into. The region path is the same reactive read a normal application
 view uses for its size, so maximizing or resizing the hosting window reflows a
 nested desktop instead of leaving it at its creation size.
 
-Window IDs of application instances are `<token>/<instance-id>/<window-id>`.
-The per-desktop token exists because ETAF requires unique Host references per
-Runtime: two desktops hosting the same application would otherwise derive the
-same reference names for their windows. Callers that open windows directly keep
-their own IDs and are responsible for uniqueness within the buffer.
+Window IDs of application instances are `<token>/<instance-id>/<window-id>`, and
+the desktop's own controls are `<token>-<name>`. The per-desktop token exists
+because ETAF resolves keys, retained updates and focus by Host reference within
+one Runtime: two desktops mounted in one buffer would otherwise intern the same
+names for their bars, launcher entries and dialogs, and a press on the outer
+level's control would reach the inner one. Callers that open windows directly
+keep their own IDs and are responsible for uniqueness within the buffer. The
+token is part of the state snapshot so callers and logs can compute a
+reference and tell which level it belongs to.
 
 A desktop without explicit dimensions fills its Emacs window.
 `etaf-desktop-fit-canvas` measures the display window, writes the retained

@@ -40,11 +40,12 @@ deterministic geometry.
 Several desktops can share one buffer, because an application embeds a desktop
 View in one of its windows.  A desktop created with `:fit 'region' follows the
 window body it is rendered into through `etaf-viewport`: moving, resizing or
-maximizing the hosting window reflows that desktop and its windows, keeping one
-cell clear on each side and one row at the bottom for the window's resize
-strips.  A desktop with explicit dimensions keeps the canvas it was created
-with, and every desktop mounted in the buffer still follows the Emacs window
-that displays it, so resizing refits the outer desktop as well.
+maximizing the hosting window reflows that desktop and its windows, and the
+canvas fills the surface edge to edge — the desktop's own workspace bar and
+taskbar are the only rows it does not use for windows.  A desktop with explicit
+dimensions keeps the canvas it was created with, and every desktop mounted in
+the buffer still follows the Emacs window that displays it, so resizing refits
+the outer desktop as well.
 
 The mounted desktop hides that buffer's header and mode lines so its workspace
 bar, canvas and taskbar occupy the complete visible body.  Application status
@@ -282,9 +283,12 @@ return detached state snapshots.
 
 An instance's windows carry its desktop's token, instance ID and the spec's
 own ID: `<token>/<instance-id>/<window-id>`, for example `d3/etaf-manual-1/main`.
-The token keeps ETAF Host references unique when desktops are embedded in each
-other, and makes the owning desktop readable from a window ID in logs and
-state queries.
+The desktop's own controls use the same namespace as `<token>-<name>`, for
+example `d3-etaf-workspace-layout`. The token keeps ETAF Host references unique
+when desktops are embedded in each other — otherwise two levels intern the same
+names and a press or focus reaches the wrong one — and makes the owning desktop
+readable from a window ID in logs and state queries.
+`etaf-desktop-state` reports it as `:token`.
 
 [examples/etaf-desktop-demo.el](../examples/etaf-desktop-demo.el) is the
 runnable form of this contract: `M-x etaf-desktop-demo-open` registers six

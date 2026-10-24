@@ -221,6 +221,11 @@
    "purpose": "A default desktop refits its shell, tiles, maximized and floating windows on every workspace to the Emacs window's new size through etaf-desktop-fit-canvas."
   },
   {
+   "name": "etaf-desktop-nested-bars-keep-their-own-controls",
+   "file": "tests/etaf-desktop-tests.el",
+   "purpose": "Every desktop's bars and modals carry their own Host references, so a layout press on the outer desktop never reaches the same control of a desktop nested in its window."
+  },
+  {
    "name": "etaf-desktop-region-fit-follows-the-hosting-window",
    "file": "tests/etaf-desktop-tests.el",
    "purpose": "A desktop created with :fit 'region fills the window that renders it: maximizing or resizing the hosting window reflows the embedded desktop instead of leaving the canvas at its creation size."

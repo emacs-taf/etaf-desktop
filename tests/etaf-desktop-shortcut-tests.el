@@ -3,6 +3,10 @@
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 
 (require 'ert)
+
+(defun desktop-test-ref (desktop name)
+  "Return DESKTOP's Host reference for NAME."
+  (intern (concat (plist-get (etaf-desktop-state desktop) :token) "-" name)))
 (require 'etaf-desktop)
 
 (defun etaf-desktop-shortcut-test--press (buffer key)
@@ -164,10 +168,10 @@
               (should (string-match-p "Close window"
                                       (buffer-substring-no-properties
                                        (point-min) (point-max)))))
-            (etaf-dispatch-event runtime 'etaf-desktop-close-cancel 'press)
+            (etaf-dispatch-event runtime (desktop-test-ref desktop "etaf-desktop-close-cancel") 'press)
             (should (etaf-desktop-window-state desktop 'one))
             (etaf-desktop-shortcut-test--press buffer "q")
-            (etaf-dispatch-event runtime 'etaf-desktop-close-confirm 'press)
+            (etaf-dispatch-event runtime (desktop-test-ref desktop "etaf-desktop-close-confirm") 'press)
             (should-not (etaf-desktop-windows desktop))))
       (etaf-desktop-close desktop))))
 

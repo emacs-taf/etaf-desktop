@@ -1,6 +1,10 @@
 ;;; etaf-desktop-tests.el --- Public desktop application scenarios -*- lexical-binding: t; -*-
 
 (require 'ert)
+
+(defun desktop-test-ref (desktop name)
+  "Return DESKTOP's Host reference for NAME."
+  (intern (concat (plist-get (etaf-desktop-state desktop) :token) "-" name)))
 (require 'cl-lib)
 (require 'etaf-desktop)
 (require 'etaf)
@@ -739,12 +743,12 @@ the minibuffer."
               (funcall press-close)
               (should (funcall dialog-shown-p))
               (should (funcall window-open-p))
-              (etaf-dispatch-event runtime 'etaf-desktop-close-cancel 'press)
+              (etaf-dispatch-event runtime (desktop-test-ref desktop "etaf-desktop-close-cancel") 'press)
               (should-not (funcall dialog-shown-p))
               (should (funcall window-open-p))
               (funcall press-close)
               (should (funcall dialog-shown-p))
-              (etaf-dispatch-event runtime 'etaf-desktop-close-confirm 'press)
+              (etaf-dispatch-event runtime (desktop-test-ref desktop "etaf-desktop-close-confirm") 'press)
               (should-not (funcall dialog-shown-p))
               (should-not (funcall window-open-p)))))
       (etaf-desktop-close desktop))))
@@ -1071,14 +1075,16 @@ canvas at its creation size."
                   (after (etaf-desktop-state inner)))
               (should (> (plist-get after :canvas-width)
                          (plist-get before :canvas-width)))
+              ;; The window's title row sits above the region; the desktop
+              ;; bar and taskbar are the only rows it does not fill with canvas.
               (should (= (plist-get after :canvas-height)
-                         (- (plist-get maximized :height) 4)))
+                         (- (plist-get maximized :height) 3)))
               (etaf-desktop-resize-window outer 'host 700 20)
               (etaf-runtime-flush (etaf-runtime-for-buffer buffer))
               (sleep-for 0.2)
               (let ((shrunk (etaf-desktop-state inner)))
-                (should (= (plist-get shrunk :canvas-height) 16))
-                (should (< (plist-get shrunk :canvas-width) 700))))))
+                (should (= (plist-get shrunk :canvas-height) 17))
+                (should (<= (plist-get shrunk :canvas-width) 700))))))
       (etaf-desktop-close outer)
       (kill-buffer buffer))))
 
@@ -1107,6 +1113,41 @@ from it cannot collide when one desktop is embedded in the other."
       (etaf-desktop-unregister-app 'token-probe t)
       (etaf-desktop-close one)
       (etaf-desktop-close two))))
+
+(ert-deftest etaf-desktop-nested-bars-keep-their-own-controls ()
+  "Each desktop's bars keep their own Host references.
+A layout press addressed to the outer desktop must not reach the inner one:
+with both levels mounted in one Runtime an unnamespaced reference made the
+inner level's control answer for the outer bar."
+  (let* ((buffer (generate-new-buffer " *desktop-nested-refs*"))
+         (outer (etaf-desktop-create :name " *desktop-nested-refs-outer*"
+                                     :canvas-width 800 :canvas-height 30))
+         (inner (etaf-desktop-create :name " *desktop-nested-refs-inner*"
+                                     :fit 'region
+                                     :canvas-width 600 :canvas-height 20)))
+    (unwind-protect
+        (save-window-excursion
+          (set-window-buffer (selected-window) buffer)
+          (delete-other-windows (selected-window))
+          (etaf-desktop-open-window
+           outer 'host :title "Nested" :x 8 :y 1 :width 700 :height 24
+           :min-width 20 :min-height 8
+           :view (etaf-desktop-view inner))
+          (etaf-desktop-mount outer buffer)
+          (etaf-runtime-flush (etaf-runtime-for-buffer buffer))
+          (let ((runtime (etaf-runtime-for-buffer buffer)))
+            (should-not (equal (desktop-test-ref outer "etaf-workspace-layout")
+                               (desktop-test-ref inner "etaf-workspace-layout")))
+            (should-not (equal (desktop-test-ref outer "etaf-workspace-settings")
+                               (desktop-test-ref inner "etaf-workspace-settings")))
+            (should-not (equal (desktop-test-ref outer "etaf-taskbar-launcher")
+                               (desktop-test-ref inner "etaf-taskbar-launcher")))
+            (etaf-dispatch-event
+             runtime (desktop-test-ref outer "etaf-workspace-layout") 'press)
+            (should (eq 'tiling (etaf-desktop-layout-mode outer)))
+            (should (eq 'floating (etaf-desktop-layout-mode inner)))))
+      (etaf-desktop-close outer)
+      (kill-buffer buffer))))
 
 (ert-deftest etaf-desktop-toggle-layout-mode-switches-the-workspace ()
   "The workspace control switches between floating and tiling."
@@ -1159,19 +1200,19 @@ from it cannot collide when one desktop is embedded in the other."
             (should (funcall label-visible-p "Floating"))
             (should-not (funcall label-visible-p "Tiled"))
             ;; The first tiling of two windows allocates a divider node.
-            (etaf-dispatch-event runtime 'etaf-workspace-layout 'press)
+            (etaf-dispatch-event runtime (desktop-test-ref desktop "etaf-workspace-layout") 'press)
             (should (eq 'tiling (etaf-desktop-layout-mode desktop)))
             (should (funcall label-visible-p "Tiled"))
             (should-not (funcall label-visible-p "Floating"))
             ;; Later toggles rewrite retained rows in one commit each.
             (let ((revision (etaf-runtime-revision runtime)))
-              (etaf-dispatch-event runtime 'etaf-workspace-layout 'press)
+              (etaf-dispatch-event runtime (desktop-test-ref desktop "etaf-workspace-layout") 'press)
               (should (eq 'floating (etaf-desktop-layout-mode desktop)))
               (should (= (1+ revision) (etaf-runtime-revision runtime)))
               (should (eq 'lines (plist-get (etaf-runtime-update-report runtime) :strategy)))
               (should (funcall label-visible-p "Floating"))
               (should-not (funcall label-visible-p "Tiled"))
-              (etaf-dispatch-event runtime 'etaf-workspace-layout 'press)
+              (etaf-dispatch-event runtime (desktop-test-ref desktop "etaf-workspace-layout") 'press)
               (should (eq 'tiling (etaf-desktop-layout-mode desktop)))
               (should (= (+ 2 revision) (etaf-runtime-revision runtime)))
               (should (eq 'lines (plist-get (etaf-runtime-update-report runtime) :strategy)))
@@ -1211,7 +1252,7 @@ from it cannot collide when one desktop is embedded in the other."
                                               (or (plist-get props :class) "")))))
                      (etaf-runtime-handler-entries runtime)))))
             (etaf-desktop-toggle-settings desktop t)
-            (etaf-dispatch-event runtime 'settings-tab-layout 'press)
+            (etaf-dispatch-event runtime (desktop-test-ref desktop "settings-tab-layout") 'press)
             (should (funcall select-shows-p "Floating"))
             ;; The `l' shortcut and the bar control both go through the
             ;; layout API rather than the settings ref.
@@ -1303,7 +1344,7 @@ from it cannot collide when one desktop is embedded in the other."
           (let* ((buffer (etaf-desktop-mount desktop))
                  (runtime (etaf-runtime-for-buffer buffer)))
             (etaf-desktop-maximize-window desktop 'two)
-            (etaf-dispatch-event runtime 'etaf-workspace-layout 'press)
+            (etaf-dispatch-event runtime (desktop-test-ref desktop "etaf-workspace-layout") 'press)
             (should (eq 'tiling (etaf-desktop-layout-mode desktop)))
             (should-not (etaf-desktop-window-maximized-p desktop 'two))
             (with-current-buffer buffer
@@ -1465,10 +1506,10 @@ from it cannot collide when one desktop is embedded in the other."
             (should-not (etaf-desktop-launcher-open-p desktop))
             (etaf-desktop-toggle-settings desktop t)
             (should (etaf-desktop-settings-open-p desktop))
-            (etaf-dispatch-event runtime 'etaf-taskbar-launcher 'press)
+            (etaf-dispatch-event runtime (desktop-test-ref desktop "etaf-taskbar-launcher") 'press)
             (should-not (etaf-desktop-settings-open-p desktop))
             (should (etaf-desktop-launcher-open-p desktop))
-            (etaf-dispatch-event runtime 'etaf-taskbar-launcher 'press)
+            (etaf-dispatch-event runtime (desktop-test-ref desktop "etaf-taskbar-launcher") 'press)
             (should-not (etaf-desktop-launcher-open-p desktop))
             (etaf-desktop-toggle-switcher desktop t)
             (etaf-dispatch-event runtime 'probe 'press)

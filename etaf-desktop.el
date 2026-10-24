@@ -2,7 +2,7 @@
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; Author: ETAF contributors
-;; Version: 0.1.4
+;; Version: 0.1.5
 ;; Package-Requires: ((emacs "29.1") (etaf "0.2.1") (etaf-ui "0.1.0"))
 ;; Keywords: ui, desktop, tools
 ;; URL: https://github.com/emacs-taf/etaf-desktop
@@ -34,7 +34,10 @@
 ;; Function: etaf-desktop-state (desktop)
 ;;;###autoload (autoload 'etaf-desktop-state "etaf-desktop" nil nil)
 ;; Return a detached plist describing canvas, workspaces, active window and all
-;; windows.  The plist and window entries are safe for callers to retain.
+;; windows.  `:token' is the desktop's ETAF Host reference namespace: its own
+;; controls are `<token>-<name>', and application windows are
+;; `<token>/<instance-id>/<window-id>'.  The plist and window entries are safe
+;; for callers to retain.
 ;;
 ;; Function: etaf-desktop-windows (desktop)
 ;;;###autoload (autoload 'etaf-desktop-windows "etaf-desktop" nil nil)

@@ -2,6 +2,26 @@
 
 All notable changes to ETAF Desktop are documented here.
 
+## [0.1.5] - 2026-10-24
+
+### Fixed
+
+- Every control a desktop owns carries the desktop's own Host reference
+  namespace: the layout and settings controls, the launcher entries, the
+  taskbar launcher and the close dialog. Two desktops mounted in one buffer — a
+  desktop embedded in another desktop's window — no longer shadow each other,
+  so a press or a focus on the outer desktop's control no longer acts on the
+  inner level's.
+
+- A desktop created with `:fit 'region' fills the surface it is rendered into
+  edge to edge. Its canvas takes the region's pixel width and every row above
+  its own taskbar, instead of leaving a band on the right and an empty row at
+  the bottom.
+
+`etaf-desktop-state` reports the desktop's `:token`, the namespace of its Host
+references: its own controls are `<token>-<name>` and its application windows
+are `<token>/<instance-id>/<window-id>`.
+
 ## [0.1.4] - 2026-10-24
 
 ### Added

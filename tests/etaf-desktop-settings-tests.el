@@ -3,6 +3,10 @@
 ;;; Code:
 
 (require 'ert)
+
+(defun desktop-test-ref (desktop name)
+  "Return DESKTOP's Host reference for NAME."
+  (intern (concat (plist-get (etaf-desktop-state desktop) :token) "-" name)))
 (require 'etaf-desktop)
 
 (defun etaf-desktop-test-settings-control (runtime label)
@@ -128,9 +132,9 @@
                (runtime (etaf-runtime-for-buffer buffer)))
           (save-window-excursion
             (switch-to-buffer buffer)
-            (etaf-focus runtime 'etaf-workspace-settings)
-            (etaf-dispatch-event runtime 'etaf-workspace-settings 'press)
-            (etaf-dispatch-event runtime 'settings-tab-layout 'press)
+            (etaf-focus runtime (desktop-test-ref desktop "etaf-workspace-settings"))
+            (etaf-dispatch-event runtime (desktop-test-ref desktop "etaf-workspace-settings") 'press)
+            (etaf-dispatch-event runtime (desktop-test-ref desktop "settings-tab-layout") 'press)
             (etaf-desktop-set-setting desktop :tile-outer-gap 0)
             (etaf-desktop-set-setting desktop :tile-inner-gap 1)
             (etaf-desktop-set-setting desktop :tile-outer-gap 4)
@@ -138,15 +142,17 @@
             (etaf-dispatch-event
              runtime (etaf-desktop-test-settings-control runtime "Done") 'press)
             (should-not (etaf-desktop-settings-open-p desktop))
-            (should (eq 'etaf-workspace-settings (etaf-focused-host-ref runtime)))
-            (etaf-dispatch-event runtime 'etaf-workspace-settings 'press)
-            (etaf-dispatch-event runtime 'settings-tab-layout 'press)
+            (should (eq (desktop-test-ref desktop "etaf-workspace-settings")
+                        (etaf-focused-host-ref runtime)))
+            (etaf-dispatch-event runtime (desktop-test-ref desktop "etaf-workspace-settings") 'press)
+            (etaf-dispatch-event runtime (desktop-test-ref desktop "settings-tab-layout") 'press)
             (etaf-dispatch-event
              runtime (etaf-desktop-test-settings-control runtime "Reset settings")
              'press)
             (call-interactively (key-binding (kbd "<escape>")))
             (should-not (etaf-desktop-settings-open-p desktop))
-            (should (eq 'etaf-workspace-settings (etaf-focused-host-ref runtime)))))
+            (should (eq (desktop-test-ref desktop "etaf-workspace-settings")
+                        (etaf-focused-host-ref runtime)))))
       (etaf-desktop-close desktop))))
 
 (provide 'etaf-desktop-settings-tests)

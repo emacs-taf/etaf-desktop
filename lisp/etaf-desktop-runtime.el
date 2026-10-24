@@ -163,6 +163,15 @@ minimized state only when every member window is minimized."
          (lambda () (and (cl-every #'etaf-value sources) 'minimized))))
     (etaf-desktop--window-taskbar-state-source (car members))))
 
+(defun etaf-desktop--ref (desktop name)
+  "Return the runtime Host reference NAME in DESKTOP's namespace.
+A desktop embedded in another desktop's window shares that ETAF Runtime, so
+component-owned references carry the desktop token; a bare name would let the
+inner level shadow the outer one."
+  (intern (concat (etaf-desktop--controller-token
+                   (etaf-desktop--controller desktop))
+                  "-" name)))
+
 (defvar etaf-desktop--next-token 0
   "Last desktop token handed out.  Window IDs carry it so two desktops that
 embed each other keep distinct ETAF Host references.")
@@ -1096,12 +1105,12 @@ the controller and clears on either answer."
                      (list
                       (etaf-node 'etaf-button
                                  (list :label "Cancel" :variant 'secondary
-                                       :ref 'etaf-desktop-close-cancel
+                                       :ref (etaf-desktop--ref desktop "etaf-desktop-close-cancel")
                                        :on-press cancel)
                                  nil)
                       (etaf-node 'etaf-button
                                  (list :label "Close window" :variant 'primary
-                                       :ref 'etaf-desktop-close-confirm
+                                       :ref (etaf-desktop--ref desktop "etaf-desktop-close-confirm")
                                        :on-press
                                        (lambda ()
                                          (funcall cancel)
@@ -1243,6 +1252,7 @@ MOVE, RESIZE-RIGHT and RESIZE-BOTTOM are owned by the window Component."
             groups)))
     (etaf-node 'etaf-taskbar
                (list :items items
+                     :ref-prefix (concat (etaf-desktop--controller-token desktop) "-")
                      :active active
                      :on-select (lambda (id)
                                   (let ((target (or (plist-get
@@ -1283,7 +1293,8 @@ instead of re-rendering the desktop."
   "Project STATE's workspace controls with a live focused-window STATUS."
   (progn
     (etaf-node 'etaf-workspace-bar
-               (list :workspaces (etaf-desktop--state-workspaces state)
+               (list :ref-prefix (concat (etaf-desktop--controller-token desktop) "-")
+                     :workspaces (etaf-desktop--state-workspaces state)
                      :active (etaf-desktop--state-active-workspace-source state)
                      ;; The right side reports the focused application and the
                      ;; workspace's window-management mode, which the trailing
@@ -1404,7 +1415,8 @@ a maximized window covers them."
                                                     (length (plist-get instance :windows)))
                                                   running))))
                  (list :key id
-                       :ref (intern (format "etaf-desktop-launcher-%s" id))
+                       :ref (etaf-desktop--ref
+                             desktop (format "etaf-desktop-launcher-%s" id))
                        :label (if (and (stringp icon) (not (string-empty-p icon)))
                                   (concat icon " " title)
                                 title)
@@ -1605,7 +1617,8 @@ footer.  Shortcuts fill two label/control column pairs."
        :items (mapcar (lambda (entry)
                         (list :key (car entry)
                               :label (cdr entry)
-                              :ref (intern (format "settings-tab-%s" (car entry)))))
+                              :ref (etaf-desktop--ref
+                                    desktop (format "settings-tab-%s" (car entry)))))
                       etaf-desktop--settings-sections)
        :active (etaf-value section)
        :on-change (lambda (key) (funcall (alist-get key tab-actions))))
@@ -1706,14 +1719,7 @@ re-rendering the desktop tree."
    ;; Emacs continuation.  The row count stays explicit so headless renders
    ;; keep canvas-height rows between the workspace bar and the taskbar.
    :width (etaf-desktop--canvas-box-width desktop)
-   :height (list 'lh (+ (etaf-desktop--canvas-height-value desktop)
-                        (if (eq (etaf-desktop--controller-fit desktop) 'region)
-                            3 2)))
-   ;; A window's resize strips cover its outermost body row and columns, so an
-   ;; embedded desktop leaves those margin cells clear like any application
-   ;; content; the extra row above is the strip row itself.
-   :padding (when (eq (etaf-desktop--controller-fit desktop) 'region)
-              '((lh 0) (ch 1) (lh 1) (ch 1)))
+   :height (list 'lh (+ (etaf-desktop--canvas-height-value desktop) 2))
    ;; The desktop surface carries the canvas color behind everything; the
    ;; workspace bar and taskbar set their own background.
    :background-color (etaf-desktop--theme-token :ui-shell-bg)
@@ -1757,16 +1763,16 @@ embedded in another application's window keeps filling that window as it is
 moved, resized or maximized.  The window keeps one cell clear on each side and
 one row at the bottom for its own resize strips.
 Return the applied size, or nil before the surface has committed geometry."
-  (let ((viewport (etaf-viewport))
-        (metrics (etaf-display-metrics)))
+  (let ((viewport (etaf-viewport)))
     (when (and (consp viewport)
                (integerp (car viewport)) (> (car viewport) 0)
                (integerp (cdr viewport)) (> (cdr viewport) 3))
-      (let* ((char-width (max 1 (or (plist-get metrics :char-width) 1)))
-             (usable (- (car viewport) (* 2 char-width)))
-             (width (max char-width
-                         (* char-width (max 1 (floor (/ usable char-width))))))
-             (height (max 8 (- (cdr viewport) 3))))
+      (let* (;; A desktop fills the surface edge to edge like any application
+             ;; view: the canvas takes the region's pixel width and every row
+             ;; above the taskbar, so the shell's own bar and taskbar are the
+             ;; only rows it does not paint windows into.
+             (width (car viewport))
+             (height (max 8 (- (cdr viewport) 2))))
         ;; An initial canvas renders the first frame at a sane size; once the
         ;; surface is measured the region owns the size.
         (when (or (etaf-desktop--controller-canvas-width desktop)
@@ -1939,10 +1945,14 @@ callers can use `etaf-desktop-close-launcher' to close it unambiguously."
     nil))
 
 (defun etaf-desktop-state (desktop)
-  "Return DESKTOP's detached state plist, including windows and workspaces."
+  "Return DESKTOP's detached state plist, including windows and workspaces.
+The `:token' entry is the namespace of DESKTOP's ETAF Host references."
   (let ((desktop (etaf-desktop--controller desktop))
         (state (etaf-desktop--state desktop)))
     (list :name (etaf-desktop--controller-name desktop)
+          ;; The token namespaces this desktop's ETAF Host references, so a
+          ;; desktop embedded in another one keeps its own controls addressable.
+          :token (etaf-desktop--controller-token desktop)
           :canvas-width (etaf-desktop--canvas-width-value desktop)
           :canvas-height (etaf-desktop--canvas-height-value desktop)
           :settings (etaf-desktop-settings desktop)
