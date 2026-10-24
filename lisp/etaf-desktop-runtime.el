@@ -528,22 +528,23 @@ keeps the shell frame following the window without a structural re-render."
 (defun etaf-desktop--window-canvas-size (window)
   "Return the (WIDTH . HEIGHT) an unconfigured desktop filling WINDOW uses.
 
-WIDTH is the window body's display-safe pixel width rounded down to the
-character grid and HEIGHT leaves one row for the workspace bar and one for the
-taskbar, so a default desktop owns exactly the visible window body.  The shell
-leaves the character the display reserves for its truncation glyph to the
-canvas colour, so that column does not read as a right margin."
+WIDTH is the render surface's pixel width: the same surface the shell and its
+canvas box stretch into, so the workspace bar, the canvas and a maximized
+window share one right edge instead of leaving a band where the display-safe
+window width ends.  HEIGHT leaves one row for the workspace bar and one for the
+taskbar, so a default desktop owns exactly the visible window body."
   (let* ((char-width (max 1 (frame-char-width (window-frame window))))
          (runtime (and (window-live-p window)
                        (etaf-runtime-for-buffer (window-buffer window))))
-         (viewport (and runtime (etaf-runtime-window-viewport runtime)))
-         (width (or (car viewport)
+         (render-width (and runtime
+                            (ignore-errors (car (etaf-runtime-viewport runtime)))))
+         (width (or (and (integerp render-width) (> render-width 0)
+                         render-width)
                     (let ((pixel-width (window-body-width window t)))
                       (if (> pixel-width 10)
                           pixel-width
-                        (* (max 1 (window-body-width window))
-                           (max 1 (frame-char-width))))))))
-    (cons (max char-width (* char-width (floor (/ width char-width))))
+                        (* (max 1 (window-body-width window)) char-width))))))
+    (cons (max char-width width)
           (max 8 (- (window-body-height window) 2)))))
 
 (defun etaf-desktop--canvas-width-value (desktop)

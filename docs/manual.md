@@ -44,8 +44,9 @@ maximizing the hosting window reflows that desktop and its windows, and the
 canvas fills the surface edge to edge — the desktop's own workspace bar and
 taskbar are the only rows it does not use for windows.  A desktop with explicit
 dimensions keeps the canvas it was created with, and every desktop mounted in
-the buffer still follows the Emacs window that displays it, so resizing refits
-the outer desktop as well.
+the buffer still follows the Emacs window that displays it, taking the render
+surface's pixel width so its bar, canvas and maximized windows share one right
+edge, and resizing refits the outer desktop as well.
 
 The mounted desktop hides that buffer's header and mode lines so its workspace
 bar, canvas and taskbar occupy the complete visible body.  Application status

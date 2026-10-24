@@ -909,7 +909,14 @@ row wider than the window.
                     (should (= (+ 2 (max 8 (- (window-body-height window) 2)))
                                (length lines)))
                     (should (<= (apply #'max (mapcar #'length lines))
-                                (window-body-width window)))))
+                                (window-body-width window)))
+                    ;; The canvas shares the render surface's boundary, so a
+                    ;; maximized window reaches the same right edge as the
+                    ;; workspace bar instead of leaving a two-character band.
+                    (should (= (car (etaf-runtime-viewport
+                                     (etaf-runtime-for-buffer buffer)))
+                               (plist-get (etaf-desktop-state desktop)
+                                          :canvas-width)))))
               (when-let* ((runtime (etaf-runtime-for-buffer buffer)))
                 (etaf-unmount runtime)))))
       (etaf-desktop-unregister-app app t)

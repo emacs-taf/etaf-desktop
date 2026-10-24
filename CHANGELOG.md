@@ -6,6 +6,16 @@ All notable changes to ETAF Desktop are documented here.
 
 ### Fixed
 
+- A desktop without explicit dimensions now takes the render surface's pixel
+  width for its canvas. It used to take the display-safe window width, two
+  characters narrower, while the shell stretched to the surface: the workspace
+  bar reached the right edge and the canvas, together with every maximized
+  window, stopped short of it.
+
+
+
+### Fixed
+
 - Every control a desktop owns carries the desktop's own Host reference
   namespace: the layout and settings controls, the launcher entries, the
   taskbar launcher and the close dialog. Two desktops mounted in one buffer — a
