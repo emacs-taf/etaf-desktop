@@ -120,6 +120,12 @@ Each plist holds `:name', `:label' and `:mode'."
     (list :name (plist-get entry :name) :label (plist-get entry :label)
           :mode (plist-get entry :mode) :tokens tokens)))
 
+(defconst etaf-desktop--surface-modes
+  '((light . "亮") (system . "随") (dark . "暗"))
+  "Appearance modes the desktop offers its host, in display order.
+`system' follows the Emacs frame the desktop is displayed in, which is what
+the settings dialog names System; a named theme stays on the settings.")
+
 (defun etaf-desktop--theme-for-settings (settings)
   "Return the ETAF Theme plist for SETTINGS.
 
@@ -140,7 +146,9 @@ rather than restyling these tokens."
       (setq tokens (plist-put tokens :ui-button-secondary-fg accent))
       (setq tokens (plist-put tokens :ui-button-secondary-bg
                               (plist-get tokens :ui-accent-soft-bg))))
-    tokens))
+    ;; The polarity travels with the tokens so the desktop can hand it to the
+    ;; applications in its windows through `etaf-appearance-provide'.
+    (plist-put tokens :ui-mode (plist-get entry :mode))))
 
 ;; Built-in themes.  The first light and the first dark entry are the
 ;; `system' defaults and supply fallbacks for partial custom themes.

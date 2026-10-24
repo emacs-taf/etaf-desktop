@@ -161,8 +161,14 @@ the accent and its derived tints. The Appearance tab exposes both controls.
 
 Theme and accent changes repaint the mounted desktop through Theme paint
 slots without re-rendering windows, and while the launcher, switcher or
-settings dialog is open the shell is dimmed behind the dialog. Register a
-custom theme before mounting or at any later time:
+settings dialog is open the shell is dimmed behind the dialog. A floating
+panel that frames the desktop offers `亮` / `随` / `暗` in its title bar; its
+switch writes the same `:theme` setting, so it repaints the desktop and its
+windows instead of only the panel chrome. Applications in desktop windows
+also receive the desktop's resolved light or dark polarity through
+`etaf-appearance`, so a client that follows its host paints with the desktop
+theme rather than the Emacs frame's. Register a custom theme before mounting
+or at any later time:
 
 ```elisp
 (etaf-desktop-define-theme

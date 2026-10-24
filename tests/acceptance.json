@@ -516,6 +516,16 @@
    "purpose": "Desktop background uses an arrow while its press still dismisses the launcher."
   },
   {
+   "name": "etaf-desktop-view-declares-its-surface-to-a-host",
+   "file": "tests/etaf-desktop-tests.el",
+   "purpose": "A host frames the desktop from the palette, theme-mode cell and modes it declares; the host's switch and the settings dialog write the same cell and the shell repaints."
+  },
+  {
+   "name": "etaf-desktop-windows-receive-the-desktop-appearance",
+   "file": "tests/etaf-desktop-tests.el",
+   "purpose": "Applications mounted in desktop windows are provided the desktop's appearance, not the Emacs frame's polarity, so they repaint with the desktop theme."
+  },
+  {
    "name": "etaf-desktop-app-body-instantiates-once",
    "file": "tests/etaf-desktop-tests.el",
    "purpose": "A launched application window sets up its body component once, and later desktop publications reuse that instance instead of recreating it."

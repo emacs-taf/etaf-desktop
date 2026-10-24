@@ -1651,6 +1651,99 @@ inner level's control answer for the outer bar."
                 nil)
   :view (text "counted"))
 
+(etaf-define-component etaf-desktop-test--framing-host (&key surface desktop)
+  "Provide SURFACE to DESKTOP's View and render it below."
+  :setup (etaf-surface-provide surface)
+  :render (etaf-desktop-view desktop))
+
+(etaf-define-component etaf-desktop-test--appearance-probe (&key log)
+  "Record the appearance its window provides."
+  :setup
+  (progn
+    (etaf-watch (lambda () (etaf-appearance))
+                (lambda (value _old) (setcar log value))
+                :immediate t :name 'etaf-desktop-test-appearance)
+    nil)
+  :view (text "probe"))
+
+(defun etaf-desktop-test--row-painting (buffer color)
+  "Return the first position in BUFFER whose face paints COLOR as background."
+  (with-current-buffer buffer
+    (let ((pos (point-min))
+          found)
+      (while (and (< pos (point-max)) (not found))
+        (when (equal color
+                     (plist-get (get-text-property pos 'face) :background))
+          (setq found pos))
+        (setq pos (1+ pos)))
+      found)))
+
+(defun etaf-desktop-test--painted-background (buffer position)
+  "Return the background BUFFER paints at POSITION."
+  (with-current-buffer buffer
+    (plist-get (get-text-property position 'face) :background)))
+
+(ert-deftest etaf-desktop-view-declares-its-surface-to-a-host ()
+  "A host frames the desktop from the palette, mode cell and modes it declares.
+The panel's title-bar switch writes the same cell as the settings dialog's
+Theme control, so the shell repaints instead of only the frame chrome."
+  (let* ((desktop (etaf-desktop-create :name " *desktop-surface-host*"
+                                       :canvas-width 80 :canvas-height 24))
+         (surface (etaf-surface-create))
+         (buffer (generate-new-buffer " *desktop framing host*")))
+    (unwind-protect
+        (progn
+          (etaf-mount buffer
+                      (etaf-view (etaf-desktop-test--framing-host
+                                  :surface surface :desktop desktop)))
+          (etaf-runtime-flush (etaf-runtime-for-buffer buffer))
+          (should (equal '((light . "亮") (system . "随") (dark . "暗"))
+                         (etaf-surface-modes surface)))
+          (should (eq 'system (etaf-value (etaf-surface-mode surface))))
+          (etaf-set-value (etaf-surface-mode surface) 'light)
+          (etaf-runtime-flush (etaf-runtime-for-buffer buffer))
+          (should (eq 'light (plist-get (etaf-desktop-settings desktop) :theme)))
+          (let* ((tokens (etaf-value (etaf-surface-theme surface)))
+                 (bg (plist-get tokens :ui-shell-bg))
+                 (pos (etaf-desktop-test--row-painting buffer bg)))
+            (should (eq 'light (plist-get tokens :ui-mode)))
+            (should pos)
+            (should (equal bg
+                           (etaf-desktop-test--painted-background buffer pos))))
+          ;; The settings dialog writes the same cell: its choice reaches the
+          ;; surface mode without the panel being touched.
+          (etaf-desktop-set-setting desktop :theme 'dark)
+          (etaf-runtime-flush (etaf-runtime-for-buffer buffer))
+          (should (eq 'dark (etaf-value (etaf-surface-mode surface)))))
+      (when-let* ((runtime (etaf-runtime-for-buffer buffer)))
+        (etaf-unmount runtime))
+      (kill-buffer buffer)
+      (etaf-desktop-close desktop))))
+
+(ert-deftest etaf-desktop-windows-receive-the-desktop-appearance ()
+  "Applications in desktop windows follow the desktop's appearance.
+The desktop is their host, so an app that reads `etaf-appearance' repaints
+with the desktop's theme instead of the Emacs frame's polarity."
+  (let* ((desktop (etaf-desktop-create :name " *desktop-appearance-host*"
+                                       :canvas-width 80 :canvas-height 24))
+         (log (list nil))
+         target)
+    (unwind-protect
+        (progn
+          (etaf-desktop-set-setting desktop :theme 'light)
+          (setq target (etaf-desktop-mount desktop "*desktop-appearance-host*"))
+          (etaf-desktop-open-window desktop 'probe :x 0 :y 0
+                                    :width 240 :height 8
+                                    :view (etaf-view
+                                           (etaf-desktop-test--appearance-probe
+                                            :log log)))
+          (etaf-runtime-flush (etaf-runtime-for-buffer target))
+          (should (eq 'light (car log)))
+          (etaf-desktop-set-setting desktop :theme 'dark)
+          (etaf-runtime-flush (etaf-runtime-for-buffer target))
+          (should (eq 'dark (car log))))
+      (etaf-desktop-close desktop))))
+
 (ert-deftest etaf-desktop-app-body-instantiates-once ()
   "A launched application window instantiates its body once and keeps it."
   (let* ((app 'etaf-desktop-test-counted)

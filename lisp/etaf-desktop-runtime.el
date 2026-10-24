@@ -181,7 +181,7 @@ embed each other keep distinct ETAF Host references.")
   name token fit canvas-width canvas-height canvas-size-ref state-ref fit-timer
   buffer runtime
   launcher-ref switcher-ref settings-ref settings-open-ref layout-label-ref
-  close-request-ref owns-runtime-p owns-buffer-p divider-drag-origin)
+  theme-mode-ref close-request-ref owns-runtime-p owns-buffer-p divider-drag-origin)
 
 (defun etaf-desktop--default-settings ()
   "Return the detached default settings for a new Desktop controller."
@@ -311,6 +311,8 @@ from 8 through 32 in CSS reference pixels (not points)."
     (let ((settings (etaf-desktop--settings desktop)))
       (setq settings (plist-put settings key (copy-tree value)))
       (etaf-set-value (etaf-desktop--controller-settings-ref desktop) settings)
+      (when (eq key :theme)
+        (etaf-set-value (etaf-desktop--controller-theme-mode-ref desktop) value))
       (when (eq key :layout-mode)
         (etaf-desktop-set-layout-mode
          desktop value (etaf-desktop-active-workspace desktop)))
@@ -1702,11 +1704,35 @@ only editing a binding re-renders the shell."
      (lambda ()
        (etaf-desktop--theme-for-settings (etaf-desktop--settings desktop)))
      :test #'equal))
+   (mode (etaf-desktop--controller-theme-mode-ref
+          (etaf-desktop--controller desktop)))
+   (appearance
+    (etaf-computed
+     (lambda () (plist-get (etaf-value theme) :ui-mode))
+     :test #'eq))
    (shortcuts
     (etaf-computed
      (lambda () (plist-get (etaf-desktop--settings desktop) :keybindings))
      :test #'equal)))
-  :setup (etaf-theme-provide theme)
+  :setup
+  (progn
+    (etaf-theme-provide theme)
+    ;; The desktop is the host of every application in its windows, so it
+    ;; provides the polarity its theme resolved to; an app that follows
+    ;; `etaf-appearance' repaints with the desktop instead of the frame.
+    (etaf-appearance-provide appearance)
+    ;; A panel's title-bar switch writes the same cell as the settings
+    ;; dialog's Theme control, so both repaint the desktop and its windows.
+    (etaf-watch mode
+                (lambda (mode _old)
+                  (unless (equal mode
+                                 (plist-get (etaf-desktop--settings desktop)
+                                            :theme))
+                    (etaf-desktop-set-setting desktop :theme mode)))
+                :name 'etaf-desktop-theme-mode)
+    (when-let* ((surface (etaf-surface-host)))
+      (etaf-surface-declare surface :theme theme :mode mode
+                            :modes etaf-desktop--surface-modes)))
   :render
   (etaf-node 'etaf-desktop--shell
              (list :desktop desktop
@@ -1911,6 +1937,9 @@ keeps filling that window body as it is moved, resized or maximized."
           (etaf-ref nil :name 'etaf-desktop-settings-open)
           (etaf-desktop--controller-layout-label-ref controller)
           (etaf-ref "Floating" :name 'etaf-desktop-layout-label)
+          (etaf-desktop--controller-theme-mode-ref controller)
+          (etaf-ref (plist-get (etaf-desktop--default-settings) :theme)
+                    :name 'etaf-desktop-theme-mode)
           (etaf-desktop--controller-close-request-ref controller)
           (etaf-ref nil :name 'etaf-desktop-close-request))
     controller))

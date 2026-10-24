@@ -209,7 +209,10 @@
 ;; `light'/`dark' select the first built-in theme of that mode).
 ;; `:accent-color' accepts nil (the theme's accent) or a "#RRGGBB" string
 ;; replacing the accent and its derived tints.  Theme changes repaint the
-;; mounted shell through Theme paint slots without re-rendering windows.
+;; mounted shell through Theme paint slots without re-rendering windows.  A
+;; panel that frames the desktop writes the same `:theme' choice through the
+;; surface it declares, and applications in desktop windows receive the
+;; resolved light/dark polarity through `etaf-appearance'.
 ;; `:tile-outer-gap' accepts integers 0..4 and `:tile-inner-gap' accepts integers
 ;; 1..4; both default to 1.  Gap units and allocation are described under
 ;; `etaf-desktop-layout-apply'.  Layout mode and tile spacing changes apply
