@@ -2,7 +2,17 @@
 
 All notable changes to ETAF Desktop are documented here.
 
-## [0.1.5] - 2026-10-24
+## [0.1.7] - 2026-10-24
+
+### Fixed
+
+- A desktop embedded with `:fit 'region' now keeps its workspace bar, canvas
+  and taskbar inside the window that hosts it after that window shrinks. The
+  shell's size bindings started from the canvas the desktop was created with
+  and never followed the region, so a nested desktop whose hosting window got
+  smaller laid its taskbar out below the visible window and the bar vanished.
+
+## [0.1.6] - 2026-10-24
 
 ### Fixed
 

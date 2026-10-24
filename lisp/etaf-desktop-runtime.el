@@ -554,35 +554,45 @@ An explicit canvas width wins.  A default desktop follows the Emacs window it
 was last fitted to, then the render viewport, so a consumer that mounts the
 View itself (for example a Playground preview) still fills the window it is
 displayed in; the window measurement remains the fallback outside rendering."
-  (or (etaf-desktop--controller-canvas-width desktop)
-      (car (etaf-desktop--fitted-canvas-size desktop))
-      ;; The result stays on the character grid so a rounded-up pixel column
-      ;; cannot push a row into Emacs continuation.
-      (let* ((runtime-viewport (etaf-desktop--runtime-viewport desktop))
-             (viewport (and runtime-viewport (> (car runtime-viewport) 0)
-                            (car runtime-viewport)))
-             (width (or viewport
-                        (let ((window (etaf-desktop--canvas-window desktop)))
-                          (if (window-live-p window)
-                              (car (etaf-desktop--window-canvas-size window))
-                            (* 80 (max 1 (frame-char-width)))))))
-             (char-width (max 1 (frame-char-width))))
-        (max char-width (* char-width (floor (/ width char-width)))))))
+  ;; Read the fitted cell before the explicit override: a `region'-fitted
+  ;; desktop starts with the canvas it was created with and only later learns
+  ;; its surface size, so a Host property binding must subscribe to the cell
+  ;; even while the override answers.  Short-circuiting on the override left
+  ;; the shell bound to the creation size, and a resized hosting window then
+  ;; kept the old bars and taskbar position.
+  (let ((fitted (etaf-desktop--fitted-canvas-size desktop)))
+    (or (etaf-desktop--controller-canvas-width desktop)
+        (car fitted)
+        ;; The result stays on the character grid so a rounded-up pixel column
+        ;; cannot push a row into Emacs continuation.
+        (let* ((runtime-viewport (etaf-desktop--runtime-viewport desktop))
+               (viewport (and runtime-viewport (> (car runtime-viewport) 0)
+                              (car runtime-viewport)))
+               (width (or viewport
+                          (let ((window (etaf-desktop--canvas-window desktop)))
+                            (if (window-live-p window)
+                                (car (etaf-desktop--window-canvas-size window))
+                              (* 80 (max 1 (frame-char-width)))))))
+               (char-width (max 1 (frame-char-width))))
+          (max char-width (* char-width (floor (/ width char-width))))))))
 
 (defun etaf-desktop--canvas-height-value (desktop)
   "Return DESKTOP's effective canvas height in text rows.
 
 One row is reserved for the workspace bar and one for the taskbar; the mounted
 desktop hides buffer chrome, so no extra padding row is needed at the bottom."
-  (or (etaf-desktop--controller-canvas-height desktop)
-      (cdr (etaf-desktop--fitted-canvas-size desktop))
-      (let ((viewport (etaf-desktop--runtime-viewport desktop)))
-        (and viewport (> (cdr viewport) 0)
-             (max 8 (- (cdr viewport) 2))))
-      (let ((window (etaf-desktop--canvas-window desktop)))
-        (if (window-live-p window)
-            (cdr (etaf-desktop--window-canvas-size window))
-          24))))
+  ;; Subscribe to the fitted cell even while an explicit height answers; see
+  ;; `etaf-desktop--canvas-width-value'.
+  (let ((fitted (etaf-desktop--fitted-canvas-size desktop)))
+    (or (etaf-desktop--controller-canvas-height desktop)
+        (cdr fitted)
+        (let ((viewport (etaf-desktop--runtime-viewport desktop)))
+          (and viewport (> (cdr viewport) 0)
+               (max 8 (- (cdr viewport) 2))))
+        (let ((window (etaf-desktop--canvas-window desktop)))
+          (if (window-live-p window)
+              (cdr (etaf-desktop--window-canvas-size window))
+            24)))))
 
 (defun etaf-desktop--copy-window (window)
   "Copy WINDOW's application state."

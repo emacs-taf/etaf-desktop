@@ -1091,7 +1091,13 @@ canvas at its creation size."
               (sleep-for 0.2)
               (let ((shrunk (etaf-desktop-state inner)))
                 (should (= (plist-get shrunk :canvas-height) 17))
-                (should (<= (plist-get shrunk :canvas-width) 700))))))
+                (should (<= (plist-get shrunk :canvas-width) 700))
+                ;; The shell follows the canvas cell, not the canvas it was
+                ;; created with: both taskbars stay inside the surface that
+                ;; hosts them instead of being laid out below the window.
+                (with-current-buffer buffer
+                  (should (= 2 (how-many (regexp-quote "⊞ Applications")
+                                         (point-min) (point-max)))))))))
       (etaf-desktop-close outer)
       (kill-buffer buffer))))
 

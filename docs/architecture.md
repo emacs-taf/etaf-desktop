@@ -64,7 +64,12 @@ the dimensions it was created with, a desktop without one follows the Emacs
 window, and `:fit 'region'` fills the viewport region of the window it is
 rendered into. The region path is the same reactive read a normal application
 view uses for its size, so maximizing or resizing the hosting window reflows a
-nested desktop instead of leaving it at its creation size.
+nested desktop instead of leaving it at its creation size. The shell's size
+properties read the fitted canvas cell before any explicit canvas override, so
+every binding subscribes to it: a region-fitted desktop starts with the canvas
+it was created with and only later learns its surface size, and a binding that
+short-circuited on the creation size kept the workspace bar, canvas and
+taskbar at that size until an unrelated re-render.
 
 Window IDs of application instances are `<token>/<instance-id>/<window-id>`, and
 the desktop's own controls are `<token>-<name>`. The per-desktop token exists
