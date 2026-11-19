@@ -535,9 +535,13 @@ canvas box stretch into, so the workspace bar, the canvas and a maximized
 window share one right edge instead of leaving a band where the display-safe
 window width ends.  HEIGHT leaves one row for the workspace bar and one for the
 taskbar, so a default desktop owns exactly the visible window body."
-  (let* ((char-width (max 1 (frame-char-width (window-frame window))))
-         (runtime (and (window-live-p window)
+  (let* ((runtime (and (window-live-p window)
                        (etaf-runtime-for-buffer (window-buffer window))))
+         (char-width
+          (max 1 (or (and runtime
+                          (plist-get (ignore-errors (etaf-display-metrics runtime))
+                                     :char-width))
+                     (frame-char-width (window-frame window)))))
          (render-width (and runtime
                             (ignore-errors (car (etaf-runtime-viewport runtime)))))
          (width (or (and (integerp render-width) (> render-width 0)
@@ -574,8 +578,16 @@ displayed in; the window measurement remains the fallback outside rendering."
                           (let ((window (etaf-desktop--canvas-window desktop)))
                             (if (window-live-p window)
                                 (car (etaf-desktop--window-canvas-size window))
-                              (* 80 (max 1 (frame-char-width)))))))
-               (char-width (max 1 (frame-char-width))))
+                              ;; A desktop with no window has no canvas to
+                              ;; measure, so the frame's own cell answers.
+                              (* 80 (max 1 (frame-char-width))))))) ; frame metric
+               (char-width
+                (max 1 (or (and-let* ((buffer (etaf-desktop--controller-buffer desktop))
+                                      ((buffer-live-p buffer))
+                                      (runtime (etaf-runtime-for-buffer buffer)))
+                             (plist-get (ignore-errors (etaf-display-metrics runtime))
+                                        :char-width))
+                           (frame-char-width)))))
           (max char-width (* char-width (floor (/ width char-width))))))))
 
 (defun etaf-desktop--canvas-height-value (desktop)
@@ -951,7 +963,11 @@ at this boundary."
          (window (plist-get gesture :window))
          (line-height
           (when (window-live-p window)
-            (max 1 (frame-char-height (window-frame window))))))
+            (max 1 (or (and-let* ((runtime (etaf-runtime-for-buffer
+                                            (window-buffer window))))
+                         (plist-get (ignore-errors (etaf-display-metrics runtime))
+                                    :line-height))
+                       (frame-char-height (window-frame window)))))))
     (cons (round (or (car delta) 0))
           (round (/ (float (or (cdr delta) 0)) (or line-height 1))))))
 

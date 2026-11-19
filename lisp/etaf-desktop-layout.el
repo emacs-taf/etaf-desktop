@@ -116,7 +116,10 @@ never covers a pane's title row."
   (if (eq orientation 'horizontal)
       (mapconcat (lambda (_row) " ") (number-sequence 1 handle-height) "\n")
     (make-string (max 1 (ceiling (/ (float handle-width)
-                                    (max 1 (frame-char-width)))))
+                                    (max 1 (or (plist-get (ignore-errors
+                                                           (etaf-display-metrics))
+                                                         :char-width)
+                                               (frame-char-width))))))
                  ?\s)))
 
 (defun etaf-desktop--layout-write-divider (divider fact)
@@ -581,7 +584,9 @@ stack whose ratios make each leaf the same height."
 One configured cell is one character width horizontally and one text row
 vertically.  Divider handles fit inside the inner gap."
   (let* ((settings (etaf-desktop--settings desktop))
-         (cell-width (max 1 (frame-char-width)))
+         (cell-width (max 1 (or (plist-get (ignore-errors (etaf-display-metrics))
+                                           :char-width)
+                                (frame-char-width))))
          (outer (or (plist-get settings :tile-outer-gap) 1))
          (inner (or (plist-get settings :tile-inner-gap) 1)))
     (list :outer-x (* outer cell-width)
